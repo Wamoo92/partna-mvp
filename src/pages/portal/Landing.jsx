@@ -17,6 +17,7 @@ export default function Landing() {
             src={brand.logoUrl}
             alt={brand.businessName}
             className="w-16 h-16 rounded-md object-contain"
+            style={{ mixBlendMode: 'screen' }}
           />
           <div>
             <div className="text-white text-xs font-semibold tracking-wide">
@@ -75,10 +76,11 @@ export default function Landing() {
               style={{ background: brand.secondaryColor }}
             >
               <img
-                src={brand.logoUrl}
-                alt=""
-                className="w-4 h-4 object-contain"
-              />
+  src={brand.logoUrl}
+  alt=""
+  className="w-4 h-4 object-contain"
+  style={{ mixBlendMode: 'screen' }}
+/>
             </div>
           </div>
 
