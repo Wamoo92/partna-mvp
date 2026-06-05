@@ -1,164 +1,364 @@
+import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { supabase } from '../../supabase'
 import { brand } from '../../lib/brandConfig'
 
-export default function Landing() {
+export default function AddMoney({ customer }) {
   const navigate = useNavigate()
+  const [step, setStep] = useState(1)
+  const [amount, setAmount] = useState('')
+  const [network, setNetwork] = useState('mtn')
+  const [momoPhone, setMomoPhone] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+
+  const parsedAmount = parseInt(amount.replace(/,/g, ''), 10)
+  const validAmount = !isNaN(parsedAmount) && parsedAmount >= 1000
+
+  function formatUGX(n) {
+    return 'UGX ' + Number(n).toLocaleString('en-UG', { maximumFractionDigits: 0 })
+  }
+
+  function formatAmountInput(val) {
+    const digits = val.replace(/\D/g, '')
+    return digits.replace(/\B(?=(\d{3})+(?!\d))/g, ',')
+  }
+
+  function nowDisplay() {
+    return new Date().toLocaleString('en-UG', {
+      day: 'numeric', month: 'long', year: 'numeric',
+      hour: '2-digit', minute: '2-digit', hour12: true
+    })
+  }
+
+  async function handlePay() {
+    setError('')
+    if (momoPhone.replace(/\s/g, '').length < 10) {
+      setError('Please enter a valid phone number.')
+      return
+    }
+    setLoading(true)
+    try {
+      // Get wallet
+      const { data: wallets, error: walletError } = await supabase
+        .from('wallets').select('*').eq('customer_id', customer.id)
+
+      if (walletError || !wallets || wallets.length === 0) {
+        setError('Could not find wallet. Please try again.')
+        setLoading(false)
+        return
+      }
+
+      const wallet = wallets[0]
+      const newBalance = Number(wallet.balance) + parsedAmount
+
+      // Insert transaction
+      const { error: txnError } = await supabase
+        .from('transactions')
+        .insert({
+          customer_id: customer.id,
+          wallet_id: wallet.id,
+          type: 'deposit',
+          amount: parsedAmount,
+          status: 'completed',
+        })
+
+      if (txnError) {
+        console.error('Transaction insert error:', txnError)
+        setError('Could not record transaction. Please try again.')
+        setLoading(false)
+        return
+      }
+
+      // Update balance
+      const { error: balanceError } = await supabase
+        .from('wallets')
+        .update({ balance: newBalance })
+        .eq('id', wallet.id)
+
+      if (balanceError) {
+        console.error('Balance update error:', balanceError)
+        setError('Could not update balance. Please try again.')
+        setLoading(false)
+        return
+      }
+
+      setStep(3)
+    } catch (e) {
+      console.error('Unexpected error:', e)
+      setError('Something went wrong. Please try again.')
+    }
+    setLoading(false)
+  }
 
   return (
     <div className="min-h-screen flex flex-col" style={{ background: '#f0f2f5' }}>
 
       {/* Header */}
-      <header
-        className="flex items-center justify-between px-4 py-3"
-        style={{ background: brand.primaryColor }}
-      >
+      <header className="flex items-center px-4 py-3 gap-3" style={{ background: brand.primaryColor }}>
+        <button
+          onClick={() => step === 1 ? navigate('/portal/home') : setStep(step - 1)}
+          className="text-white text-xl"
+        >
+          &#8592;
+        </button>
         <div className="flex items-center gap-2">
-          <img
-            src={brand.logoUrl}
-            alt={brand.businessName}
-            className="w-8 h-8 rounded-md object-contain"
-          />
-          <div>
-            <div className="text-white text-xs font-semibold tracking-wide">
-              {brand.businessName}
-            </div>
-            <div className="text-xs" style={{ color: 'rgba(255,255,255,0.5)' }}>
-              Powered by Partna
-            </div>
-          </div>
+          <img src={brand.logoUrl} alt="" className="w-8 h-8 object-contain" style={{ mixBlendMode: 'screen' }} />
+          <div className="text-white text-xs font-semibold">Add Money</div>
         </div>
       </header>
 
-      {/* Hero */}
-      <div
-        className="flex flex-col items-center px-5 pb-7"
-        style={{ background: brand.primaryColor }}
-      >
-        <div className="pt-5 text-center">
-          <div
-            className="text-xs uppercase tracking-widest mb-1"
-            style={{ color: 'rgba(255,255,255,0.6)' }}
-          >
-            {brand.businessName}
+      {/* Step indicator */}
+      {step < 3 && (
+        <div className="px-5 pt-5 pb-8 text-center" style={{ background: brand.primaryColor }}>
+          <div className="flex items-center justify-center gap-2 mb-3">
+            {[1, 2].map(s => (
+              <div key={s} className="rounded-full transition-all"
+                style={{
+                  width: s === step ? '24px' : '8px',
+                  height: '8px',
+                  background: s === step
+                    ? brand.secondaryColor
+                    : s < step
+                    ? 'rgba(212,175,55,0.5)'
+                    : 'rgba(255,255,255,0.25)',
+                }} />
+            ))}
           </div>
-          <h1 className="text-white text-lg font-bold leading-tight mb-1">
-            Savings Program
-          </h1>
-          <p
-            className="text-xs leading-relaxed mb-5"
-            style={{ color: 'rgba(255,255,255,0.75)' }}
-          >
-            {brand.tagline}
-          </p>
+          <div className="text-white text-lg font-bold mb-1">
+            {step === 1 && 'Enter Amount'}
+            {step === 2 && 'Mobile Money Details'}
+          </div>
+          <div className="text-xs" style={{ color: 'rgba(255,255,255,0.65)' }}>
+            {step === 1 && 'Step 1 of 2 — How much would you like to deposit?'}
+            {step === 2 && 'Step 2 of 2 — Enter your mobile money details'}
+          </div>
         </div>
+      )}
 
-        {/* Card visual */}
-        <div
-          className="w-60 h-36 rounded-2xl relative overflow-hidden mb-5"
-          style={{
-            background: brand.primaryColor,
-            border: `1.5px solid ${brand.secondaryColor}`,
-          }}
-        >
-          {/* Gold shimmer */}
-          <div
-            className="absolute inset-0"
-            style={{
-              background: `linear-gradient(135deg, rgba(212,175,55,0.15) 0%, transparent 60%)`,
-            }}
-          />
+      {/* Step 3 success header */}
+      {step === 3 && (
+        <div className="px-5 pt-8 pb-10 text-center" style={{ background: brand.primaryColor }}>
+          <div className="text-4xl mb-3">✅</div>
+          <div className="text-white text-xl font-bold mb-1">Payment Received</div>
+          <div className="text-xs" style={{ color: 'rgba(255,255,255,0.65)' }}>
+            Your balance has been updated
+          </div>
+        </div>
+      )}
 
-          {/* Logo top-left */}
-          <div className="absolute top-3 left-3">
-            <div
-              className="w-6 h-6 rounded flex items-center justify-center"
-              style={{ background: brand.secondaryColor }}
+      {/* Content */}
+      <div
+        className="rounded-t-3xl flex-1 flex flex-col px-5 py-6 gap-4"
+        style={{ background: '#f0f2f5', marginTop: '-16px' }}
+      >
+
+        {/* ── STEP 1: Amount ── */}
+        {step === 1 && (
+          <>
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-semibold" style={{ color: brand.primaryColor }}>
+                Amount (UGX)
+              </label>
+              <div className="relative">
+                <span
+                  className="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-semibold"
+                  style={{ color: 'rgba(0,0,0,0.35)' }}
+                >
+                  UGX
+                </span>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  placeholder="0"
+                  value={amount}
+                  onChange={e => setAmount(formatAmountInput(e.target.value))}
+                  className="w-full pl-14 pr-4 py-4 rounded-xl text-xl font-bold outline-none"
+                  style={{
+                    background: '#fff',
+                    border: '1.5px solid rgba(27,79,114,0.15)',
+                    color: brand.primaryColor,
+                  }}
+                />
+              </div>
+              <div className="text-xs mt-1" style={{ color: 'rgba(0,0,0,0.4)' }}>
+                Minimum deposit: UGX 1,000
+              </div>
+            </div>
+
+            {error && (
+              <div className="text-xs px-4 py-3 rounded-xl" style={{ background: '#FEE2E2', color: '#991B1B' }}>
+                {error}
+              </div>
+            )}
+
+            <button
+              onClick={() => {
+                if (validAmount) { setError(''); setStep(2) }
+                else setError('Please enter a valid amount of at least UGX 1,000.')
+              }}
+              className="w-full py-3 rounded-xl text-sm font-bold mt-2"
+              style={{
+                background: validAmount ? brand.primaryColor : 'rgba(27,79,114,0.3)',
+                color: '#fff',
+              }}
             >
-              <img
-                src={brand.logoUrl}
-                alt=""
-                className="w-4 h-4 object-contain"
+              Continue
+            </button>
+          </>
+        )}
+
+        {/* ── STEP 2: Mobile Money ── */}
+        {step === 2 && (
+          <>
+            {/* Network selector */}
+            <div>
+              <label className="text-xs font-semibold mb-2 block" style={{ color: brand.primaryColor }}>
+                Select network
+              </label>
+              <div className="flex gap-3">
+                {[
+                  { id: 'mtn', logo: '/mtn-logo.svg', label: 'MTN MoMo' },
+                  { id: 'airtel', logo: '/airtel-logo.svg', label: 'Airtel Money' },
+                ].map(net => (
+                  <button
+                    key={net.id}
+                    onClick={() => setNetwork(net.id)}
+                    className="flex-1 rounded-2xl p-3 flex flex-col items-center gap-2"
+                    style={{
+                      background: '#fff',
+                      border: network === net.id
+                        ? `2px solid ${brand.secondaryColor}`
+                        : '2px solid rgba(0,0,0,0.06)',
+                    }}
+                  >
+                    <img
+                      src={net.logo}
+                      alt={net.label}
+                      className="w-12 h-12 object-contain rounded-xl"
+                    />
+                    <span className="text-xs font-semibold" style={{ color: brand.primaryColor }}>
+                      {net.label}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Phone number */}
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-semibold" style={{ color: brand.primaryColor }}>
+                Mobile money number
+              </label>
+              <input
+                type="tel"
+                placeholder="+256 7XX XXX XXX"
+                value={momoPhone}
+                onChange={e => setMomoPhone(e.target.value)}
+                className="w-full px-4 py-3 rounded-xl text-sm outline-none"
+                style={{
+                  background: '#fff',
+                  border: '1.5px solid rgba(27,79,114,0.15)',
+                  color: '#333',
+                }}
               />
             </div>
-          </div>
 
-          {/* Chip */}
-          <div
-            className="absolute w-7 h-5 rounded top-12 left-3"
-            style={{
-              background: 'linear-gradient(135deg,#EDE5A6,#CFA255)',
-            }}
-          />
-
-          {/* Card bottom */}
-          <div className="absolute bottom-0 left-0 right-0 px-3 pb-2 flex justify-between items-end">
-            <div>
-              <div
-                className="text-xs font-semibold uppercase tracking-widest"
-                style={{ color: 'rgba(255,255,255,0.65)' }}
-              >
-                Your name here
+            {/* Summary */}
+            <div className="rounded-2xl p-4" style={{ background: '#fff' }}>
+              <div className="text-xs font-bold mb-3" style={{ color: 'rgba(0,0,0,0.35)' }}>
+                PAYMENT SUMMARY
               </div>
-              <div
-                className="text-xs font-mono"
-                style={{ color: 'rgba(255,255,255,0.5)' }}
-              >
-                •••• •••• •••• ••••
+              {[
+                { label: 'Amount', value: formatUGX(parsedAmount) },
+                { label: 'Network', value: network === 'mtn' ? 'MTN MoMo' : 'Airtel Money' },
+                { label: 'Number', value: momoPhone || '—' },
+                { label: 'Date & time', value: nowDisplay() },
+              ].map((row, i) => (
+                <div
+                  key={i}
+                  className="flex justify-between items-center py-1.5"
+                  style={{ borderBottom: i < 3 ? '1px solid rgba(0,0,0,0.05)' : 'none' }}
+                >
+                  <span className="text-xs" style={{ color: 'rgba(0,0,0,0.4)' }}>{row.label}</span>
+                  <span className="text-xs font-semibold" style={{ color: brand.primaryColor }}>{row.value}</span>
+                </div>
+              ))}
+            </div>
+
+            {error && (
+              <div className="text-xs px-4 py-3 rounded-xl" style={{ background: '#FEE2E2', color: '#991B1B' }}>
+                {error}
               </div>
+            )}
+
+            <button
+              onClick={handlePay}
+              disabled={loading}
+              className="w-full py-3 rounded-xl text-sm font-bold"
+              style={{
+                background: loading ? 'rgba(27,79,114,0.3)' : brand.primaryColor,
+                color: '#fff',
+              }}
+            >
+              {loading ? 'Processing...' : `Pay ${formatUGX(parsedAmount)}`}
+            </button>
+          </>
+        )}
+
+        {/* ── STEP 3: Success ── */}
+        {step === 3 && (
+          <>
+            <div className="rounded-2xl p-4" style={{ background: '#fff' }}>
+              <div className="text-xs font-bold mb-3" style={{ color: 'rgba(0,0,0,0.35)' }}>
+                TRANSACTION DETAILS
+              </div>
+              {[
+                { label: 'Amount deposited', value: formatUGX(parsedAmount) },
+                { label: 'Network', value: network === 'mtn' ? 'MTN MoMo' : 'Airtel Money' },
+                { label: 'Number', value: momoPhone },
+                { label: 'Status', value: '✓ Completed' },
+                { label: 'Date & time', value: nowDisplay() },
+              ].map((row, i, arr) => (
+                <div
+                  key={i}
+                  className="flex justify-between items-center py-1.5"
+                  style={{ borderBottom: i < arr.length - 1 ? '1px solid rgba(0,0,0,0.05)' : 'none' }}
+                >
+                  <span className="text-xs" style={{ color: 'rgba(0,0,0,0.4)' }}>{row.label}</span>
+                  <span
+                    className="text-xs font-semibold"
+                    style={{ color: row.label === 'Status' ? '#16A34A' : brand.primaryColor }}
+                  >
+                    {row.value}
+                  </span>
+                </div>
+              ))}
             </div>
-            {/* Mastercard circles */}
-            <div className="flex">
-              <div className="w-4 h-4 rounded-full opacity-90" style={{ background: '#EB001B' }} />
-              <div className="w-4 h-4 rounded-full opacity-90 -ml-1.5" style={{ background: '#F79E1B' }} />
-            </div>
-          </div>
-        </div>
+
+            <button
+              onClick={() => navigate('/portal/home')}
+              className="w-full py-3 rounded-xl text-sm font-bold"
+              style={{ background: brand.primaryColor, color: '#fff' }}
+            >
+              Back to Home
+            </button>
+
+            <button
+              onClick={() => navigate('/portal/transactions')}
+              className="w-full py-3 rounded-xl text-sm font-semibold"
+              style={{
+                background: 'transparent',
+                color: brand.primaryColor,
+                border: '1.5px solid rgba(27,79,114,0.2)'
+              }}
+            >
+              View transactions
+            </button>
+          </>
+        )}
+
       </div>
-
-      {/* Content area */}
-      <div
-        className="rounded-t-3xl flex-1 flex flex-col px-5 py-5 gap-3"
-        style={{ background: '#f0f2f5', marginTop: '-12px' }}
-      >
-        <button
-          onClick={() => navigate('/portal/register')}
-          className="w-full py-3 rounded-xl text-sm font-bold"
-          style={{
-            background: brand.secondaryColor,
-            color: brand.primaryColor,
-            border: 'none',
-          }}
-        >
-          Register
-        </button>
-
-        <button
-          onClick={() => navigate('/portal/login')}
-          className="w-full py-3 rounded-xl text-sm font-semibold"
-          style={{
-            background: 'transparent',
-            color: brand.primaryColor,
-            border: `1.5px solid rgba(27,79,114,0.3)`,
-          }}
-        >
-          I already have an account — Log in
-        </button>
-      </div>
-
-      {/* Footer */}
-      <footer className="text-center py-4 px-5" style={{ background: '#f0f2f5' }}>
-        <div className="flex items-center justify-center gap-1.5">
-          <img
-            src="/src/assets/partna-icon.svg"
-            alt="Partna"
-            className="w-4 h-4"
-          />
-          <span className="text-xs" style={{ color: 'rgba(0,0,0,0.3)' }}>
-            Powered by Partna
-          </span>
-        </div>
-      </footer>
-
     </div>
   )
 }
