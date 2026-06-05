@@ -18,43 +18,39 @@ export default function Home({ customer, signOut }) {
   }, [customer])
 
   async function fetchData() {
-  setLoading(true)
-  try {
-    const campaignId = customer.campaign_id || 'b1b2c3d4-0000-0000-0000-000000000001'
+    setLoading(true)
+    try {
+      const campaignId = customer.campaign_id || 'b1b2c3d4-0000-0000-0000-000000000001'
 
-    const r1 = await supabase.from('campaigns').select('*').eq('id', campaignId)
-    if (r1.data && r1.data.length > 0) {
-  console.log('campaign target_date:', r1.data[0].target_date)
-  console.log('days calc:', (new Date(r1.data[0].target_date).getTime() - Date.now()) / (1000 * 60 * 60 * 24))
-  setCampaign(r1.data[0])
-}
+      const r1 = await supabase.from('campaigns').select('*').eq('id', campaignId)
+      if (r1.data && r1.data.length > 0) setCampaign(r1.data[0])
 
-    const r2 = await supabase.from('wallets').select('*').eq('customer_id', customer.id)
-    if (r2.data && r2.data.length > 0) setWallet(r2.data[0])
+      const r2 = await supabase.from('wallets').select('*').eq('customer_id', customer.id)
+      if (r2.data && r2.data.length > 0) setWallet(r2.data[0])
 
-    const r3 = await supabase.from('cards').select('*').eq('customer_id', customer.id)
-    if (r3.data && r3.data.length > 0) setCard(r3.data[0])
+      const r3 = await supabase.from('cards').select('*').eq('customer_id', customer.id)
+      if (r3.data && r3.data.length > 0) setCard(r3.data[0])
 
-    const r4 = await supabase.from('reward_ledger').select('*, reward_configs(*)').eq('customer_id', customer.id).order('earned_at', { ascending: false })
-    setRewards(r4.data || [])
+      const r4 = await supabase.from('reward_ledger').select('*, reward_configs(*)').eq('customer_id', customer.id).order('earned_at', { ascending: false })
+      setRewards(r4.data || [])
 
-    const r5 = await supabase.from('transactions').select('*').eq('customer_id', customer.id).order('created_at', { ascending: false }).limit(5)
-    setTransactions(r5.data || [])
+      const r5 = await supabase.from('transactions').select('*').eq('customer_id', customer.id).order('created_at', { ascending: false }).limit(5)
+      setTransactions(r5.data || [])
 
-  } catch (err) {
-    console.error('Error fetching home data:', err)
-  } finally {
-    setLoading(false)
+    } catch (err) {
+      console.error('Error fetching home data:', err)
+    } finally {
+      setLoading(false)
+    }
   }
-}
 
-  const balance = wallet?.balance || 0
-  const target = campaign?.target_amount || 1500000
+  const balance = wallet ? Number(wallet.balance) : 0
+  const target = campaign ? Number(campaign.target_amount) : 1500000
   const progress = Math.min((balance / target) * 100, 100)
   const remaining = Math.max(target - balance, 0)
   const daysRemaining = campaign?.target_date
-  ? Math.max(Math.ceil((new Date(campaign.target_date).getTime() - Date.now()) / (1000 * 60 * 60 * 24)), 0)
-  : 0
+    ? Math.max(Math.ceil((new Date(campaign.target_date).getTime() - Date.now()) / (1000 * 60 * 60 * 24)), 0)
+    : 0
 
   const earnedReward = rewards.find(r => r.status === 'earned')
   const totalDiscount = rewards
@@ -67,7 +63,7 @@ export default function Home({ customer, signOut }) {
     }, 0)
 
   function formatUGX(amount) {
-    return `UGX ${Number(amount).toLocaleString('en-UG', { maximumFractionDigits: 0 })}`
+    return 'UGX ' + Number(amount).toLocaleString('en-UG', { maximumFractionDigits: 0 })
   }
 
   function formatDate(dateStr) {
@@ -105,6 +101,38 @@ export default function Home({ customer, signOut }) {
     }
   }
 
+  // Rewards strip logic — dynamically updates based on balance
+  function getRewardsStrip() {
+    if (!wallet || !campaign) return null
+    if (rewards.length > 0) return null // handled separately
+
+    const pct = (balance / target) * 100
+
+    if (pct >= 75) {
+      return {
+        title: '🎯 Next reward at 100%',
+        body: 'Save ' + formatUGX(Math.max(target - balance, 0)) + ' more to reach your savings goal',
+      }
+    } else if (pct >= 50) {
+      return {
+        title: '🎯 Next reward at 75%',
+        body: 'Save ' + formatUGX(Math.max(target * 0.75 - balance, 0)) + ' more to unlock your next reward',
+      }
+    } else if (pct >= 25) {
+      return {
+        title: '🎯 Next reward at 50%',
+        body: 'Save ' + formatUGX(Math.max(target * 0.50 - balance, 0)) + ' more to unlock your next reward',
+      }
+    } else {
+      return {
+        title: '🎯 First reward at 25%',
+        body: 'Save ' + formatUGX(Math.max(target * 0.25 - balance, 0)) + ' more to unlock your first discount',
+      }
+    }
+  }
+
+  const rewardsStrip = getRewardsStrip()
+
   if (loading) return (
     <div className="min-h-screen flex items-center justify-center" style={{ background: '#f0f2f5' }}>
       <div className="w-8 h-8 border-4 border-t-transparent rounded-full animate-spin"
@@ -112,7 +140,6 @@ export default function Home({ customer, signOut }) {
     </div>
   )
 
-  // Card dimensions — 2.5x the original 120x76
   const CARD_W = 300
   const CARD_H = 190
 
@@ -137,29 +164,25 @@ export default function Home({ customer, signOut }) {
           </div>
         </div>
         <div className="flex items-center gap-2">
-  <button
-    onClick={() => { signOut(); navigate('/portal') }}
-    className="text-xs font-semibold px-3 py-1.5 rounded-lg"
-    style={{ background: 'rgba(255,255,255,0.15)', color: '#fff' }}
-  >
-    Log out
-  </button>
-  <button
-    onClick={() => navigate('/portal/profile')}
-    className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold"
-    style={{ background: brand.secondaryColor, color: brand.primaryColor }}
-  >
-    {customer?.first_name?.[0]}{customer?.last_name?.[0]}
-  </button>
-</div>
+          <button
+            onClick={() => { signOut(); navigate('/portal') }}
+            className="text-xs font-semibold px-3 py-1.5 rounded-lg"
+            style={{ background: 'rgba(255,255,255,0.15)', color: '#fff' }}
+          >
+            Log out
+          </button>
+          <button
+            onClick={() => navigate('/portal/profile')}
+            className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold"
+            style={{ background: brand.secondaryColor, color: brand.primaryColor }}
+          >
+            {customer?.first_name?.[0]}{customer?.last_name?.[0]}
+          </button>
+        </div>
       </header>
 
       {/* Hero — balance + flippable card */}
-      <div
-        className="px-5 pt-5 pb-10"
-        style={{ background: brand.primaryColor }}
-      >
-        {/* Balance row */}
+      <div className="px-5 pt-5 pb-10" style={{ background: brand.primaryColor }}>
         <div className="mb-4">
           <div className="text-xs mb-1" style={{ color: 'rgba(255,255,255,0.6)' }}>
             Welcome back, {customer?.first_name}
@@ -172,173 +195,93 @@ export default function Home({ customer, signOut }) {
           </div>
         </div>
 
-        {/* Flippable card — centered, larger */}
+        {/* Flippable card */}
         <div className="flex justify-center mb-5">
           <div
             className="cursor-pointer"
             style={{ perspective: '800px', width: `${CARD_W}px`, height: `${CARD_H}px` }}
             onClick={() => setCardFlipped(!cardFlipped)}
           >
-            <div
-              style={{
-                width: `${CARD_W}px`,
-                height: `${CARD_H}px`,
-                position: 'relative',
-                transformStyle: 'preserve-3d',
-                transition: 'transform 0.6s ease',
-                transform: cardFlipped ? 'rotateY(180deg)' : 'rotateY(0deg)',
-              }}
-            >
+            <div style={{
+              width: `${CARD_W}px`,
+              height: `${CARD_H}px`,
+              position: 'relative',
+              transformStyle: 'preserve-3d',
+              transition: 'transform 0.6s ease',
+              transform: cardFlipped ? 'rotateY(180deg)' : 'rotateY(0deg)',
+            }}>
               {/* Card front */}
-              <div
-                className="rounded-2xl absolute inset-0 overflow-hidden"
+              <div className="rounded-2xl absolute inset-0 overflow-hidden"
                 style={{
                   backfaceVisibility: 'hidden',
                   WebkitBackfaceVisibility: 'hidden',
                   background: brand.primaryColor,
                   border: `2px solid ${brand.secondaryColor}`,
-                }}
-              >
-                {/* Gold shimmer */}
-                <div
-                  className="absolute inset-0"
-                  style={{ background: 'linear-gradient(135deg, rgba(212,175,55,0.2) 0%, transparent 60%)' }}
-                />
-                {/* Logo top-left */}
+                }}>
+                <div className="absolute inset-0"
+                  style={{ background: 'linear-gradient(135deg, rgba(212,175,55,0.2) 0%, transparent 60%)' }} />
                 <div className="absolute top-4 left-4">
-                  <img
-                    src={brand.logoUrl}
-                    alt=""
-                    className="object-contain"
-                    style={{ width: '36px', height: '36px', mixBlendMode: 'screen' }}
-                  />
+                  <img src={brand.logoUrl} alt="" className="object-contain"
+                    style={{ width: '36px', height: '36px', mixBlendMode: 'screen' }} />
                 </div>
-                {/* Mastercard top-right */}
                 <div className="absolute top-4 right-4 flex">
                   <div className="w-7 h-7 rounded-full opacity-90" style={{ background: '#EB001B' }} />
                   <div className="w-7 h-7 rounded-full opacity-90 -ml-3" style={{ background: '#F79E1B' }} />
                 </div>
-                {/* Chip */}
-                <div
-                  className="absolute rounded"
-                  style={{
-                    width: '40px', height: '28px',
-                    top: '70px', left: '16px',
-                    background: 'linear-gradient(135deg,#EDE5A6,#CFA255)',
-                  }}
-                />
-                {/* Card number */}
-                <div
-                  className="absolute font-mono font-semibold tracking-widest"
-                  style={{
-                    bottom: '44px', left: '16px', right: '16px',
-                    color: 'rgba(255,255,255,0.9)',
-                    fontSize: '15px',
-                    letterSpacing: '2px',
-                  }}
-                >
+                <div className="absolute rounded"
+                  style={{ width: '40px', height: '28px', top: '70px', left: '16px', background: 'linear-gradient(135deg,#EDE5A6,#CFA255)' }} />
+                <div className="absolute font-mono font-semibold tracking-widest"
+                  style={{ bottom: '44px', left: '16px', right: '16px', color: 'rgba(255,255,255,0.9)', fontSize: '15px', letterSpacing: '2px' }}>
                   {formatCardNumber(card?.card_number)}
                 </div>
-                {/* Name + expiry row */}
-                <div
-                  className="absolute flex justify-between items-end"
-                  style={{ bottom: '16px', left: '16px', right: '16px' }}
-                >
+                <div className="absolute flex justify-between items-end"
+                  style={{ bottom: '16px', left: '16px', right: '16px' }}>
                   <div>
-                    <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '8px', marginBottom: '2px' }}>
-                      CARD HOLDER
-                    </div>
-                    <div
-                      className="font-semibold uppercase tracking-wide"
-                      style={{ color: 'rgba(255,255,255,0.9)', fontSize: '11px' }}
-                    >
+                    <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '8px', marginBottom: '2px' }}>CARD HOLDER</div>
+                    <div className="font-semibold uppercase tracking-wide"
+                      style={{ color: 'rgba(255,255,255,0.9)', fontSize: '11px' }}>
                       {customer?.first_name} {customer?.last_name}
                     </div>
                   </div>
                   <div className="text-right">
-                    <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '8px', marginBottom: '2px' }}>
-                      EXPIRES
-                    </div>
-                    <div
-                      className="font-mono font-semibold"
-                      style={{ color: 'rgba(255,255,255,0.9)', fontSize: '11px' }}
-                    >
+                    <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '8px', marginBottom: '2px' }}>EXPIRES</div>
+                    <div className="font-mono font-semibold" style={{ color: 'rgba(255,255,255,0.9)', fontSize: '11px' }}>
                       {formatExpiry(card?.expiry_date)}
                     </div>
                   </div>
                 </div>
-                {/* Tap hint */}
-                <div
-                  className="absolute bottom-1 left-0 right-0 text-center"
-                  style={{ color: 'rgba(255,255,255,0.25)', fontSize: '8px' }}
-                >
-                  tap to flip
-                </div>
+                <div className="absolute bottom-1 left-0 right-0 text-center"
+                  style={{ color: 'rgba(255,255,255,0.25)', fontSize: '8px' }}>tap to flip</div>
               </div>
 
               {/* Card back */}
-              <div
-                className="rounded-2xl absolute inset-0 overflow-hidden"
+              <div className="rounded-2xl absolute inset-0 overflow-hidden"
                 style={{
                   backfaceVisibility: 'hidden',
                   WebkitBackfaceVisibility: 'hidden',
                   transform: 'rotateY(180deg)',
                   background: '#0f2d40',
                   border: `2px solid ${brand.secondaryColor}`,
-                }}
-              >
-                {/* Magnetic stripe */}
-                <div
-                  className="absolute w-full"
-                  style={{ height: '40px', top: '28px', background: '#111' }}
-                />
-                {/* Signature strip + CVV */}
-                <div
-                  className="absolute flex items-center"
-                  style={{ top: '86px', left: '16px', right: '16px' }}
-                >
-                  <div
-                    className="flex-1 rounded-l"
-                    style={{ height: '32px', background: 'repeating-linear-gradient(90deg, #e8e8e8 0px, #e8e8e8 4px, #ccc 4px, #ccc 8px)' }}
-                  />
-                  <div
-                    className="rounded-r flex items-center justify-center font-mono font-bold"
-                    style={{
-                      width: '48px', height: '32px',
-                      background: '#fff',
-                      color: '#333',
-                      fontSize: '14px',
-                    }}
-                  >
+                }}>
+                <div className="absolute w-full" style={{ height: '40px', top: '28px', background: '#111' }} />
+                <div className="absolute flex items-center" style={{ top: '86px', left: '16px', right: '16px' }}>
+                  <div className="flex-1 rounded-l"
+                    style={{ height: '32px', background: 'repeating-linear-gradient(90deg, #e8e8e8 0px, #e8e8e8 4px, #ccc 4px, #ccc 8px)' }} />
+                  <div className="rounded-r flex items-center justify-center font-mono font-bold"
+                    style={{ width: '48px', height: '32px', background: '#fff', color: '#333', fontSize: '14px' }}>
                     {card?.cvv || '•••'}
                   </div>
                 </div>
-                <div
-                  className="absolute text-right"
-                  style={{ top: '122px', right: '16px', color: 'rgba(255,255,255,0.4)', fontSize: '9px' }}
-                >
-                  CVV
-                </div>
-                {/* Card number on back */}
-                <div
-                  className="absolute font-mono"
-                  style={{
-                    bottom: '28px', left: '16px',
-                    color: 'rgba(255,255,255,0.4)',
-                    fontSize: '11px',
-                    letterSpacing: '1px',
-                  }}
-                >
+                <div className="absolute text-right"
+                  style={{ top: '122px', right: '16px', color: 'rgba(255,255,255,0.4)', fontSize: '9px' }}>CVV</div>
+                <div className="absolute font-mono"
+                  style={{ bottom: '28px', left: '16px', color: 'rgba(255,255,255,0.4)', fontSize: '11px', letterSpacing: '1px' }}>
                   {formatCardNumber(card?.card_number)}
                 </div>
-                {/* Expiry on back */}
-                <div
-                  className="absolute"
-                  style={{ bottom: '12px', left: '16px', color: 'rgba(255,255,255,0.3)', fontSize: '9px' }}
-                >
+                <div className="absolute"
+                  style={{ bottom: '12px', left: '16px', color: 'rgba(255,255,255,0.3)', fontSize: '9px' }}>
                   Valid thru {formatExpiry(card?.expiry_date)}
                 </div>
-                {/* Mastercard bottom-right */}
                 <div className="absolute bottom-4 right-4 flex">
                   <div className="w-6 h-6 rounded-full opacity-70" style={{ background: '#EB001B' }} />
                   <div className="w-6 h-6 rounded-full opacity-70 -ml-2" style={{ background: '#F79E1B' }} />
@@ -355,13 +298,11 @@ export default function Home({ customer, signOut }) {
             <span>{formatUGX(target)}</span>
           </div>
           <div className="w-full h-2 rounded-full" style={{ background: 'rgba(255,255,255,0.2)' }}>
-            <div
-              className="h-2 rounded-full transition-all"
+            <div className="h-2 rounded-full transition-all"
               style={{
                 width: `${progress}%`,
                 background: progress >= 75 ? '#22C55E' : progress >= 50 ? brand.secondaryColor : '#F59E0B',
-              }}
-            />
+              }} />
           </div>
         </div>
         <div className="flex justify-between text-xs" style={{ color: 'rgba(255,255,255,0.6)' }}>
@@ -371,17 +312,13 @@ export default function Home({ customer, signOut }) {
       </div>
 
       {/* Main content */}
-      <div
-        className="rounded-t-3xl flex-1 flex flex-col gap-4 px-5 py-5"
-        style={{ background: '#f0f2f5', marginTop: '-16px' }}
-      >
+      <div className="rounded-t-3xl flex-1 flex flex-col gap-4 px-5 py-5"
+        style={{ background: '#f0f2f5', marginTop: '-16px' }}>
 
         {/* Rewards strip */}
         {rewards.length > 0 ? (
-          <div
-            className="rounded-2xl px-4 py-3 flex items-center justify-between"
-            style={{ background: '#fff', border: `1.5px solid ${brand.secondaryColor}` }}
-          >
+          <div className="rounded-2xl px-4 py-3 flex items-center justify-between"
+            style={{ background: '#fff', border: `1.5px solid ${brand.secondaryColor}` }}>
             <div>
               <div className="text-xs font-semibold" style={{ color: brand.primaryColor }}>
                 🎉 Reward unlocked
@@ -398,36 +335,28 @@ export default function Home({ customer, signOut }) {
               View
             </button>
           </div>
-        ) : (
-          <div
-            className="rounded-2xl px-4 py-3"
-            style={{ background: '#fff', border: '1.5px solid rgba(27,79,114,0.1)' }}
-          >
+        ) : rewardsStrip ? (
+          <div className="rounded-2xl px-4 py-3"
+            style={{ background: '#fff', border: '1.5px solid rgba(27,79,114,0.1)' }}>
             <div className="text-xs font-semibold mb-0.5" style={{ color: brand.primaryColor }}>
-              🎯 First reward at 25%
+              {rewardsStrip.title}
             </div>
             <div className="text-xs" style={{ color: 'rgba(0,0,0,0.5)' }}>
-              Save {formatUGX(Math.max(target * 0.25 - balance, 0))} more to unlock your first discount
+              {rewardsStrip.body}
             </div>
           </div>
-        )}
+        ) : null}
 
-        {/* Action buttons + Recent activity side by side */}
+        {/* Action buttons + Recent activity */}
         <div className="flex gap-3">
-
-          {/* Action buttons — left column */}
           <div className="flex flex-col gap-3" style={{ width: '140px', flexShrink: 0 }}>
             <button
               onClick={() => navigate('/portal/add-money')}
               className="flex flex-col items-center gap-2 py-4 rounded-2xl"
               style={{ background: '#fff', border: '1.5px solid rgba(27,79,114,0.1)' }}
             >
-              <div
-                className="w-10 h-10 rounded-full flex items-center justify-center text-lg font-light"
-                style={{ background: 'rgba(27,79,114,0.1)', color: brand.primaryColor }}
-              >
-                +
-              </div>
+              <div className="w-10 h-10 rounded-full flex items-center justify-center text-lg font-light"
+                style={{ background: 'rgba(27,79,114,0.1)', color: brand.primaryColor }}>+</div>
               <span className="text-xs font-semibold" style={{ color: brand.primaryColor }}>Add money</span>
             </button>
 
@@ -436,10 +365,8 @@ export default function Home({ customer, signOut }) {
               className="flex flex-col items-center gap-2 py-4 rounded-2xl"
               style={{ background: brand.primaryColor }}
             >
-              <div
-                className="w-10 h-10 rounded-full flex items-center justify-center"
-                style={{ background: 'rgba(255,255,255,0.15)' }}
-              >
+              <div className="w-10 h-10 rounded-full flex items-center justify-center"
+                style={{ background: 'rgba(255,255,255,0.15)' }}>
                 <span className="text-white text-lg">↑</span>
               </div>
               <span className="text-xs font-semibold text-white">Pay fees</span>
@@ -450,17 +377,12 @@ export default function Home({ customer, signOut }) {
               className="flex flex-col items-center gap-2 py-4 rounded-2xl"
               style={{ background: '#fff', border: '1.5px solid rgba(27,79,114,0.1)' }}
             >
-              <div
-                className="w-10 h-10 rounded-full flex items-center justify-center"
-                style={{ background: 'rgba(27,79,114,0.1)', color: brand.primaryColor }}
-              >
-                ↓
-              </div>
+              <div className="w-10 h-10 rounded-full flex items-center justify-center"
+                style={{ background: 'rgba(27,79,114,0.1)', color: brand.primaryColor }}>↓</div>
               <span className="text-xs font-semibold" style={{ color: brand.primaryColor }}>Withdraw</span>
             </button>
           </div>
 
-          {/* Recent activity — right column */}
           <div className="flex-1 flex flex-col">
             <div className="flex items-center justify-between mb-2">
               <div className="text-sm font-semibold" style={{ color: brand.primaryColor }}>
@@ -484,20 +406,11 @@ export default function Home({ customer, signOut }) {
                 </div>
               ) : (
                 transactions.map((txn, i) => (
-                  <div
-                    key={txn.id}
-                    className="flex items-center justify-between px-3 py-2.5"
-                    style={{
-                      borderBottom: i < transactions.length - 1
-                        ? '1px solid rgba(0,0,0,0.05)'
-                        : 'none'
-                    }}
-                  >
+                  <div key={txn.id} className="flex items-center justify-between px-3 py-2.5"
+                    style={{ borderBottom: i < transactions.length - 1 ? '1px solid rgba(0,0,0,0.05)' : 'none' }}>
                     <div className="flex items-center gap-2">
-                      <div
-                        className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0"
-                        style={{ background: `${txColor(txn.type)}15`, color: txColor(txn.type) }}
-                      >
+                      <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0"
+                        style={{ background: `${txColor(txn.type)}15`, color: txColor(txn.type) }}>
                         {txIcon(txn.type)}
                       </div>
                       <div>
@@ -541,34 +454,24 @@ export default function Home({ customer, signOut }) {
       </div>
 
       {/* Bottom nav */}
-      <nav
-        className="flex items-center justify-around px-4 py-3 border-t"
-        style={{ background: '#fff', borderColor: 'rgba(0,0,0,0.08)' }}
-      >
+      <nav className="flex items-center justify-around px-4 py-3 border-t"
+        style={{ background: '#fff', borderColor: 'rgba(0,0,0,0.08)' }}>
         {[
           { label: 'Home', icon: '⌂', path: '/portal/home' },
           { label: 'Rewards', icon: '★', path: '/portal/rewards' },
           { label: 'History', icon: '↕', path: '/portal/transactions' },
           { label: 'Profile', icon: '◎', path: '/portal/profile' },
         ].map((item) => (
-          <button
-            key={item.path}
-            onClick={() => navigate(item.path)}
-            className="flex flex-col items-center gap-1"
-          >
-            <span
-              className="text-lg leading-none"
-              style={{ color: item.path === '/portal/home' ? brand.primaryColor : 'rgba(0,0,0,0.3)' }}
-            >
+          <button key={item.path} onClick={() => navigate(item.path)} className="flex flex-col items-center gap-1">
+            <span className="text-lg leading-none"
+              style={{ color: item.path === '/portal/home' ? brand.primaryColor : 'rgba(0,0,0,0.3)' }}>
               {item.icon}
             </span>
-            <span
-              className="text-xs"
+            <span className="text-xs"
               style={{
                 color: item.path === '/portal/home' ? brand.primaryColor : 'rgba(0,0,0,0.3)',
                 fontWeight: item.path === '/portal/home' ? 600 : 400
-              }}
-            >
+              }}>
               {item.label}
             </span>
           </button>
