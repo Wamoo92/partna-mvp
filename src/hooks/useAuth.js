@@ -29,24 +29,37 @@ export function useAuth() {
   }, [])
 
   async function fetchCustomer(userId) {
-    const { data, error } = await supabase
+    // Fetch customer record
+    const { data: customerData } = await supabase
       .from('customers')
-      .select(`
-        *,
-        wallets (*),
-        cards (*),
-        campaigns (*)
-      `)
+      .select('*')
       .eq('auth_user_id', userId)
-      .single()
 
-    if (error) {
-      console.error('Error fetching customer:', error)
+    if (!customerData || customerData.length === 0) {
       setLoading(false)
       return
     }
 
-    setCustomer(data)
+    const c = customerData[0]
+
+    // Fetch wallet
+    const { data: walletData } = await supabase
+      .from('wallets')
+      .select('*')
+      .eq('customer_id', c.id)
+
+    // Fetch cards
+    const { data: cardData } = await supabase
+      .from('cards')
+      .select('*')
+      .eq('customer_id', c.id)
+
+    setCustomer({
+      ...c,
+      wallets: walletData || [],
+      cards: cardData || [],
+    })
+
     setLoading(false)
   }
 
@@ -55,5 +68,10 @@ export function useAuth() {
     setCustomer(null)
   }
 
-  return { customer, loading, signOut, refetch: () => customer && fetchCustomer(customer.auth_user_id) }
+  return {
+    customer,
+    loading,
+    signOut,
+    refetch: () => customer && fetchCustomer(customer.auth_user_id)
+  }
 }
