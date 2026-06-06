@@ -29,7 +29,6 @@ export function useAuth() {
   }, [])
 
   async function fetchCustomer(userId) {
-    // Fetch customer record
     const { data: customerData } = await supabase
       .from('customers')
       .select('*')
@@ -40,26 +39,7 @@ export function useAuth() {
       return
     }
 
-    const c = customerData[0]
-
-    // Fetch wallet
-    const { data: walletData } = await supabase
-      .from('wallets')
-      .select('*')
-      .eq('customer_id', c.id)
-
-    // Fetch cards
-    const { data: cardData } = await supabase
-      .from('cards')
-      .select('*')
-      .eq('customer_id', c.id)
-
-    setCustomer({
-      ...c,
-      wallets: walletData || [],
-      cards: cardData || [],
-    })
-
+    setCustomer(customerData[0])
     setLoading(false)
   }
 

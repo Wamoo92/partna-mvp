@@ -8,7 +8,6 @@ export default function Home({ customer, signOut }) {
   const [campaign, setCampaign] = useState(null)
   const [wallet, setWallet] = useState(null)
   const [card, setCard] = useState(null)
-  const [rewards, setRewards] = useState([])
   const [transactions, setTransactions] = useState([])
   const [loading, setLoading] = useState(true)
   const [cardFlipped, setCardFlipped] = useState(false)
@@ -31,11 +30,8 @@ export default function Home({ customer, signOut }) {
       const r3 = await supabase.from('cards').select('*').eq('customer_id', customer.id)
       if (r3.data && r3.data.length > 0) setCard(r3.data[0])
 
-      const r4 = await supabase.from('reward_ledger').select('*, reward_configs(*)').eq('customer_id', customer.id).order('earned_at', { ascending: false })
-      setRewards(r4.data || [])
-
-      const r5 = await supabase.from('transactions').select('*').eq('customer_id', customer.id).order('created_at', { ascending: false }).limit(5)
-      setTransactions(r5.data || [])
+      const r4 = await supabase.from('transactions').select('*').eq('customer_id', customer.id).order('created_at', { ascending: false }).limit(5)
+      setTransactions(r4.data || [])
 
     } catch (err) {
       console.error('Error fetching home data:', err)
@@ -51,16 +47,6 @@ export default function Home({ customer, signOut }) {
   const daysRemaining = campaign?.target_date
     ? Math.max(Math.ceil((new Date(campaign.target_date).getTime() - Date.now()) / (1000 * 60 * 60 * 24)), 0)
     : 0
-
-  const earnedReward = rewards.find(r => r.status === 'earned')
-  const totalDiscount = rewards
-    .filter(r => r.status === 'earned' || r.status === 'applied')
-    .reduce((sum, r) => {
-      const config = r.reward_configs
-      if (!config) return sum
-      if (config.reward_type === 'percentage') return sum + (target * config.reward_value / 100)
-      return sum + config.reward_value
-    }, 0)
 
   function formatUGX(amount) {
     return 'UGX ' + Number(amount).toLocaleString('en-UG', { maximumFractionDigits: 0 })
@@ -87,46 +73,38 @@ export default function Home({ customer, signOut }) {
     switch (type) {
       case 'deposit': return '↓'
       case 'payment': return '↑'
-      case 'reward_credit': return '★'
       case 'withdrawal': return '↑'
       default: return '·'
     }
   }
 
   function txColor(type) {
-    switch (type) {
-      case 'deposit': return '#16A34A'
-      case 'reward_credit': return '#D4AF37'
-      default: return '#DC2626'
-    }
+    return type === 'deposit' ? '#16A34A' : '#DC2626'
   }
 
-  // Rewards strip logic — dynamically updates based on balance
+  // Rewards strip — dynamically updates based on balance milestones
   function getRewardsStrip() {
     if (!wallet || !campaign) return null
-    if (rewards.length > 0) return null // handled separately
-
     const pct = (balance / target) * 100
-
     if (pct >= 75) {
       return {
-        title: '🎯 Next reward at 100%',
+        title: '🎯 Next voucher at 100%',
         body: 'Save ' + formatUGX(Math.max(target - balance, 0)) + ' more to reach your savings goal',
       }
     } else if (pct >= 50) {
       return {
-        title: '🎯 Next reward at 75%',
-        body: 'Save ' + formatUGX(Math.max(target * 0.75 - balance, 0)) + ' more to unlock your next reward',
+        title: '🎯 Next voucher at 75%',
+        body: 'Save ' + formatUGX(Math.max(target * 0.75 - balance, 0)) + ' more to unlock your next voucher',
       }
     } else if (pct >= 25) {
       return {
-        title: '🎯 Next reward at 50%',
-        body: 'Save ' + formatUGX(Math.max(target * 0.50 - balance, 0)) + ' more to unlock your next reward',
+        title: '🎯 Next voucher at 50%',
+        body: 'Save ' + formatUGX(Math.max(target * 0.50 - balance, 0)) + ' more to unlock your next voucher',
       }
     } else {
       return {
-        title: '🎯 First reward at 25%',
-        body: 'Save ' + formatUGX(Math.max(target * 0.25 - balance, 0)) + ' more to unlock your first discount',
+        title: '🎯 First voucher at 25%',
+        body: 'Save ' + formatUGX(Math.max(target * 0.25 - balance, 0)) + ' more to unlock your first voucher',
       }
     }
   }
@@ -147,17 +125,10 @@ export default function Home({ customer, signOut }) {
     <div className="min-h-screen flex flex-col" style={{ background: '#f0f2f5' }}>
 
       {/* Header */}
-      <header
-        className="flex items-center justify-between px-4 py-3"
-        style={{ background: brand.primaryColor }}
-      >
+      <header className="flex items-center justify-between px-4 py-3" style={{ background: brand.primaryColor }}>
         <div className="flex items-center gap-2">
-          <img
-            src={brand.logoUrl}
-            alt={brand.businessName}
-            className="w-8 h-8 object-contain"
-            style={{ mixBlendMode: 'screen' }}
-          />
+          <img src={brand.logoUrl} alt={brand.businessName} className="w-8 h-8 object-contain"
+            style={{ mixBlendMode: 'screen' }} />
           <div>
             <div className="text-white text-xs font-semibold">{brand.businessName}</div>
             <div className="text-xs" style={{ color: 'rgba(255,255,255,0.5)' }}>Savings Program</div>
@@ -181,15 +152,13 @@ export default function Home({ customer, signOut }) {
         </div>
       </header>
 
-      {/* Hero — balance + flippable card */}
+      {/* Hero */}
       <div className="px-5 pt-5 pb-10" style={{ background: brand.primaryColor }}>
         <div className="mb-4">
           <div className="text-xs mb-1" style={{ color: 'rgba(255,255,255,0.6)' }}>
             Welcome back, {customer?.first_name}
           </div>
-          <div className="text-white text-3xl font-bold mb-0.5">
-            {formatUGX(balance)}
-          </div>
+          <div className="text-white text-3xl font-bold mb-0.5">{formatUGX(balance)}</div>
           <div className="text-xs" style={{ color: 'rgba(255,255,255,0.6)' }}>
             saved toward {campaign?.name}
           </div>
@@ -197,27 +166,20 @@ export default function Home({ customer, signOut }) {
 
         {/* Flippable card */}
         <div className="flex justify-center mb-5">
-          <div
-            className="cursor-pointer"
+          <div className="cursor-pointer"
             style={{ perspective: '800px', width: `${CARD_W}px`, height: `${CARD_H}px` }}
-            onClick={() => setCardFlipped(!cardFlipped)}
-          >
+            onClick={() => setCardFlipped(!cardFlipped)}>
             <div style={{
-              width: `${CARD_W}px`,
-              height: `${CARD_H}px`,
-              position: 'relative',
-              transformStyle: 'preserve-3d',
+              width: `${CARD_W}px`, height: `${CARD_H}px`,
+              position: 'relative', transformStyle: 'preserve-3d',
               transition: 'transform 0.6s ease',
               transform: cardFlipped ? 'rotateY(180deg)' : 'rotateY(0deg)',
             }}>
-              {/* Card front */}
-              <div className="rounded-2xl absolute inset-0 overflow-hidden"
-                style={{
-                  backfaceVisibility: 'hidden',
-                  WebkitBackfaceVisibility: 'hidden',
-                  background: brand.primaryColor,
-                  border: `2px solid ${brand.secondaryColor}`,
-                }}>
+              {/* Front */}
+              <div className="rounded-2xl absolute inset-0 overflow-hidden" style={{
+                backfaceVisibility: 'hidden', WebkitBackfaceVisibility: 'hidden',
+                background: brand.primaryColor, border: `2px solid ${brand.secondaryColor}`,
+              }}>
                 <div className="absolute inset-0"
                   style={{ background: 'linear-gradient(135deg, rgba(212,175,55,0.2) 0%, transparent 60%)' }} />
                 <div className="absolute top-4 left-4">
@@ -254,15 +216,12 @@ export default function Home({ customer, signOut }) {
                   style={{ color: 'rgba(255,255,255,0.25)', fontSize: '8px' }}>tap to flip</div>
               </div>
 
-              {/* Card back */}
-              <div className="rounded-2xl absolute inset-0 overflow-hidden"
-                style={{
-                  backfaceVisibility: 'hidden',
-                  WebkitBackfaceVisibility: 'hidden',
-                  transform: 'rotateY(180deg)',
-                  background: '#0f2d40',
-                  border: `2px solid ${brand.secondaryColor}`,
-                }}>
+              {/* Back */}
+              <div className="rounded-2xl absolute inset-0 overflow-hidden" style={{
+                backfaceVisibility: 'hidden', WebkitBackfaceVisibility: 'hidden',
+                transform: 'rotateY(180deg)', background: '#0f2d40',
+                border: `2px solid ${brand.secondaryColor}`,
+              }}>
                 <div className="absolute w-full" style={{ height: '40px', top: '28px', background: '#111' }} />
                 <div className="absolute flex items-center" style={{ top: '86px', left: '16px', right: '16px' }}>
                   <div className="flex-1 rounded-l"
@@ -298,11 +257,10 @@ export default function Home({ customer, signOut }) {
             <span>{formatUGX(target)}</span>
           </div>
           <div className="w-full h-2 rounded-full" style={{ background: 'rgba(255,255,255,0.2)' }}>
-            <div className="h-2 rounded-full transition-all"
-              style={{
-                width: `${progress}%`,
-                background: progress >= 75 ? '#22C55E' : progress >= 50 ? brand.secondaryColor : '#F59E0B',
-              }} />
+            <div className="h-2 rounded-full transition-all" style={{
+              width: `${progress}%`,
+              background: progress >= 75 ? '#22C55E' : progress >= 50 ? brand.secondaryColor : '#F59E0B',
+            }} />
           </div>
         </div>
         <div className="flex justify-between text-xs" style={{ color: 'rgba(255,255,255,0.6)' }}>
@@ -316,26 +274,7 @@ export default function Home({ customer, signOut }) {
         style={{ background: '#f0f2f5', marginTop: '-16px' }}>
 
         {/* Rewards strip */}
-        {rewards.length > 0 ? (
-          <div className="rounded-2xl px-4 py-3 flex items-center justify-between"
-            style={{ background: '#fff', border: `1.5px solid ${brand.secondaryColor}` }}>
-            <div>
-              <div className="text-xs font-semibold" style={{ color: brand.primaryColor }}>
-                🎉 Reward unlocked
-              </div>
-              <div className="text-xs mt-0.5" style={{ color: 'rgba(0,0,0,0.5)' }}>
-                {earnedReward?.reward_configs?.reward_description || `${formatUGX(totalDiscount)} in discounts earned`}
-              </div>
-            </div>
-            <button
-              onClick={() => navigate('/portal/rewards')}
-              className="text-xs font-semibold px-3 py-1.5 rounded-lg"
-              style={{ background: brand.secondaryColor, color: brand.primaryColor }}
-            >
-              View
-            </button>
-          </div>
-        ) : rewardsStrip ? (
+        {rewardsStrip && (
           <div className="rounded-2xl px-4 py-3"
             style={{ background: '#fff', border: '1.5px solid rgba(27,79,114,0.1)' }}>
             <div className="text-xs font-semibold mb-0.5" style={{ color: brand.primaryColor }}>
@@ -345,26 +284,22 @@ export default function Home({ customer, signOut }) {
               {rewardsStrip.body}
             </div>
           </div>
-        ) : null}
+        )}
 
         {/* Action buttons + Recent activity */}
         <div className="flex gap-3">
           <div className="flex flex-col gap-3" style={{ width: '140px', flexShrink: 0 }}>
-            <button
-              onClick={() => navigate('/portal/add-money')}
+            <button onClick={() => navigate('/portal/add-money')}
               className="flex flex-col items-center gap-2 py-4 rounded-2xl"
-              style={{ background: '#fff', border: '1.5px solid rgba(27,79,114,0.1)' }}
-            >
+              style={{ background: '#fff', border: '1.5px solid rgba(27,79,114,0.1)' }}>
               <div className="w-10 h-10 rounded-full flex items-center justify-center text-lg font-light"
                 style={{ background: 'rgba(27,79,114,0.1)', color: brand.primaryColor }}>+</div>
               <span className="text-xs font-semibold" style={{ color: brand.primaryColor }}>Add money</span>
             </button>
 
-            <button
-              onClick={() => navigate('/portal/pay')}
+            <button onClick={() => navigate('/portal/pay')}
               className="flex flex-col items-center gap-2 py-4 rounded-2xl"
-              style={{ background: brand.primaryColor }}
-            >
+              style={{ background: brand.primaryColor }}>
               <div className="w-10 h-10 rounded-full flex items-center justify-center"
                 style={{ background: 'rgba(255,255,255,0.15)' }}>
                 <span className="text-white text-lg">↑</span>
@@ -372,11 +307,9 @@ export default function Home({ customer, signOut }) {
               <span className="text-xs font-semibold text-white">Pay fees</span>
             </button>
 
-            <button
-              onClick={() => navigate('/portal/withdraw')}
+            <button onClick={() => navigate('/portal/withdraw')}
               className="flex flex-col items-center gap-2 py-4 rounded-2xl"
-              style={{ background: '#fff', border: '1.5px solid rgba(27,79,114,0.1)' }}
-            >
+              style={{ background: '#fff', border: '1.5px solid rgba(27,79,114,0.1)' }}>
               <div className="w-10 h-10 rounded-full flex items-center justify-center"
                 style={{ background: 'rgba(27,79,114,0.1)', color: brand.primaryColor }}>↓</div>
               <span className="text-xs font-semibold" style={{ color: brand.primaryColor }}>Withdraw</span>
@@ -385,18 +318,12 @@ export default function Home({ customer, signOut }) {
 
           <div className="flex-1 flex flex-col">
             <div className="flex items-center justify-between mb-2">
-              <div className="text-sm font-semibold" style={{ color: brand.primaryColor }}>
-                Recent activity
-              </div>
-              <button
-                onClick={() => navigate('/portal/transactions')}
-                className="text-xs font-semibold"
-                style={{ color: brand.secondaryColor }}
-              >
+              <div className="text-sm font-semibold" style={{ color: brand.primaryColor }}>Recent activity</div>
+              <button onClick={() => navigate('/portal/transactions')}
+                className="text-xs font-semibold" style={{ color: brand.secondaryColor }}>
                 See all
               </button>
             </div>
-
             <div className="rounded-2xl overflow-hidden flex-1" style={{ background: '#fff' }}>
               {transactions.length === 0 ? (
                 <div className="px-4 py-6 text-center h-full flex flex-col items-center justify-center">
@@ -415,7 +342,7 @@ export default function Home({ customer, signOut }) {
                       </div>
                       <div>
                         <div className="text-xs font-semibold capitalize" style={{ color: '#333' }}>
-                          {txn.type === 'reward_credit' ? 'Reward' : txn.type}
+                          {txn.type === 'payment' ? 'Fee payment' : txn.type}
                         </div>
                         <div style={{ color: 'rgba(0,0,0,0.4)', fontSize: '10px' }}>
                           {formatDate(txn.created_at)}
@@ -423,8 +350,7 @@ export default function Home({ customer, signOut }) {
                       </div>
                     </div>
                     <div className="text-xs font-bold flex-shrink-0" style={{ color: txColor(txn.type) }}>
-                      {txn.type === 'deposit' || txn.type === 'reward_credit' ? '+' : '-'}
-                      {formatUGX(txn.amount)}
+                      {txn.type === 'deposit' ? '+' : '-'}{formatUGX(txn.amount)}
                     </div>
                   </div>
                 ))
@@ -434,11 +360,9 @@ export default function Home({ customer, signOut }) {
         </div>
 
         {/* Card teaser */}
-        <button
-          onClick={() => navigate('/portal/card')}
+        <button onClick={() => navigate('/portal/card')}
           className="w-full rounded-2xl px-4 py-3 flex items-center justify-between"
-          style={{ background: '#fff', border: '1.5px solid rgba(27,79,114,0.1)' }}
-        >
+          style={{ background: '#fff', border: '1.5px solid rgba(27,79,114,0.1)' }}>
           <div className="flex items-center gap-3">
             <div className="flex">
               <div className="w-5 h-5 rounded-full" style={{ background: '#EB001B' }} />
@@ -467,11 +391,10 @@ export default function Home({ customer, signOut }) {
               style={{ color: item.path === '/portal/home' ? brand.primaryColor : 'rgba(0,0,0,0.3)' }}>
               {item.icon}
             </span>
-            <span className="text-xs"
-              style={{
-                color: item.path === '/portal/home' ? brand.primaryColor : 'rgba(0,0,0,0.3)',
-                fontWeight: item.path === '/portal/home' ? 600 : 400
-              }}>
+            <span className="text-xs" style={{
+              color: item.path === '/portal/home' ? brand.primaryColor : 'rgba(0,0,0,0.3)',
+              fontWeight: item.path === '/portal/home' ? 600 : 400
+            }}>
               {item.label}
             </span>
           </button>
