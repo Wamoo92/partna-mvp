@@ -59,14 +59,13 @@ export default function Profile({ customer, signOut }) {
 
     setChangingPin(true)
     try {
-      const phone = customer.phone
-      const oldEmail = `${phone}@partna.app`
-      const oldPassword = `pin-${currentPin}-${phone}`
-      const newPassword = `pin-${newPin}-${phone}`
+      const cleanPhone = customer.phone.replace(/\s+/g, '')
+      const oldPassword = `pin-${currentPin}-${cleanPhone}`
+      const newPassword = `pin-${newPin}-${cleanPhone}`
 
-      // Verify current PIN by trying to sign in
+      // Verify current PIN by signing in with real email
       const { error: signInError } = await supabase.auth.signInWithPassword({
-        email: oldEmail,
+        email: customer.email,
         password: oldPassword,
       })
 
@@ -102,10 +101,16 @@ export default function Profile({ customer, signOut }) {
   }
 
   function maskNin(nin) {
-    if (!nin) return '••••••••••••'
+    if (!nin) return 'Not provided'
     const visible = nin.slice(-4)
     const masked = '•'.repeat(Math.max(0, nin.length - 4))
     return masked + visible
+  }
+
+  function maskNumber(number) {
+    if (!number) return '—'
+    const clean = number.replace(/\s+/g, '')
+    return clean.slice(0, 4) + ' •••• ' + clean.slice(-3)
   }
 
   function formatUGX(n) {
@@ -115,6 +120,8 @@ export default function Profile({ customer, signOut }) {
   const balance = wallet ? Number(wallet.balance) : 0
   const target = campaign ? Number(campaign.target_amount) : 1500000
   const pct = Math.min((balance / target) * 100, 100)
+  const kycVerified = customer?.kyc_status === 'verified'
+  const hasPaymentSource = !!(customer?.payment_network && customer?.payment_number)
 
   if (loading) return (
     <div className="min-h-screen flex items-center justify-center" style={{ background: '#f0f2f5' }}>
@@ -137,10 +144,8 @@ export default function Profile({ customer, signOut }) {
 
       {/* Avatar section */}
       <div className="flex flex-col items-center pt-6 pb-10 px-5" style={{ background: brand.primaryColor }}>
-        <div
-          className="w-16 h-16 rounded-full flex items-center justify-center text-xl font-bold mb-3"
-          style={{ background: brand.secondaryColor, color: brand.primaryColor }}
-        >
+        <div className="w-16 h-16 rounded-full flex items-center justify-center text-xl font-bold mb-3"
+          style={{ background: brand.secondaryColor, color: brand.primaryColor }}>
           {customer?.first_name?.[0]}{customer?.last_name?.[0]}
         </div>
         <div className="text-white text-base font-bold">
@@ -149,10 +154,14 @@ export default function Profile({ customer, signOut }) {
         <div className="text-xs mt-1" style={{ color: 'rgba(255,255,255,0.6)' }}>
           {customer?.phone}
         </div>
+        <div className="text-xs mt-0.5" style={{ color: 'rgba(255,255,255,0.5)' }}>
+          {customer?.email}
+        </div>
       </div>
 
       {/* Main content */}
-      <div className="rounded-t-3xl flex-1 flex flex-col gap-4 px-5 py-5" style={{ background: '#f0f2f5', marginTop: '-16px' }}>
+      <div className="rounded-t-3xl flex-1 flex flex-col gap-4 px-5 py-5"
+        style={{ background: '#f0f2f5', marginTop: '-16px' }}>
 
         {/* Account details */}
         <div className="rounded-2xl overflow-hidden" style={{ background: '#fff' }}>
@@ -161,27 +170,87 @@ export default function Profile({ customer, signOut }) {
               Account Details
             </div>
           </div>
+
+          {/* Static rows */}
           {[
             { label: 'First name', value: customer?.first_name },
             { label: 'Last name', value: customer?.last_name },
             customer?.other_names ? { label: 'Other names', value: customer.other_names } : null,
             { label: 'Phone', value: customer?.phone },
+            { label: 'Email', value: customer?.email },
             { label: 'National ID (NIN)', value: maskNin(customer?.nin) },
-            {
-              label: 'KYC status', value: null, badge: (
+          ].filter(Boolean).map((item, i) => (
+            <div key={i} className="flex items-center justify-between px-4 py-3"
+              style={{ borderBottom: '1px solid rgba(0,0,0,0.05)' }}>
+              <div className="text-xs" style={{ color: 'rgba(0,0,0,0.4)' }}>{item.label}</div>
+              <div className="text-xs font-semibold" style={{ color: brand.primaryColor }}>{item.value}</div>
+            </div>
+          ))}
+
+          {/* KYC status — clickable if not verified */}
+          <button
+            onClick={() => !kycVerified && navigate('/portal/kyc')}
+            className="w-full flex items-center justify-between px-4 py-3"
+            style={{ cursor: kycVerified ? 'default' : 'pointer' }}>
+            <div className="text-xs" style={{ color: 'rgba(0,0,0,0.4)' }}>KYC status</div>
+            <div className="flex items-center gap-1">
+              {kycVerified ? (
                 <span className="text-xs font-semibold px-2 py-0.5 rounded-full"
                   style={{ background: 'rgba(22,163,74,0.1)', color: '#16A34A' }}>
                   ✓ Verified
                 </span>
-              )
-            },
-          ].filter(Boolean).map((item, i, arr) => (
-            <div key={i} className="flex items-center justify-between px-4 py-3"
-              style={{ borderBottom: i < arr.length - 1 ? '1px solid rgba(0,0,0,0.05)' : 'none' }}>
-              <div className="text-xs" style={{ color: 'rgba(0,0,0,0.4)' }}>{item.label}</div>
-              {item.badge || <div className="text-xs font-semibold" style={{ color: brand.primaryColor }}>{item.value}</div>}
+              ) : (
+                <span className="text-xs font-semibold px-2 py-0.5 rounded-full"
+                  style={{ background: 'rgba(217,119,6,0.1)', color: '#D97706' }}>
+                  ⚠ Pending — tap to verify
+                </span>
+              )}
             </div>
-          ))}
+          </button>
+        </div>
+
+        {/* Payment source */}
+        <div className="rounded-2xl overflow-hidden" style={{ background: '#fff' }}>
+          <div className="px-4 py-3 border-b" style={{ borderColor: 'rgba(0,0,0,0.06)' }}>
+            <div className="text-xs font-bold uppercase tracking-wide" style={{ color: 'rgba(0,0,0,0.35)' }}>
+              Payment Source
+            </div>
+          </div>
+
+          {hasPaymentSource ? (
+            <div className="flex items-center justify-between px-4 py-3">
+              <div className="flex items-center gap-3">
+                <img
+                  src={customer.payment_network === 'mtn' ? '/mtn-logo.svg' : '/airtel-logo.svg'}
+                  alt={customer.payment_network}
+                  className="w-8 h-8 object-contain rounded-lg"
+                />
+                <div>
+                  <div className="text-xs font-semibold" style={{ color: brand.primaryColor }}>
+                    {customer.payment_network === 'mtn' ? 'MTN MoMo' : 'Airtel Money'}
+                  </div>
+                  <div className="text-xs" style={{ color: 'rgba(0,0,0,0.4)' }}>
+                    {maskNumber(customer.payment_number)}
+                  </div>
+                </div>
+              </div>
+              <button
+                onClick={() => navigate('/portal/payment-source')}
+                className="text-xs font-semibold px-3 py-1.5 rounded-lg"
+                style={{ background: 'rgba(27,79,114,0.08)', color: brand.primaryColor }}>
+                Edit
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={() => navigate('/portal/payment-source')}
+              className="w-full flex items-center justify-between px-4 py-3">
+              <div className="text-xs font-semibold" style={{ color: '#D97706' }}>
+                ⚠ No payment source added
+              </div>
+              <span style={{ color: 'rgba(0,0,0,0.25)' }}>→</span>
+            </button>
+          )}
         </div>
 
         {/* Savings summary */}
@@ -228,7 +297,8 @@ export default function Profile({ customer, signOut }) {
             <span style={{ color: 'rgba(0,0,0,0.25)' }}>→</span>
           </button>
 
-          <button onClick={() => { setShowPinForm(!showPinForm); setPinError(''); setPinSuccess(false) }}
+          <button
+            onClick={() => { setShowPinForm(!showPinForm); setPinError(''); setPinSuccess(false) }}
             className="w-full flex items-center justify-between px-4 py-3"
             style={{ borderBottom: showPinForm ? '1px solid rgba(0,0,0,0.05)' : 'none' }}>
             <div className="text-xs font-semibold" style={{ color: brand.primaryColor }}>Change PIN</div>
@@ -286,8 +356,7 @@ export default function Profile({ customer, signOut }) {
         <button
           onClick={() => { signOut(); navigate('/portal') }}
           className="w-full py-3 rounded-2xl text-sm font-bold"
-          style={{ background: '#FEE2E2', color: '#DC2626' }}
-        >
+          style={{ background: '#FEE2E2', color: '#DC2626' }}>
           Log out
         </button>
 
