@@ -12,6 +12,7 @@ import Profile from './pages/portal/Profile'
 import AddMoney from './pages/portal/AddMoney'
 import Pay from './pages/portal/Pay'
 import Withdraw from './pages/portal/Withdraw'
+import KYC from './pages/portal/KYC'
 
 function PortalGuard({ customer, loading, children }) {
   if (loading) return (
@@ -34,6 +35,12 @@ function App() {
         <Route path="/portal" element={<Landing />} />
         <Route path="/portal/register" element={<Register />} />
         <Route path="/portal/login" element={<Login />} />
+
+        <Route path="/portal/kyc" element={
+          <PortalGuard customer={customer} loading={loading}>
+            <KYC customer={customer} />
+          </PortalGuard>
+        } />
         <Route path="/portal/home" element={
           <PortalGuard customer={customer} loading={loading}>
             <Home customer={customer} signOut={signOut} />

@@ -48,6 +48,8 @@ export default function Home({ customer, signOut }) {
     ? Math.max(Math.ceil((new Date(campaign.target_date).getTime() - Date.now()) / (1000 * 60 * 60 * 24)), 0)
     : 0
 
+  const kycPending = customer?.kyc_status === 'pending'
+
   function formatUGX(amount) {
     return 'UGX ' + Number(amount).toLocaleString('en-UG', { maximumFractionDigits: 0 })
   }
@@ -82,7 +84,6 @@ export default function Home({ customer, signOut }) {
     return type === 'deposit' ? '#16A34A' : '#DC2626'
   }
 
-  // Rewards strip — dynamically updates based on balance milestones
   function getRewardsStrip() {
     if (!wallet || !campaign) return null
     const pct = (balance / target) * 100
@@ -138,19 +139,34 @@ export default function Home({ customer, signOut }) {
           <button
             onClick={() => { signOut(); navigate('/portal') }}
             className="text-xs font-semibold px-3 py-1.5 rounded-lg"
-            style={{ background: 'rgba(255,255,255,0.15)', color: '#fff' }}
-          >
+            style={{ background: 'rgba(255,255,255,0.15)', color: '#fff' }}>
             Log out
           </button>
           <button
             onClick={() => navigate('/portal/profile')}
             className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold"
-            style={{ background: brand.secondaryColor, color: brand.primaryColor }}
-          >
+            style={{ background: brand.secondaryColor, color: brand.primaryColor }}>
             {customer?.first_name?.[0]}{customer?.last_name?.[0]}
           </button>
         </div>
       </header>
+
+      {/* KYC banner */}
+      {kycPending && (
+        <button
+          onClick={() => navigate('/portal/kyc')}
+          className="w-full flex items-center gap-3 px-4 py-3"
+          style={{ background: '#D97706' }}>
+          <span className="text-lg flex-shrink-0">🔒</span>
+          <div className="text-left flex-1">
+            <div className="text-xs font-bold text-white">Platform features are locked</div>
+            <div className="text-xs" style={{ color: 'rgba(255,255,255,0.85)' }}>
+              Tap to complete your identity verification
+            </div>
+          </div>
+          <span className="text-white text-sm flex-shrink-0">→</span>
+        </button>
+      )}
 
       {/* Hero */}
       <div className="px-5 pt-5 pb-10" style={{ background: brand.primaryColor }}>
@@ -289,11 +305,16 @@ export default function Home({ customer, signOut }) {
         {/* Action buttons + Recent activity */}
         <div className="flex gap-3">
           <div className="flex flex-col gap-3" style={{ width: '140px', flexShrink: 0 }}>
-            <button onClick={() => navigate('/portal/add-money')}
+
+            {/* Add money — locked if KYC pending */}
+            <button
+              onClick={() => kycPending ? navigate('/portal/kyc') : navigate('/portal/add-money')}
               className="flex flex-col items-center gap-2 py-4 rounded-2xl"
               style={{ background: '#fff', border: '1.5px solid rgba(27,79,114,0.1)' }}>
               <div className="w-10 h-10 rounded-full flex items-center justify-center text-lg font-light"
-                style={{ background: 'rgba(27,79,114,0.1)', color: brand.primaryColor }}>+</div>
+                style={{ background: 'rgba(27,79,114,0.1)', color: brand.primaryColor }}>
+                {kycPending ? '🔒' : '+'}
+              </div>
               <span className="text-xs font-semibold" style={{ color: brand.primaryColor }}>Add money</span>
             </button>
 
@@ -307,11 +328,15 @@ export default function Home({ customer, signOut }) {
               <span className="text-xs font-semibold text-white">Pay fees</span>
             </button>
 
-            <button onClick={() => navigate('/portal/withdraw')}
+            {/* Withdraw — locked if KYC pending */}
+            <button
+              onClick={() => kycPending ? navigate('/portal/kyc') : navigate('/portal/withdraw')}
               className="flex flex-col items-center gap-2 py-4 rounded-2xl"
               style={{ background: '#fff', border: '1.5px solid rgba(27,79,114,0.1)' }}>
               <div className="w-10 h-10 rounded-full flex items-center justify-center"
-                style={{ background: 'rgba(27,79,114,0.1)', color: brand.primaryColor }}>↓</div>
+                style={{ background: 'rgba(27,79,114,0.1)', color: brand.primaryColor }}>
+                {kycPending ? '🔒' : '↓'}
+              </div>
               <span className="text-xs font-semibold" style={{ color: brand.primaryColor }}>Withdraw</span>
             </button>
           </div>

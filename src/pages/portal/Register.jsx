@@ -6,21 +6,33 @@ import { brand } from '../../lib/brandConfig'
 const BUSINESS_ID = 'a1b2c3d4-0000-0000-0000-000000000001'
 const CAMPAIGN_ID = 'b1b2c3d4-0000-0000-0000-000000000001'
 
+function generateDrawCode() {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+  let code = 'SC-'
+  for (let i = 0; i < 6; i++) {
+    code += chars[Math.floor(Math.random() * chars.length)]
+  }
+  return code
+}
+
 export default function Register() {
   const navigate = useNavigate()
   const [step, setStep] = useState(1)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
+  // Step 1 fields
   const [firstName, setFirstName] = useState('')
   const [lastName, setLastName] = useState('')
   const [otherNames, setOtherNames] = useState('')
   const [phone, setPhone] = useState('')
-  const [nin, setNin] = useState('')
+  const [email, setEmail] = useState('')
 
+  // Step 2 fields
   const [otp, setOtp] = useState('')
   const [otpId, setOtpId] = useState(null)
 
+  // Step 3 fields
   const [pin, setPin] = useState('')
   const [confirmPin, setConfirmPin] = useState('')
 
@@ -28,7 +40,7 @@ export default function Register() {
 
   async function handleStep1() {
     setError('')
-    if (!firstName || !lastName || !phone || !nin) {
+    if (!firstName || !lastName || !phone || !email) {
       setError('Please fill in all required fields.')
       return
     }
@@ -36,22 +48,46 @@ export default function Register() {
       setError('Please enter a valid phone number.')
       return
     }
+    if (!email.includes('@') || !email.includes('.')) {
+      setError('Please enter a valid email address.')
+      return
+    }
 
     setLoading(true)
     try {
       const cleanPhone = phone.replace(/\s+/g, '')
+      const cleanEmail = email.toLowerCase().trim()
 
-      const { data: existing } = await supabase
+      // Check phone not already registered
+      const { data: existingPhone } = await supabase
         .from('customers')
         .select('id')
         .eq('phone', cleanPhone)
         .maybeSingle()
 
-      if (existing) {
+      if (existingPhone) {
         setError('This phone number is already registered. Please log in.')
+        setLoading(false)
         return
       }
 
+      // Check email not already registered
+      const { data: existingEmail } = await supabase
+        .from('customers')
+        .select('id')
+        .eq('email', cleanEmail)
+        .maybeSingle()
+
+      if (existingEmail) {
+        setError('This email address is already registered. Please log in.')
+        setLoading(false)
+        return
+      }
+
+      // Generate unique draw code
+      const drawCode = generateDrawCode()
+
+      // Create customer record — no NIN yet, that comes in KYC
       const { data: customer, error: customerError } = await supabase
         .from('customers')
         .insert({
@@ -62,7 +98,8 @@ export default function Register() {
           last_name: lastName,
           other_names: otherNames || null,
           phone: cleanPhone,
-          nin: nin,
+          email: cleanEmail,
+          draw_code: drawCode,
           kyc_status: 'pending',
           registration_status: 'phone_unverified',
         })
@@ -72,11 +109,13 @@ export default function Register() {
       if (customerError) {
         console.error('Customer insert error:', customerError)
         setError('Could not create account. Please try again.')
+        setLoading(false)
         return
       }
 
       setCustomerId(customer.id)
 
+      // Generate OTP
       const otpCode = Math.floor(10000 + Math.random() * 90000).toString()
       const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString()
 
@@ -94,10 +133,14 @@ export default function Register() {
       if (otpError) {
         console.error('OTP insert error:', otpError)
         setError('Could not send OTP. Please try again.')
+        setLoading(false)
         return
       }
 
       setOtpId(otpRecord.id)
+
+      // Demo: show OTP in alert
+      // Production: send via Twilio SMS + Twilio SendGrid email
       alert(`Demo mode — your OTP is: ${otpCode}`)
       setStep(2)
 
@@ -126,16 +169,19 @@ export default function Register() {
 
       if (fetchError || !otpRecord) {
         setError('OTP not found. Please go back and try again.')
+        setLoading(false)
         return
       }
 
       if (new Date(otpRecord.expires_at) < new Date()) {
         setError('OTP has expired. Please go back and request a new one.')
+        setLoading(false)
         return
       }
 
       if (otpRecord.otp_code !== otp) {
         setError('Incorrect OTP. Please check and try again.')
+        setLoading(false)
         return
       }
 
@@ -146,10 +192,7 @@ export default function Register() {
 
       await supabase
         .from('customers')
-        .update({
-          kyc_status: 'verified',
-          registration_status: 'pin_pending',
-        })
+        .update({ registration_status: 'pin_pending' })
         .eq('id', customerId)
 
       setStep(3)
@@ -175,35 +218,42 @@ export default function Register() {
     setLoading(true)
     try {
       const cleanPhone = phone.replace(/\s+/g, '')
-      const email = `${cleanPhone}@partna.app`
+      const cleanEmail = email.toLowerCase().trim()
       const password = `pin-${pin}-${cleanPhone}`
 
+      // Create Supabase auth user with real email
       const { data: authData, error: authError } = await supabase.auth.signUp({
-  email,
-  password,
-})
+        email: cleanEmail,
+        password,
+      })
 
-if (authError) {
-  console.error('Auth signup error:', authError)
-  setError('Could not create login. Please try again.')
-  return
-}
+      if (authError) {
+        console.error('Auth signup error:', authError)
+        setError('Could not create login. Please try again.')
+        setLoading(false)
+        return
+      }
 
-// Sign in immediately after signup since email confirmation is disabled
-const { data: signInData } = await supabase.auth.signInWithPassword({ email, password })
+      // Link auth user to customer and mark complete
+      await supabase
+        .from('customers')
+        .update({
+          auth_user_id: authData.user.id,
+          registration_status: 'complete',
+        })
+        .eq('id', customerId)
 
-await supabase
-  .from('customers')
-  .update({
-    auth_user_id: authData.user.id,
-    registration_status: 'complete',
-  })
-  .eq('id', customerId)
+      // Sign in immediately
+      await supabase.auth.signInWithPassword({
+        email: cleanEmail,
+        password,
+      })
 
-// Wait for auth state to propagate then navigate
-setTimeout(() => {
-  navigate('/portal/home', { replace: true })
-}, 500)
+      // Navigate to KYC flow after short delay
+      setTimeout(() => {
+        navigate('/portal/kyc', { replace: true })
+      }, 500)
+
     } catch (err) {
       console.error('Step 3 error:', err)
       setError('Something went wrong. Please try again.')
@@ -215,10 +265,7 @@ setTimeout(() => {
   return (
     <div className="min-h-screen flex flex-col" style={{ background: '#f0f2f5' }}>
 
-      <header
-        className="flex items-center px-4 py-3 gap-3"
-        style={{ background: brand.primaryColor }}
-      >
+      <header className="flex items-center px-4 py-3 gap-3" style={{ background: brand.primaryColor }}>
         <button
           onClick={() => step === 1 ? navigate('/portal') : setStep(step - 1)}
           className="text-white text-xl leading-none"
@@ -226,27 +273,18 @@ setTimeout(() => {
           ←
         </button>
         <div className="flex items-center gap-2">
-          <img
-            src={brand.logoUrl}
-            alt={brand.businessName}
-            className="w-8 h-8 object-contain"
-            style={{ mixBlendMode: 'screen' }}
-          />
+          <img src={brand.logoUrl} alt={brand.businessName}
+            className="w-8 h-8 object-contain" style={{ mixBlendMode: 'screen' }} />
           <div className="text-white text-xs font-semibold tracking-wide">
             {brand.businessName}
           </div>
         </div>
       </header>
 
-      <div
-        className="px-5 pt-5 pb-8 text-center"
-        style={{ background: brand.primaryColor }}
-      >
+      <div className="px-5 pt-5 pb-8 text-center" style={{ background: brand.primaryColor }}>
         <div className="flex items-center justify-center gap-2 mb-3">
           {[1, 2, 3].map((s) => (
-            <div
-              key={s}
-              className="rounded-full transition-all"
+            <div key={s} className="rounded-full transition-all"
               style={{
                 width: s === step ? '24px' : '8px',
                 height: '8px',
@@ -255,8 +293,7 @@ setTimeout(() => {
                   : s < step
                   ? 'rgba(212,175,55,0.5)'
                   : 'rgba(255,255,255,0.25)',
-              }}
-            />
+              }} />
           ))}
         </div>
         <h1 className="text-white text-lg font-bold mb-1">
@@ -271,11 +308,10 @@ setTimeout(() => {
         </p>
       </div>
 
-      <div
-        className="rounded-t-3xl flex-1 flex flex-col px-5 py-6 gap-4"
-        style={{ background: '#f0f2f5', marginTop: '-16px' }}
-      >
+      <div className="rounded-t-3xl flex-1 flex flex-col px-5 py-6 gap-4"
+        style={{ background: '#f0f2f5', marginTop: '-16px' }}>
 
+        {/* ── STEP 1 ── */}
         {step === 1 && (
           <>
             <div className="flex gap-3">
@@ -283,27 +319,19 @@ setTimeout(() => {
                 <label className="text-xs font-semibold" style={{ color: brand.primaryColor }}>
                   First name *
                 </label>
-                <input
-                  type="text"
-                  placeholder="Grace"
-                  value={firstName}
-                  onChange={(e) => setFirstName(e.target.value)}
+                <input type="text" placeholder="Grace" value={firstName}
+                  onChange={e => setFirstName(e.target.value)}
                   className="w-full px-4 py-3 rounded-xl text-sm outline-none"
-                  style={{ background: '#fff', border: '1.5px solid rgba(27,79,114,0.15)', color: '#333' }}
-                />
+                  style={{ background: '#fff', border: '1.5px solid rgba(27,79,114,0.15)', color: '#333' }} />
               </div>
               <div className="flex flex-col gap-1 flex-1">
                 <label className="text-xs font-semibold" style={{ color: brand.primaryColor }}>
                   Last name *
                 </label>
-                <input
-                  type="text"
-                  placeholder="Nakamya"
-                  value={lastName}
-                  onChange={(e) => setLastName(e.target.value)}
+                <input type="text" placeholder="Nakamya" value={lastName}
+                  onChange={e => setLastName(e.target.value)}
                   className="w-full px-4 py-3 rounded-xl text-sm outline-none"
-                  style={{ background: '#fff', border: '1.5px solid rgba(27,79,114,0.15)', color: '#333' }}
-                />
+                  style={{ background: '#fff', border: '1.5px solid rgba(27,79,114,0.15)', color: '#333' }} />
               </div>
             </div>
 
@@ -311,42 +339,33 @@ setTimeout(() => {
               <label className="text-xs font-semibold" style={{ color: brand.primaryColor }}>
                 Other names <span style={{ color: 'rgba(0,0,0,0.35)' }}>(optional)</span>
               </label>
-              <input
-                type="text"
-                placeholder="Middle name"
-                value={otherNames}
-                onChange={(e) => setOtherNames(e.target.value)}
+              <input type="text" placeholder="Middle name" value={otherNames}
+                onChange={e => setOtherNames(e.target.value)}
                 className="w-full px-4 py-3 rounded-xl text-sm outline-none"
-                style={{ background: '#fff', border: '1.5px solid rgba(27,79,114,0.15)', color: '#333' }}
-              />
+                style={{ background: '#fff', border: '1.5px solid rgba(27,79,114,0.15)', color: '#333' }} />
             </div>
 
             <div className="flex flex-col gap-1">
               <label className="text-xs font-semibold" style={{ color: brand.primaryColor }}>
                 Phone number *
               </label>
-              <input
-                type="tel"
-                placeholder="+256 7XX XXX XXX"
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
+              <input type="tel" placeholder="+256 7XX XXX XXX" value={phone}
+                onChange={e => setPhone(e.target.value)}
                 className="w-full px-4 py-3 rounded-xl text-sm outline-none"
-                style={{ background: '#fff', border: '1.5px solid rgba(27,79,114,0.15)', color: '#333' }}
-              />
+                style={{ background: '#fff', border: '1.5px solid rgba(27,79,114,0.15)', color: '#333' }} />
             </div>
 
             <div className="flex flex-col gap-1">
               <label className="text-xs font-semibold" style={{ color: brand.primaryColor }}>
-                National ID number (NIN) *
+                Email address *
               </label>
-              <input
-                type="text"
-                placeholder="CM9001XXXXXXX"
-                value={nin}
-                onChange={(e) => setNin(e.target.value.toUpperCase())}
+              <input type="email" placeholder="grace@email.com" value={email}
+                onChange={e => setEmail(e.target.value)}
                 className="w-full px-4 py-3 rounded-xl text-sm outline-none"
-                style={{ background: '#fff', border: '1.5px solid rgba(27,79,114,0.15)', color: '#333' }}
-              />
+                style={{ background: '#fff', border: '1.5px solid rgba(27,79,114,0.15)', color: '#333' }} />
+              <div className="text-xs" style={{ color: 'rgba(0,0,0,0.35)' }}>
+                Used for account recovery if you forget your PIN
+              </div>
             </div>
 
             {error && (
@@ -355,16 +374,12 @@ setTimeout(() => {
               </div>
             )}
 
-            <button
-              onClick={handleStep1}
-              disabled={loading}
+            <button onClick={handleStep1} disabled={loading}
               className="w-full py-3 rounded-xl text-sm font-bold mt-1"
               style={{
                 background: loading ? 'rgba(27,79,114,0.4)' : brand.primaryColor,
-                color: '#fff',
-                border: 'none',
-              }}
-            >
+                color: '#fff', border: 'none',
+              }}>
               {loading ? 'Please wait...' : 'Continue'}
             </button>
 
@@ -372,40 +387,32 @@ setTimeout(() => {
               <span className="text-xs" style={{ color: 'rgba(0,0,0,0.4)' }}>
                 Already have an account?{' '}
               </span>
-              <button
-                onClick={() => navigate('/portal/login')}
-                className="text-xs font-semibold"
-                style={{ color: brand.primaryColor }}
-              >
+              <button onClick={() => navigate('/portal/login')}
+                className="text-xs font-semibold" style={{ color: brand.primaryColor }}>
                 Log in
               </button>
             </div>
           </>
         )}
 
+        {/* ── STEP 2 ── */}
         {step === 2 && (
           <>
-            <div
-              className="px-4 py-3 rounded-xl text-xs"
-              style={{ background: '#EFF6FF', color: '#1E40AF', border: '1px solid #BFDBFE' }}
-            >
-              A 5-digit OTP has been sent to <strong>{phone}</strong>. Enter it below to verify your phone number.
+            <div className="px-4 py-3 rounded-xl text-xs"
+              style={{ background: '#EFF6FF', color: '#1E40AF', border: '1px solid #BFDBFE' }}>
+              A 5-digit OTP has been sent to <strong>{phone}</strong> and <strong>{email}</strong>.
+              Enter it below to verify your phone number.
             </div>
 
             <div className="flex flex-col gap-1">
               <label className="text-xs font-semibold" style={{ color: brand.primaryColor }}>
                 Enter OTP
               </label>
-              <input
-                type="text"
-                inputMode="numeric"
-                maxLength={5}
-                placeholder="_ _ _ _ _"
-                value={otp}
-                onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 5))}
+              <input type="text" inputMode="numeric" maxLength={5}
+                placeholder="_ _ _ _ _" value={otp}
+                onChange={e => setOtp(e.target.value.replace(/\D/g, '').slice(0, 5))}
                 className="w-full px-4 py-3 rounded-xl text-sm outline-none text-center tracking-widest font-mono"
-                style={{ background: '#fff', border: '1.5px solid rgba(27,79,114,0.15)', color: '#333', fontSize: '20px' }}
-              />
+                style={{ background: '#fff', border: '1.5px solid rgba(27,79,114,0.15)', color: '#333', fontSize: '20px' }} />
             </div>
 
             {error && (
@@ -414,27 +421,22 @@ setTimeout(() => {
               </div>
             )}
 
-            <button
-              onClick={handleStep2}
-              disabled={loading}
+            <button onClick={handleStep2} disabled={loading}
               className="w-full py-3 rounded-xl text-sm font-bold mt-1"
               style={{
                 background: loading ? 'rgba(27,79,114,0.4)' : brand.primaryColor,
-                color: '#fff',
-                border: 'none',
-              }}
-            >
+                color: '#fff', border: 'none',
+              }}>
               {loading ? 'Verifying...' : 'Verify OTP'}
             </button>
           </>
         )}
 
+        {/* ── STEP 3 ── */}
         {step === 3 && (
           <>
-            <div
-              className="px-4 py-3 rounded-xl text-xs"
-              style={{ background: '#F0FDF4', color: '#166534', border: '1px solid #BBF7D0' }}
-            >
+            <div className="px-4 py-3 rounded-xl text-xs"
+              style={{ background: '#F0FDF4', color: '#166534', border: '1px solid #BBF7D0' }}>
               Phone verified. Create a 4-digit PIN you will use to log in.
             </div>
 
@@ -442,32 +444,22 @@ setTimeout(() => {
               <label className="text-xs font-semibold" style={{ color: brand.primaryColor }}>
                 Create PIN
               </label>
-              <input
-                type="password"
-                inputMode="numeric"
-                maxLength={4}
-                placeholder="••••"
-                value={pin}
-                onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
+              <input type="password" inputMode="numeric" maxLength={4}
+                placeholder="••••" value={pin}
+                onChange={e => setPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
                 className="w-full px-4 py-3 rounded-xl text-sm outline-none tracking-widest text-center"
-                style={{ background: '#fff', border: '1.5px solid rgba(27,79,114,0.15)', color: '#333', fontSize: '20px' }}
-              />
+                style={{ background: '#fff', border: '1.5px solid rgba(27,79,114,0.15)', color: '#333', fontSize: '20px' }} />
             </div>
 
             <div className="flex flex-col gap-1">
               <label className="text-xs font-semibold" style={{ color: brand.primaryColor }}>
                 Confirm PIN
               </label>
-              <input
-                type="password"
-                inputMode="numeric"
-                maxLength={4}
-                placeholder="••••"
-                value={confirmPin}
-                onChange={(e) => setConfirmPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
+              <input type="password" inputMode="numeric" maxLength={4}
+                placeholder="••••" value={confirmPin}
+                onChange={e => setConfirmPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
                 className="w-full px-4 py-3 rounded-xl text-sm outline-none tracking-widest text-center"
-                style={{ background: '#fff', border: '1.5px solid rgba(27,79,114,0.15)', color: '#333', fontSize: '20px' }}
-              />
+                style={{ background: '#fff', border: '1.5px solid rgba(27,79,114,0.15)', color: '#333', fontSize: '20px' }} />
             </div>
 
             {error && (
@@ -476,16 +468,12 @@ setTimeout(() => {
               </div>
             )}
 
-            <button
-              onClick={handleStep3}
-              disabled={loading}
+            <button onClick={handleStep3} disabled={loading}
               className="w-full py-3 rounded-xl text-sm font-bold mt-1"
               style={{
                 background: loading ? 'rgba(212,175,55,0.4)' : brand.secondaryColor,
-                color: brand.primaryColor,
-                border: 'none',
-              }}
-            >
+                color: brand.primaryColor, border: 'none',
+              }}>
               {loading ? 'Creating account...' : 'Create account'}
             </button>
           </>
