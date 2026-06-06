@@ -13,6 +13,7 @@ import AddMoney from './pages/portal/AddMoney'
 import Pay from './pages/portal/Pay'
 import Withdraw from './pages/portal/Withdraw'
 import KYC from './pages/portal/KYC'
+import PaymentSource from './pages/portal/PaymentSource'
 
 function PortalGuard({ customer, loading, children }) {
   if (loading) return (
@@ -41,41 +42,55 @@ function App() {
             <KYC customer={customer} />
           </PortalGuard>
         } />
+
+        <Route path="/portal/payment-source" element={
+          <PortalGuard customer={customer} loading={loading}>
+            <PaymentSource customer={customer} />
+          </PortalGuard>
+        } />
+
         <Route path="/portal/home" element={
           <PortalGuard customer={customer} loading={loading}>
             <Home customer={customer} signOut={signOut} />
           </PortalGuard>
         } />
+
         <Route path="/portal/card" element={
           <PortalGuard customer={customer} loading={loading}>
             <CardDetail customer={customer} />
           </PortalGuard>
         } />
+
         <Route path="/portal/rewards" element={
           <PortalGuard customer={customer} loading={loading}>
             <Rewards customer={customer} />
           </PortalGuard>
         } />
+
         <Route path="/portal/transactions" element={
           <PortalGuard customer={customer} loading={loading}>
             <Transactions customer={customer} />
           </PortalGuard>
         } />
+
         <Route path="/portal/profile" element={
           <PortalGuard customer={customer} loading={loading}>
             <Profile customer={customer} signOut={signOut} />
           </PortalGuard>
         } />
+
         <Route path="/portal/add-money" element={
           <PortalGuard customer={customer} loading={loading}>
             <AddMoney customer={customer} />
           </PortalGuard>
         } />
+
         <Route path="/portal/pay" element={
           <PortalGuard customer={customer} loading={loading}>
             <Pay customer={customer} />
           </PortalGuard>
         } />
+
         <Route path="/portal/withdraw" element={
           <PortalGuard customer={customer} loading={loading}>
             <Withdraw customer={customer} />
