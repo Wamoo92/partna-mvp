@@ -15,6 +15,7 @@ import Pay from './pages/portal/Pay'
 import Withdraw from './pages/portal/Withdraw'
 import KYC from './pages/portal/KYC'
 import PaymentSource from './pages/portal/PaymentSource'
+import DashboardApp from './pages/dashboard/DashboardApp'
 
 function PortalGuard({ customer, loading, children }) {
   if (loading) return (
@@ -100,11 +101,7 @@ function App() {
             </PortalGuard>
           } />
 
-          <Route path="/dashboard/*" element={
-            <div className="p-8 text-2xl font-bold text-[#1B4F72]">
-              Business Dashboard — coming soon
-            </div>
-          } />
+          <Route path="/dashboard/*" element={<DashboardApp />} />
         </Routes>
       </BrowserRouter>
     </BrandContext.Provider>
