@@ -1,11 +1,12 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../supabase'
-import { brand } from '../../lib/brandConfig'
+import { useBrand } from '../../lib/BrandContext'
 
 export default function KYC({ customer }) {
+  const brand = useBrand()
   const navigate = useNavigate()
-  const [step, setStep] = useState(0) // 0 = intro, 1 = NIN, 2 = front ID, 3 = back ID, 4 = selfie, 5 = complete
+  const [step, setStep] = useState(0)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
@@ -31,18 +32,13 @@ export default function KYC({ customer }) {
     setError('')
     setLoading(true)
     try {
-      // Update NIN on customer record
       await supabase
         .from('customers')
-        .update({
-          nin: nin.toUpperCase(),
-          kyc_status: 'pending',
-        })
+        .update({ nin: nin.toUpperCase(), kyc_status: 'pending' })
         .eq('id', customer.id)
 
-      // In production: upload images to Supabase Storage
-      // and submit to SmileID API for verification
-      // For demo: record submission and mark as pending
+      // Production: upload images to Supabase Storage + submit to SmileID
+      // Demo: record submission as pending
       await supabase.from('kyc_submissions').insert({
         customer_id: customer.id,
         status: 'pending',
@@ -56,8 +52,8 @@ export default function KYC({ customer }) {
     setLoading(false)
   }
 
-  async function handleSkip() {
-    navigate('/portal/home', { replace: true })
+  function handleSkip() {
+    navigate('/portal/payment-source', { replace: true })
   }
 
   function startAgain() {
@@ -77,12 +73,10 @@ export default function KYC({ customer }) {
   return (
     <div className="min-h-screen flex flex-col" style={{ background: '#f0f2f5' }}>
 
-      {/* Header */}
       <header className="flex items-center px-4 py-3 gap-3" style={{ background: brand.primaryColor }}>
         <button
           onClick={() => step <= 1 ? navigate('/portal/home') : setStep(step - 1)}
-          className="text-white text-xl leading-none"
-        >
+          className="text-white text-xl leading-none">
           ←
         </button>
         <div className="flex items-center gap-2">
@@ -92,7 +86,6 @@ export default function KYC({ customer }) {
         </div>
       </header>
 
-      {/* Step indicator — only show during steps 1-4 */}
       {step >= 1 && step <= 4 && (
         <div className="px-5 pt-5 pb-8 text-center" style={{ background: brand.primaryColor }}>
           <div className="flex items-center justify-center gap-2 mb-3">
@@ -109,9 +102,7 @@ export default function KYC({ customer }) {
                 }} />
             ))}
           </div>
-          <h1 className="text-white text-lg font-bold mb-1">
-            {steps[step - 1]}
-          </h1>
+          <h1 className="text-white text-lg font-bold mb-1">{steps[step - 1]}</h1>
           <p className="text-xs" style={{ color: 'rgba(255,255,255,0.65)' }}>
             Step {step} of 4 — {
               step === 1 ? 'Enter your National ID number' :
@@ -123,7 +114,6 @@ export default function KYC({ customer }) {
         </div>
       )}
 
-      {/* Intro / success hero */}
       {(step === 0 || step === 5) && (
         <div className="px-5 pt-8 pb-10 text-center" style={{ background: brand.primaryColor }}>
           <div className="text-4xl mb-3">{step === 0 ? '🪪' : '✅'}</div>
@@ -138,11 +128,9 @@ export default function KYC({ customer }) {
         </div>
       )}
 
-      {/* Content */}
       <div className="rounded-t-3xl flex-1 flex flex-col px-5 py-6 gap-4"
-        style={{ background: '#f0f2f5', marginTop: step === 0 || step === 5 ? '-16px' : '-16px' }}>
+        style={{ background: '#f0f2f5', marginTop: '-16px' }}>
 
-        {/* ── STEP 0: Intro ── */}
         {step === 0 && (
           <>
             <div className="rounded-2xl p-4" style={{ background: '#fff' }}>
@@ -166,7 +154,7 @@ export default function KYC({ customer }) {
             <div className="rounded-2xl px-4 py-3"
               style={{ background: 'rgba(27,79,114,0.06)', border: '1px solid rgba(27,79,114,0.12)' }}>
               <div className="text-xs leading-relaxed" style={{ color: brand.primaryColor }}>
-                Your information is encrypted and used only for identity verification. 
+                Your information is encrypted and used only for identity verification.
                 Powered by SmileID — a trusted African identity verification provider.
               </div>
             </div>
@@ -179,8 +167,7 @@ export default function KYC({ customer }) {
 
             <button onClick={handleSkip}
               className="w-full py-3 rounded-xl text-sm font-semibold"
-              style={{ background: 'transparent', color: 'rgba(0,0,0,0.4)',
-                border: '1.5px solid rgba(0,0,0,0.12)' }}>
+              style={{ background: 'transparent', color: 'rgba(0,0,0,0.4)', border: '1.5px solid rgba(0,0,0,0.12)' }}>
               Skip for now
             </button>
 
@@ -190,7 +177,6 @@ export default function KYC({ customer }) {
           </>
         )}
 
-        {/* ── STEP 1: NIN ── */}
         {step === 1 && (
           <>
             <div className="flex flex-col gap-1">
@@ -229,7 +215,6 @@ export default function KYC({ customer }) {
           </>
         )}
 
-        {/* ── STEP 2: Front of ID ── */}
         {step === 2 && (
           <>
             <div className="rounded-2xl overflow-hidden" style={{ background: '#fff' }}>
@@ -278,7 +263,6 @@ export default function KYC({ customer }) {
           </>
         )}
 
-        {/* ── STEP 3: Back of ID ── */}
         {step === 3 && (
           <>
             <div className="rounded-2xl overflow-hidden" style={{ background: '#fff' }}>
@@ -327,7 +311,6 @@ export default function KYC({ customer }) {
           </>
         )}
 
-        {/* ── STEP 4: Selfie ── */}
         {step === 4 && (
           <>
             <div className="rounded-2xl overflow-hidden" style={{ background: '#fff' }}>
@@ -380,7 +363,6 @@ export default function KYC({ customer }) {
           </>
         )}
 
-        {/* ── STEP 5: Complete ── */}
         {step === 5 && (
           <>
             <div className="rounded-2xl p-4" style={{ background: '#fff' }}>
@@ -400,16 +382,16 @@ export default function KYC({ customer }) {
               ))}
             </div>
 
-            <button onClick={() => navigate('/portal/home', { replace: true })}
+            <button
+              onClick={() => navigate('/portal/payment-source', { replace: true })}
               className="w-full py-3 rounded-xl text-sm font-bold"
               style={{ background: brand.primaryColor, color: '#fff' }}>
-              Go to home
+              Continue
             </button>
 
             <button onClick={startAgain}
               className="w-full py-3 rounded-xl text-sm font-semibold"
-              style={{ background: 'transparent', color: brand.primaryColor,
-                border: '1.5px solid rgba(27,79,114,0.2)' }}>
+              style={{ background: 'transparent', color: brand.primaryColor, border: '1.5px solid rgba(27,79,114,0.2)' }}>
               Start again
             </button>
           </>
@@ -420,9 +402,7 @@ export default function KYC({ customer }) {
       <footer className="text-center py-4" style={{ background: '#f0f2f5' }}>
         <div className="flex items-center justify-center gap-1.5">
           <img src="/partna-icon.svg" alt="Partna" className="w-5 h-5" />
-          <span className="text-xs" style={{ color: 'rgba(0,0,0,0.3)' }}>
-            Powered by Partna
-          </span>
+          <span className="text-xs" style={{ color: 'rgba(0,0,0,0.3)' }}>Powered by Partna</span>
         </div>
       </footer>
 

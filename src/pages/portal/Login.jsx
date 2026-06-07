@@ -1,9 +1,10 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../supabase'
-import { brand } from '../../lib/brandConfig'
+import { useBrand } from '../../lib/BrandContext'
 
 export default function Login() {
+  const brand = useBrand()
   const navigate = useNavigate()
   const [phone, setPhone] = useState('')
   const [pin, setPin] = useState('')
@@ -25,7 +26,6 @@ export default function Login() {
     try {
       const cleanPhone = phone.replace(/\s+/g, '')
 
-      // Look up customer by phone to get their real email
       const { data: customers } = await supabase
         .from('customers')
         .select('email, registration_status')
@@ -51,7 +51,6 @@ export default function Login() {
         return
       }
 
-      // Authenticate using real email + PIN-based password
       const password = `pin-${pin}-${cleanPhone}`
 
       const { error: signInError } = await supabase.auth.signInWithPassword({
@@ -77,7 +76,6 @@ export default function Login() {
   return (
     <div className="min-h-screen flex flex-col" style={{ background: '#f0f2f5' }}>
 
-      {/* Header */}
       <header className="flex items-center px-4 py-3 gap-3" style={{ background: brand.primaryColor }}>
         <button onClick={() => navigate('/portal')} className="text-white text-xl leading-none">
           ←
@@ -91,7 +89,6 @@ export default function Login() {
         </div>
       </header>
 
-      {/* Top blue area */}
       <div className="px-5 pt-6 pb-10 text-center" style={{ background: brand.primaryColor }}>
         <h1 className="text-white text-xl font-bold mb-1">Welcome back</h1>
         <p className="text-xs" style={{ color: 'rgba(255,255,255,0.65)' }}>
@@ -99,7 +96,6 @@ export default function Login() {
         </p>
       </div>
 
-      {/* Form */}
       <div className="rounded-t-3xl flex-1 flex flex-col px-5 py-6 gap-4"
         style={{ background: '#f0f2f5', marginTop: '-16px' }}>
 
@@ -146,8 +142,7 @@ export default function Login() {
           style={{
             background: loading ? 'rgba(27,79,114,0.4)' : brand.primaryColor,
             color: '#fff', border: 'none',
-          }}
-        >
+          }}>
           {loading ? 'Logging in...' : 'Log in'}
         </button>
 
@@ -163,7 +158,6 @@ export default function Login() {
 
       </div>
 
-      {/* Footer */}
       <footer className="text-center py-4" style={{ background: '#f0f2f5' }}>
         <div className="flex items-center justify-center gap-1.5">
           <img src="/partna-icon.svg" alt="Partna" className="w-5 h-5" />

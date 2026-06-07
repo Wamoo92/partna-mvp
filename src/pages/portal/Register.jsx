@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../supabase'
-import { brand } from '../../lib/brandConfig'
+import { useBrand } from '../../lib/BrandContext'
 
 const BUSINESS_ID = 'a1b2c3d4-0000-0000-0000-000000000001'
 const CAMPAIGN_ID = 'b1b2c3d4-0000-0000-0000-000000000001'
@@ -16,23 +16,21 @@ function generateDrawCode() {
 }
 
 export default function Register() {
+  const brand = useBrand()
   const navigate = useNavigate()
   const [step, setStep] = useState(1)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
-  // Step 1 fields
   const [firstName, setFirstName] = useState('')
   const [lastName, setLastName] = useState('')
   const [otherNames, setOtherNames] = useState('')
   const [phone, setPhone] = useState('')
   const [email, setEmail] = useState('')
 
-  // Step 2 fields
   const [otp, setOtp] = useState('')
   const [otpId, setOtpId] = useState(null)
 
-  // Step 3 fields
   const [pin, setPin] = useState('')
   const [confirmPin, setConfirmPin] = useState('')
 
@@ -58,36 +56,24 @@ export default function Register() {
       const cleanPhone = phone.replace(/\s+/g, '')
       const cleanEmail = email.toLowerCase().trim()
 
-      // Check phone not already registered
       const { data: existingPhone } = await supabase
-        .from('customers')
-        .select('id')
-        .eq('phone', cleanPhone)
-        .maybeSingle()
-
+        .from('customers').select('id').eq('phone', cleanPhone).maybeSingle()
       if (existingPhone) {
         setError('This phone number is already registered. Please log in.')
         setLoading(false)
         return
       }
 
-      // Check email not already registered
       const { data: existingEmail } = await supabase
-        .from('customers')
-        .select('id')
-        .eq('email', cleanEmail)
-        .maybeSingle()
-
+        .from('customers').select('id').eq('email', cleanEmail).maybeSingle()
       if (existingEmail) {
         setError('This email address is already registered. Please log in.')
         setLoading(false)
         return
       }
 
-      // Generate unique draw code
       const drawCode = generateDrawCode()
 
-      // Create customer record — no NIN yet, that comes in KYC
       const { data: customer, error: customerError } = await supabase
         .from('customers')
         .insert({
@@ -115,7 +101,6 @@ export default function Register() {
 
       setCustomerId(customer.id)
 
-      // Generate OTP
       const otpCode = Math.floor(10000 + Math.random() * 90000).toString()
       const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString()
 
@@ -138,7 +123,6 @@ export default function Register() {
       }
 
       setOtpId(otpRecord.id)
-
       // Demo: show OTP in alert
       // Production: send via Twilio SMS + Twilio SendGrid email
       alert(`Demo mode — your OTP is: ${otpCode}`)
@@ -162,10 +146,7 @@ export default function Register() {
     setLoading(true)
     try {
       const { data: otpRecord, error: fetchError } = await supabase
-        .from('otp_verifications')
-        .select('*')
-        .eq('id', otpId)
-        .single()
+        .from('otp_verifications').select('*').eq('id', otpId).single()
 
       if (fetchError || !otpRecord) {
         setError('OTP not found. Please go back and try again.')
@@ -185,15 +166,8 @@ export default function Register() {
         return
       }
 
-      await supabase
-        .from('otp_verifications')
-        .update({ status: 'verified' })
-        .eq('id', otpId)
-
-      await supabase
-        .from('customers')
-        .update({ registration_status: 'pin_pending' })
-        .eq('id', customerId)
+      await supabase.from('otp_verifications').update({ status: 'verified' }).eq('id', otpId)
+      await supabase.from('customers').update({ registration_status: 'pin_pending' }).eq('id', customerId)
 
       setStep(3)
     } catch (err) {
@@ -221,7 +195,6 @@ export default function Register() {
       const cleanEmail = email.toLowerCase().trim()
       const password = `pin-${pin}-${cleanPhone}`
 
-      // Create Supabase auth user with real email
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: cleanEmail,
         password,
@@ -234,22 +207,13 @@ export default function Register() {
         return
       }
 
-      // Link auth user to customer and mark complete
-      await supabase
-        .from('customers')
-        .update({
-          auth_user_id: authData.user.id,
-          registration_status: 'complete',
-        })
-        .eq('id', customerId)
+      await supabase.from('customers').update({
+        auth_user_id: authData.user.id,
+        registration_status: 'complete',
+      }).eq('id', customerId)
 
-      // Sign in immediately
-      await supabase.auth.signInWithPassword({
-        email: cleanEmail,
-        password,
-      })
+      await supabase.auth.signInWithPassword({ email: cleanEmail, password })
 
-      // Navigate to KYC flow after short delay
       setTimeout(() => {
         navigate('/portal/kyc', { replace: true })
       }, 500)
@@ -268,8 +232,7 @@ export default function Register() {
       <header className="flex items-center px-4 py-3 gap-3" style={{ background: brand.primaryColor }}>
         <button
           onClick={() => step === 1 ? navigate('/portal') : setStep(step - 1)}
-          className="text-white text-xl leading-none"
-        >
+          className="text-white text-xl leading-none">
           ←
         </button>
         <div className="flex items-center gap-2">
@@ -311,23 +274,18 @@ export default function Register() {
       <div className="rounded-t-3xl flex-1 flex flex-col px-5 py-6 gap-4"
         style={{ background: '#f0f2f5', marginTop: '-16px' }}>
 
-        {/* ── STEP 1 ── */}
         {step === 1 && (
           <>
             <div className="flex gap-3">
               <div className="flex flex-col gap-1 flex-1">
-                <label className="text-xs font-semibold" style={{ color: brand.primaryColor }}>
-                  First name *
-                </label>
+                <label className="text-xs font-semibold" style={{ color: brand.primaryColor }}>First name *</label>
                 <input type="text" placeholder="Grace" value={firstName}
                   onChange={e => setFirstName(e.target.value)}
                   className="w-full px-4 py-3 rounded-xl text-sm outline-none"
                   style={{ background: '#fff', border: '1.5px solid rgba(27,79,114,0.15)', color: '#333' }} />
               </div>
               <div className="flex flex-col gap-1 flex-1">
-                <label className="text-xs font-semibold" style={{ color: brand.primaryColor }}>
-                  Last name *
-                </label>
+                <label className="text-xs font-semibold" style={{ color: brand.primaryColor }}>Last name *</label>
                 <input type="text" placeholder="Nakamya" value={lastName}
                   onChange={e => setLastName(e.target.value)}
                   className="w-full px-4 py-3 rounded-xl text-sm outline-none"
@@ -346,9 +304,7 @@ export default function Register() {
             </div>
 
             <div className="flex flex-col gap-1">
-              <label className="text-xs font-semibold" style={{ color: brand.primaryColor }}>
-                Phone number *
-              </label>
+              <label className="text-xs font-semibold" style={{ color: brand.primaryColor }}>Phone number *</label>
               <input type="tel" placeholder="+256 7XX XXX XXX" value={phone}
                 onChange={e => setPhone(e.target.value)}
                 className="w-full px-4 py-3 rounded-xl text-sm outline-none"
@@ -356,9 +312,7 @@ export default function Register() {
             </div>
 
             <div className="flex flex-col gap-1">
-              <label className="text-xs font-semibold" style={{ color: brand.primaryColor }}>
-                Email address *
-              </label>
+              <label className="text-xs font-semibold" style={{ color: brand.primaryColor }}>Email address *</label>
               <input type="email" placeholder="grace@email.com" value={email}
                 onChange={e => setEmail(e.target.value)}
                 className="w-full px-4 py-3 rounded-xl text-sm outline-none"
@@ -376,17 +330,12 @@ export default function Register() {
 
             <button onClick={handleStep1} disabled={loading}
               className="w-full py-3 rounded-xl text-sm font-bold mt-1"
-              style={{
-                background: loading ? 'rgba(27,79,114,0.4)' : brand.primaryColor,
-                color: '#fff', border: 'none',
-              }}>
+              style={{ background: loading ? 'rgba(27,79,114,0.4)' : brand.primaryColor, color: '#fff', border: 'none' }}>
               {loading ? 'Please wait...' : 'Continue'}
             </button>
 
             <div className="text-center">
-              <span className="text-xs" style={{ color: 'rgba(0,0,0,0.4)' }}>
-                Already have an account?{' '}
-              </span>
+              <span className="text-xs" style={{ color: 'rgba(0,0,0,0.4)' }}>Already have an account? </span>
               <button onClick={() => navigate('/portal/login')}
                 className="text-xs font-semibold" style={{ color: brand.primaryColor }}>
                 Log in
@@ -395,7 +344,6 @@ export default function Register() {
           </>
         )}
 
-        {/* ── STEP 2 ── */}
         {step === 2 && (
           <>
             <div className="px-4 py-3 rounded-xl text-xs"
@@ -405,9 +353,7 @@ export default function Register() {
             </div>
 
             <div className="flex flex-col gap-1">
-              <label className="text-xs font-semibold" style={{ color: brand.primaryColor }}>
-                Enter OTP
-              </label>
+              <label className="text-xs font-semibold" style={{ color: brand.primaryColor }}>Enter OTP</label>
               <input type="text" inputMode="numeric" maxLength={5}
                 placeholder="_ _ _ _ _" value={otp}
                 onChange={e => setOtp(e.target.value.replace(/\D/g, '').slice(0, 5))}
@@ -423,16 +369,12 @@ export default function Register() {
 
             <button onClick={handleStep2} disabled={loading}
               className="w-full py-3 rounded-xl text-sm font-bold mt-1"
-              style={{
-                background: loading ? 'rgba(27,79,114,0.4)' : brand.primaryColor,
-                color: '#fff', border: 'none',
-              }}>
+              style={{ background: loading ? 'rgba(27,79,114,0.4)' : brand.primaryColor, color: '#fff', border: 'none' }}>
               {loading ? 'Verifying...' : 'Verify OTP'}
             </button>
           </>
         )}
 
-        {/* ── STEP 3 ── */}
         {step === 3 && (
           <>
             <div className="px-4 py-3 rounded-xl text-xs"
@@ -441,9 +383,7 @@ export default function Register() {
             </div>
 
             <div className="flex flex-col gap-1">
-              <label className="text-xs font-semibold" style={{ color: brand.primaryColor }}>
-                Create PIN
-              </label>
+              <label className="text-xs font-semibold" style={{ color: brand.primaryColor }}>Create PIN</label>
               <input type="password" inputMode="numeric" maxLength={4}
                 placeholder="••••" value={pin}
                 onChange={e => setPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
@@ -452,9 +392,7 @@ export default function Register() {
             </div>
 
             <div className="flex flex-col gap-1">
-              <label className="text-xs font-semibold" style={{ color: brand.primaryColor }}>
-                Confirm PIN
-              </label>
+              <label className="text-xs font-semibold" style={{ color: brand.primaryColor }}>Confirm PIN</label>
               <input type="password" inputMode="numeric" maxLength={4}
                 placeholder="••••" value={confirmPin}
                 onChange={e => setConfirmPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
@@ -470,10 +408,7 @@ export default function Register() {
 
             <button onClick={handleStep3} disabled={loading}
               className="w-full py-3 rounded-xl text-sm font-bold mt-1"
-              style={{
-                background: loading ? 'rgba(212,175,55,0.4)' : brand.secondaryColor,
-                color: brand.primaryColor, border: 'none',
-              }}>
+              style={{ background: loading ? 'rgba(212,175,55,0.4)' : brand.secondaryColor, color: brand.primaryColor, border: 'none' }}>
               {loading ? 'Creating account...' : 'Create account'}
             </button>
           </>
@@ -484,9 +419,7 @@ export default function Register() {
       <footer className="text-center py-4" style={{ background: '#f0f2f5' }}>
         <div className="flex items-center justify-center gap-1.5">
           <img src="/partna-icon.svg" alt="Partna" className="w-5 h-5" />
-          <span className="text-xs" style={{ color: 'rgba(0,0,0,0.3)' }}>
-            Powered by Partna
-          </span>
+          <span className="text-xs" style={{ color: 'rgba(0,0,0,0.3)' }}>Powered by Partna</span>
         </div>
       </footer>
 

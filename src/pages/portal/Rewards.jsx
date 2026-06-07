@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../supabase'
-import { brand } from '../../lib/brandConfig'
+import { useBrand } from '../../lib/BrandContext'
 
 const CAMPAIGN_ID = 'b1b2c3d4-0000-0000-0000-000000000001'
 
@@ -30,7 +30,7 @@ function VoucherCountdown({ campaignStart, campaignEnd, fraction }) {
       const h = Math.floor((diff % 86400000) / 3600000)
       const m = Math.floor((diff % 3600000) / 60000)
       const s = Math.floor((diff % 60000) / 1000)
-      setTimeLeft(d + 'd ' + String(h).padStart(2,'0') + ':' + String(m).padStart(2,'0') + ':' + String(s).padStart(2,'00'))
+      setTimeLeft(d + 'd ' + String(h).padStart(2,'0') + ':' + String(m).padStart(2,'0') + ':' + String(s).padStart(2,'0'))
     }
     calc()
     const timer = setInterval(calc, 1000)
@@ -51,7 +51,7 @@ function PrizeCountdown({ drawDate }) {
       const h = Math.floor((diff % 86400000) / 3600000)
       const m = Math.floor((diff % 3600000) / 60000)
       const s = Math.floor((diff % 60000) / 1000)
-      setTimeLeft(d + 'd ' + String(h).padStart(2,'0') + ':' + String(m).padStart(2,'00') + ':' + String(s).padStart(2,'00'))
+      setTimeLeft(d + 'd ' + String(h).padStart(2,'0') + ':' + String(m).padStart(2,'0') + ':' + String(s).padStart(2,'0'))
     }
     calc()
     const timer = setInterval(calc, 1000)
@@ -61,6 +61,7 @@ function PrizeCountdown({ drawDate }) {
 }
 
 export default function Rewards({ customer }) {
+  const brand = useBrand()
   const navigate = useNavigate()
   const [campaign, setCampaign] = useState(null)
   const [wallet, setWallet] = useState(null)
@@ -82,17 +83,14 @@ export default function Rewards({ customer }) {
 
   async function loadAll() {
     setLoading(true)
-
     try {
       const r1 = await supabase.from('campaigns').select('*').eq('id', CAMPAIGN_ID)
       if (r1.data && r1.data.length > 0) setCampaign(r1.data[0])
     } catch(e) {}
-
     try {
       const r2 = await supabase.from('wallets').select('*').eq('customer_id', customer.id)
       if (r2.data && r2.data.length > 0) setWallet(r2.data[0])
     } catch(e) {}
-
     try {
       const r3 = await supabase.from('vouchers').select('*').eq('campaign_id', CAMPAIGN_ID).eq('is_active', true)
       if (r3.data) {
@@ -102,22 +100,18 @@ export default function Rewards({ customer }) {
         setVouchers(r3.data.map(v => ({ ...v, merchants: { name: merchantMap[v.merchant_id] || '' } })))
       }
     } catch(e) {}
-
     try {
       const r4 = await supabase.from('voucher_claims').select('voucher_id').eq('customer_id', customer.id)
       if (r4.data) setClaims(r4.data.map(c => c.voucher_id))
     } catch(e) {}
-
     try {
       const r6 = await supabase.from('prizes').select('*').eq('campaign_id', CAMPAIGN_ID).eq('is_active', true)
       if (r6.data) setPrizes(r6.data)
     } catch(e) {}
-
     try {
       const r7 = await supabase.from('prize_draws').select('*, prizes(title)').eq('prizes.campaign_id', CAMPAIGN_ID).order('drawn_at', { ascending: false })
       if (r7.data) setPrizeDraws(r7.data)
     } catch(e) {}
-
     setLoading(false)
   }
 
@@ -192,7 +186,6 @@ export default function Rewards({ customer }) {
   return (
     <div className="min-h-screen flex flex-col" style={{ background: '#f0f2f5' }}>
 
-      {/* Full-screen claimed voucher */}
       {successVoucher && (
         <div className="fixed inset-0 z-50 flex flex-col items-center justify-center px-6"
           style={{ background: brand.primaryColor }}>
@@ -210,7 +203,7 @@ export default function Rewards({ customer }) {
             </div>
             <div className="text-xs px-4 py-2 rounded-xl mb-3"
               style={{ background: 'rgba(27,79,114,0.07)', color: brand.primaryColor }}>
-              St. Catherine's Savings Program — Powered by Partna
+              {brand.businessName} Savings Program — Powered by Partna
             </div>
             <div className="text-xs leading-relaxed mb-4" style={{ color: 'rgba(0,0,0,0.4)' }}>
               {successVoucher.terms_and_conditions}
@@ -228,7 +221,6 @@ export default function Rewards({ customer }) {
         </div>
       )}
 
-      {/* Claim modal */}
       {claimModal && (
         <div className="fixed inset-0 z-40 flex items-center justify-center px-5"
           style={{ background: 'rgba(0,0,0,0.5)' }}>
@@ -274,30 +266,24 @@ export default function Rewards({ customer }) {
         </div>
       )}
 
-      {/* Winners modal */}
       {showWinners && (
         <div className="fixed inset-0 z-40 flex items-end justify-center"
           style={{ background: 'rgba(0,0,0,0.5)' }}>
           <div className="w-full max-w-lg rounded-t-3xl p-5 pb-8"
             style={{ background: '#fff', maxHeight: '80vh', overflowY: 'auto' }}>
             <div className="flex justify-between items-center mb-4">
-              <div className="text-sm font-bold" style={{ color: brand.primaryColor }}>
-                Prize Draw Winners
-              </div>
+              <div className="text-sm font-bold" style={{ color: brand.primaryColor }}>Prize Draw Winners</div>
               <button onClick={() => setShowWinners(false)}
                 className="text-lg" style={{ color: 'rgba(0,0,0,0.3)' }}>✕</button>
             </div>
             {prizeDraws.length === 0 ? (
               <div className="text-center py-8">
                 <div className="text-2xl mb-2">🏆</div>
-                <div className="text-xs" style={{ color: 'rgba(0,0,0,0.4)' }}>
-                  No prize draws have taken place yet
-                </div>
+                <div className="text-xs" style={{ color: 'rgba(0,0,0,0.4)' }}>No prize draws have taken place yet</div>
               </div>
             ) : (
               <div className="rounded-xl overflow-hidden" style={{ border: '1px solid rgba(0,0,0,0.08)' }}>
-                <div className="grid grid-cols-2 px-4 py-2"
-                  style={{ background: brand.primaryColor }}>
+                <div className="grid grid-cols-2 px-4 py-2" style={{ background: brand.primaryColor }}>
                   <div className="text-xs font-bold text-white">Prize</div>
                   <div className="text-xs font-bold text-white text-right">Winning Code</div>
                 </div>
@@ -314,15 +300,11 @@ export default function Rewards({ customer }) {
                     </div>
                     <div className="text-right">
                       <div className="text-xs font-mono font-bold"
-                        style={{
-                          color: draw.winning_code === customer?.draw_code ? '#16A34A' : brand.primaryColor
-                        }}>
+                        style={{ color: draw.winning_code === customer?.draw_code ? '#16A34A' : brand.primaryColor }}>
                         {draw.winning_code}
                       </div>
                       {draw.winning_code === customer?.draw_code && (
-                        <div className="text-xs font-semibold" style={{ color: '#16A34A' }}>
-                          That's you! 🎉
-                        </div>
+                        <div className="text-xs font-semibold" style={{ color: '#16A34A' }}>That's you! 🎉</div>
                       )}
                     </div>
                   </div>
@@ -333,7 +315,6 @@ export default function Rewards({ customer }) {
         </div>
       )}
 
-      {/* Header */}
       <header className="flex items-center px-4 py-3 gap-3" style={{ background: brand.primaryColor }}>
         <button onClick={() => navigate('/portal/home')} className="text-white text-xl">&#8592;</button>
         <div className="flex items-center gap-2">
@@ -342,16 +323,12 @@ export default function Rewards({ customer }) {
         </div>
       </header>
 
-      {/* Balance summary bar */}
       <div className="px-5 pt-5 pb-8" style={{ background: brand.primaryColor }}>
         <div className="text-xs mb-1" style={{ color: 'rgba(255,255,255,0.6)' }}>Current balance</div>
         <div className="text-white text-2xl font-bold mb-1">{fmt(balance)}</div>
         <div className="w-full h-1.5 rounded-full mb-1" style={{ background: 'rgba(255,255,255,0.2)' }}>
           <div className="h-1.5 rounded-full"
-            style={{
-              width: pct + '%',
-              background: pct >= 75 ? '#22C55E' : pct >= 50 ? brand.secondaryColor : '#F59E0B'
-            }} />
+            style={{ width: pct + '%', background: pct >= 75 ? '#22C55E' : pct >= 50 ? brand.secondaryColor : '#F59E0B' }} />
         </div>
         <div className="flex justify-between text-xs" style={{ color: 'rgba(255,255,255,0.6)' }}>
           <span>{pct.toFixed(0)}% of savings goal</span>
@@ -359,31 +336,23 @@ export default function Rewards({ customer }) {
         </div>
       </div>
 
-      {/* Main content */}
       <div className="rounded-t-3xl flex-1 px-4 py-5 flex flex-col gap-5"
         style={{ background: '#f0f2f5', marginTop: '-16px' }}>
 
-        {/* Prize cards — only shown if campaign has active prizes */}
         {prizes.length > 0 && (
           <div>
             <div className="flex items-center justify-between mb-3">
-              <div className="text-sm font-bold" style={{ color: brand.primaryColor }}>
-                🏆 Prize Draw
-              </div>
-              <button
-                onClick={() => setShowWinners(true)}
-                className="text-xs font-semibold"
-                style={{ color: brand.secondaryColor }}>
+              <div className="text-sm font-bold" style={{ color: brand.primaryColor }}>🏆 Prize Draw</div>
+              <button onClick={() => setShowWinners(true)}
+                className="text-xs font-semibold" style={{ color: brand.secondaryColor }}>
                 See all winners
               </button>
             </div>
-
             {prizes.map(prize => {
               const qualifies = prizeQualifies(prize)
               const progress = prizeProgress(prize)
               const minBal = target * (Number(prize.min_balance_percentage) / 100)
               const drawPassed = new Date(prize.draw_date) < new Date()
-
               return (
                 <div key={prize.id} className="rounded-2xl overflow-hidden mb-3"
                   style={{
@@ -392,7 +361,6 @@ export default function Rewards({ customer }) {
                     opacity: !qualifies ? 0.75 : 1,
                   }}>
                   <div className="p-4">
-                    {/* Top row: image/icon + draw code */}
                     <div className="flex items-start justify-between mb-3">
                       <div className="flex items-center gap-3">
                         {prize.prize_image_url ? (
@@ -401,7 +369,7 @@ export default function Rewards({ customer }) {
                             style={{ filter: qualifies ? 'none' : 'grayscale(1)' }} />
                         ) : (
                           <div className="w-14 h-14 rounded-xl flex items-center justify-center text-2xl"
-                            style={{ background: qualifies ? `rgba(27,79,114,0.08)` : '#f0f2f5' }}>
+                            style={{ background: qualifies ? 'rgba(27,79,114,0.08)' : '#f0f2f5' }}>
                             {prize.prize_type === 'cash' ? '💰' : prize.prize_type === 'item' ? '🎁' : '🏷️'}
                           </div>
                         )}
@@ -419,40 +387,30 @@ export default function Rewards({ customer }) {
                           )}
                         </div>
                       </div>
-                      {/* Draw code */}
                       <div className="text-right flex-shrink-0 ml-2">
                         <div className="text-xs mb-0.5" style={{ color: 'rgba(0,0,0,0.35)' }}>Your code</div>
                         <div className="text-xs font-mono font-bold px-2 py-1 rounded-lg"
-                          style={{
-                            background: qualifies ? `rgba(27,79,114,0.08)` : '#f0f2f5',
-                            color: qualifies ? brand.primaryColor : 'rgba(0,0,0,0.3)'
-                          }}>
+                          style={{ background: qualifies ? 'rgba(27,79,114,0.08)' : '#f0f2f5', color: qualifies ? brand.primaryColor : 'rgba(0,0,0,0.3)' }}>
                           {customer?.draw_code || '——'}
                         </div>
                       </div>
                     </div>
-
-                    {/* Description */}
                     {prize.description && (
                       <div className="text-xs mb-3 leading-relaxed"
                         style={{ color: qualifies ? 'rgba(0,0,0,0.5)' : 'rgba(0,0,0,0.3)' }}>
                         {prize.description}
                       </div>
                     )}
-
-                    {/* Details row */}
                     <div className="flex justify-between items-center mb-3">
                       <div>
                         <div className="text-xs mb-0.5" style={{ color: 'rgba(0,0,0,0.35)' }}>Winners</div>
-                        <div className="text-xs font-semibold"
-                          style={{ color: qualifies ? brand.primaryColor : 'rgba(0,0,0,0.3)' }}>
+                        <div className="text-xs font-semibold" style={{ color: qualifies ? brand.primaryColor : 'rgba(0,0,0,0.3)' }}>
                           {prize.number_of_winners} {prize.number_of_winners === 1 ? 'winner' : 'winners'}
                         </div>
                       </div>
                       <div>
                         <div className="text-xs mb-0.5" style={{ color: 'rgba(0,0,0,0.35)' }}>Min. balance</div>
-                        <div className="text-xs font-semibold"
-                          style={{ color: qualifies ? brand.primaryColor : 'rgba(0,0,0,0.3)' }}>
+                        <div className="text-xs font-semibold" style={{ color: qualifies ? brand.primaryColor : 'rgba(0,0,0,0.3)' }}>
                           {fmt(minBal)}
                         </div>
                       </div>
@@ -464,13 +422,10 @@ export default function Rewards({ customer }) {
                           style={{ color: drawPassed ? 'rgba(0,0,0,0.4)' : qualifies ? '#D97706' : 'rgba(0,0,0,0.3)' }}>
                           {drawPassed
                             ? new Date(prize.draw_date).toLocaleDateString('en-UG', { day: 'numeric', month: 'short' })
-                            : <PrizeCountdown drawDate={prize.draw_date} />
-                          }
+                            : <PrizeCountdown drawDate={prize.draw_date} />}
                         </div>
                       </div>
                     </div>
-
-                    {/* Progress bar */}
                     <div className="mb-1">
                       <div className="flex justify-between text-xs mb-1" style={{ color: 'rgba(0,0,0,0.35)' }}>
                         <span>Qualification progress</span>
@@ -478,21 +433,15 @@ export default function Rewards({ customer }) {
                       </div>
                       <div className="w-full h-2 rounded-full" style={{ background: '#f0f2f5' }}>
                         <div className="h-2 rounded-full transition-all"
-                          style={{
-                            width: Math.min(progress, 100) + '%',
-                            background: qualifies ? '#16A34A' : brand.secondaryColor
-                          }} />
+                          style={{ width: Math.min(progress, 100) + '%', background: qualifies ? '#16A34A' : brand.secondaryColor }} />
                       </div>
                     </div>
-
                     {qualifies ? (
-                      <div className="text-xs font-semibold mt-2 text-center"
-                        style={{ color: '#16A34A' }}>
+                      <div className="text-xs font-semibold mt-2 text-center" style={{ color: '#16A34A' }}>
                         ✓ You qualify for this prize draw
                       </div>
                     ) : (
-                      <div className="text-xs mt-2 text-center"
-                        style={{ color: 'rgba(0,0,0,0.4)' }}>
+                      <div className="text-xs mt-2 text-center" style={{ color: 'rgba(0,0,0,0.4)' }}>
                         Save {fmt(Math.max(minBal - balance, 0))} more to qualify
                       </div>
                     )}
@@ -503,7 +452,6 @@ export default function Rewards({ customer }) {
           </div>
         )}
 
-        {/* Vouchers section */}
         <div>
           <div className="flex items-center justify-between mb-4">
             <div className="text-sm font-bold" style={{ color: brand.primaryColor }}>Vouchers</div>
@@ -520,14 +468,9 @@ export default function Rewards({ customer }) {
 
           {vouchers.length > 0 && v && (
             <div className="flex items-center gap-3">
-              <button
-                onClick={() => setCurrent(c => Math.max(0, c - 1))}
-                disabled={current === 0}
+              <button onClick={() => setCurrent(c => Math.max(0, c - 1))} disabled={current === 0}
                 className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 text-sm font-bold"
-                style={{
-                  background: current === 0 ? 'rgba(0,0,0,0.06)' : brand.primaryColor,
-                  color: current === 0 ? 'rgba(0,0,0,0.2)' : '#fff',
-                }}>
+                style={{ background: current === 0 ? 'rgba(0,0,0,0.06)' : brand.primaryColor, color: current === 0 ? 'rgba(0,0,0,0.2)' : '#fff' }}>
                 &#8592;
               </button>
 
@@ -546,27 +489,21 @@ export default function Rewards({ customer }) {
                       </div>
                     )}
                     <div>
-                      <div className="text-xs mb-0.5"
-                        style={{ color: unlocked ? 'rgba(0,0,0,0.4)' : 'rgba(0,0,0,0.25)' }}>
+                      <div className="text-xs mb-0.5" style={{ color: unlocked ? 'rgba(0,0,0,0.4)' : 'rgba(0,0,0,0.25)' }}>
                         {merchantName}
                       </div>
-                      <div className="text-lg font-bold leading-tight"
-                        style={{ color: unlocked ? brand.primaryColor : 'rgba(0,0,0,0.3)' }}>
+                      <div className="text-lg font-bold leading-tight" style={{ color: unlocked ? brand.primaryColor : 'rgba(0,0,0,0.3)' }}>
                         {v.title}
                       </div>
                     </div>
                   </div>
-
-                  <div className="text-xs mb-4 leading-relaxed"
-                    style={{ color: unlocked ? 'rgba(0,0,0,0.5)' : 'rgba(0,0,0,0.25)' }}>
+                  <div className="text-xs mb-4 leading-relaxed" style={{ color: unlocked ? 'rgba(0,0,0,0.5)' : 'rgba(0,0,0,0.25)' }}>
                     {v.description}
                   </div>
-
                   <div className="flex items-end justify-between mb-4">
                     <div>
                       <div className="text-xs mb-0.5" style={{ color: 'rgba(0,0,0,0.35)' }}>Minimum balance</div>
-                      <div className="text-sm font-bold"
-                        style={{ color: unlocked ? brand.primaryColor : 'rgba(0,0,0,0.3)' }}>
+                      <div className="text-sm font-bold" style={{ color: unlocked ? brand.primaryColor : 'rgba(0,0,0,0.3)' }}>
                         {minBalDisplay(v)}
                       </div>
                     </div>
@@ -577,28 +514,17 @@ export default function Rewards({ customer }) {
                       <div className="text-xs font-bold font-mono"
                         style={{ color: expired ? '#DC2626' : claimed ? '#16A34A' : '#D97706' }}>
                         {expired ? 'Expired' : claimed ? 'Claimed' : (
-                          campaign
-                            ? <VoucherCountdown
-                                campaignStart={campaign.created_at}
-                                campaignEnd={campaign.target_date}
-                                fraction={v.expiry_offset_fraction}
-                              />
-                            : '--'
+                          campaign ? <VoucherCountdown campaignStart={campaign.created_at} campaignEnd={campaign.target_date} fraction={v.expiry_offset_fraction} /> : '--'
                         )}
                       </div>
                     </div>
                   </div>
-
                   {claimed ? (
                     <div className="w-full py-3 rounded-xl text-sm font-bold text-center"
-                      style={{ background: 'rgba(22,163,74,0.1)', color: '#16A34A' }}>
-                      Claimed ✓
-                    </div>
+                      style={{ background: 'rgba(22,163,74,0.1)', color: '#16A34A' }}>Claimed ✓</div>
                   ) : expired ? (
                     <div className="w-full py-3 rounded-xl text-sm font-bold text-center"
-                      style={{ background: 'rgba(220,38,38,0.1)', color: '#DC2626' }}>
-                      Expired
-                    </div>
+                      style={{ background: 'rgba(220,38,38,0.1)', color: '#DC2626' }}>Expired</div>
                   ) : unlocked ? (
                     <button onClick={() => setClaimModal(v)}
                       className="w-full py-3 rounded-xl text-sm font-bold"
@@ -614,14 +540,9 @@ export default function Rewards({ customer }) {
                 </div>
               </div>
 
-              <button
-                onClick={() => setCurrent(c => Math.min(vouchers.length - 1, c + 1))}
-                disabled={current === vouchers.length - 1}
+              <button onClick={() => setCurrent(c => Math.min(vouchers.length - 1, c + 1))} disabled={current === vouchers.length - 1}
                 className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 text-sm font-bold"
-                style={{
-                  background: current === vouchers.length - 1 ? 'rgba(0,0,0,0.06)' : brand.primaryColor,
-                  color: current === vouchers.length - 1 ? 'rgba(0,0,0,0.2)' : '#fff',
-                }}>
+                style={{ background: current === vouchers.length - 1 ? 'rgba(0,0,0,0.06)' : brand.primaryColor, color: current === vouchers.length - 1 ? 'rgba(0,0,0,0.2)' : '#fff' }}>
                 &#8594;
               </button>
             </div>
@@ -631,19 +552,13 @@ export default function Rewards({ customer }) {
             <div className="flex justify-center gap-1.5 mt-4">
               {vouchers.map((_, i) => (
                 <button key={i} onClick={() => setCurrent(i)} className="rounded-full"
-                  style={{
-                    width: i === current ? '20px' : '6px',
-                    height: '6px',
-                    background: i === current ? brand.primaryColor : 'rgba(0,0,0,0.15)',
-                  }} />
+                  style={{ width: i === current ? '20px' : '6px', height: '6px', background: i === current ? brand.primaryColor : 'rgba(0,0,0,0.15)' }} />
               ))}
             </div>
           )}
         </div>
-
       </div>
 
-      {/* Bottom nav */}
       <nav className="flex items-center justify-around px-4 py-3 border-t"
         style={{ background: '#fff', borderColor: 'rgba(0,0,0,0.08)' }}>
         {[
@@ -657,10 +572,7 @@ export default function Rewards({ customer }) {
               style={{ color: item.path === '/portal/rewards' ? brand.primaryColor : 'rgba(0,0,0,0.3)' }}>
               {item.icon}
             </span>
-            <span className="text-xs" style={{
-              color: item.path === '/portal/rewards' ? brand.primaryColor : 'rgba(0,0,0,0.3)',
-              fontWeight: item.path === '/portal/rewards' ? 600 : 400
-            }}>
+            <span className="text-xs" style={{ color: item.path === '/portal/rewards' ? brand.primaryColor : 'rgba(0,0,0,0.3)', fontWeight: item.path === '/portal/rewards' ? 600 : 400 }}>
               {item.label}
             </span>
           </button>

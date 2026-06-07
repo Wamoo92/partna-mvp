@@ -1,12 +1,13 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../supabase'
-import { brand } from '../../lib/brandConfig'
+import { useBrand } from '../../lib/BrandContext'
 
 const CAMPAIGN_ID = 'b1b2c3d4-0000-0000-0000-000000000001'
 const PAGE_SIZE = 10
 
 export default function Transactions({ customer }) {
+  const brand = useBrand()
   const navigate = useNavigate()
   const [allTransactions, setAllTransactions] = useState([])
   const [wallet, setWallet] = useState(null)
@@ -14,7 +15,6 @@ export default function Transactions({ customer }) {
   const [loading, setLoading] = useState(true)
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE)
 
-  // Filters
   const [typeFilter, setTypeFilter] = useState('all')
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
@@ -45,25 +45,18 @@ export default function Transactions({ customer }) {
     setLoading(false)
   }
 
-  // Apply filters
   const filtered = allTransactions.filter(txn => {
-    // Type filter
     if (typeFilter !== 'all' && txn.type !== typeFilter) return false
-
-    // Date from
     if (dateFrom) {
       const from = new Date(dateFrom)
       from.setHours(0, 0, 0, 0)
       if (new Date(txn.created_at) < from) return false
     }
-
-    // Date to
     if (dateTo) {
       const to = new Date(dateTo)
       to.setHours(23, 59, 59, 999)
       if (new Date(txn.created_at) > to) return false
     }
-
     return true
   })
 
@@ -84,9 +77,7 @@ export default function Transactions({ customer }) {
   }
 
   function formatTime(dateStr) {
-    return new Date(dateStr).toLocaleTimeString('en-UG', {
-      hour: '2-digit', minute: '2-digit', hour12: true
-    })
+    return new Date(dateStr).toLocaleTimeString('en-UG', { hour: '2-digit', minute: '2-digit', hour12: true })
   }
 
   function formatGroupDate(dateStr) {
@@ -117,13 +108,8 @@ export default function Transactions({ customer }) {
     }
   }
 
-  function txColor(type) {
-    return type === 'deposit' ? '#16A34A' : '#DC2626'
-  }
-
-  function txSign(type) {
-    return type === 'deposit' ? '+' : '-'
-  }
+  function txColor(type) { return type === 'deposit' ? '#16A34A' : '#DC2626' }
+  function txSign(type) { return type === 'deposit' ? '+' : '-' }
 
   function groupByDate(txns) {
     const groups = {}
@@ -151,7 +137,6 @@ export default function Transactions({ customer }) {
   return (
     <div className="min-h-screen flex flex-col" style={{ background: '#f0f2f5' }}>
 
-      {/* Header */}
       <header className="flex items-center px-4 py-3 gap-3" style={{ background: brand.primaryColor }}>
         <button onClick={() => navigate('/portal/home')} className="text-white text-xl">&#8592;</button>
         <div className="flex items-center gap-2">
@@ -160,26 +145,17 @@ export default function Transactions({ customer }) {
         </div>
       </header>
 
-      {/* Balance hero */}
       <div className="px-5 pt-5 pb-10" style={{ background: brand.primaryColor }}>
-        <div className="text-xs mb-1" style={{ color: 'rgba(255,255,255,0.6)' }}>
-          Current balance
-        </div>
-        <div className="text-white text-3xl font-bold mb-0.5">
-          {formatUGX(balance)}
-        </div>
+        <div className="text-xs mb-1" style={{ color: 'rgba(255,255,255,0.6)' }}>Current balance</div>
+        <div className="text-white text-3xl font-bold mb-0.5">{formatUGX(balance)}</div>
         <div className="text-xs" style={{ color: 'rgba(255,255,255,0.6)' }}>
           saved toward {campaign?.name || 'Term 3 Fees 2026'}
         </div>
       </div>
 
-      {/* Main content */}
-      <div
-        className="rounded-t-3xl flex-1 px-4 py-5 flex flex-col gap-4"
-        style={{ background: '#f0f2f5', marginTop: '-16px' }}
-      >
+      <div className="rounded-t-3xl flex-1 px-4 py-5 flex flex-col gap-4"
+        style={{ background: '#f0f2f5', marginTop: '-16px' }}>
 
-        {/* Filter bar */}
         <div className="flex items-center justify-between">
           <div className="text-sm font-bold" style={{ color: brand.primaryColor }}>
             Transactions
@@ -192,11 +168,9 @@ export default function Transactions({ customer }) {
           </div>
           <div className="flex gap-2">
             {filtersActive && (
-              <button
-                onClick={clearFilters}
+              <button onClick={clearFilters}
                 className="text-xs font-semibold px-3 py-1.5 rounded-lg"
-                style={{ background: '#FEE2E2', color: '#DC2626' }}
-              >
+                style={{ background: '#FEE2E2', color: '#DC2626' }}>
                 Clear
               </button>
             )}
@@ -207,22 +181,16 @@ export default function Transactions({ customer }) {
                 background: showFilters ? brand.primaryColor : '#fff',
                 color: showFilters ? '#fff' : brand.primaryColor,
                 border: `1.5px solid ${brand.primaryColor}`
-              }}
-            >
+              }}>
               {showFilters ? 'Hide filters' : 'Filter'}
             </button>
           </div>
         </div>
 
-        {/* Filter panel */}
         {showFilters && (
           <div className="rounded-2xl p-4 flex flex-col gap-3" style={{ background: '#fff' }}>
-
-            {/* Type filter */}
             <div>
-              <div className="text-xs font-semibold mb-2" style={{ color: 'rgba(0,0,0,0.4)' }}>
-                Transaction type
-              </div>
+              <div className="text-xs font-semibold mb-2" style={{ color: 'rgba(0,0,0,0.4)' }}>Transaction type</div>
               <div className="flex gap-2 flex-wrap">
                 {[
                   { value: 'all', label: 'All' },
@@ -237,51 +205,36 @@ export default function Transactions({ customer }) {
                     style={{
                       background: typeFilter === opt.value ? brand.primaryColor : '#f0f2f5',
                       color: typeFilter === opt.value ? '#fff' : 'rgba(0,0,0,0.5)',
-                    }}
-                  >
+                    }}>
                     {opt.label}
                   </button>
                 ))}
               </div>
             </div>
-
-            {/* Divider */}
             <div style={{ height: '1px', background: 'rgba(0,0,0,0.06)' }} />
-
-            {/* Date range */}
             <div>
-              <div className="text-xs font-semibold mb-2" style={{ color: 'rgba(0,0,0,0.4)' }}>
-                Date range
-              </div>
+              <div className="text-xs font-semibold mb-2" style={{ color: 'rgba(0,0,0,0.4)' }}>Date range</div>
               <div className="flex gap-2 items-center">
                 <div className="flex flex-col gap-1 flex-1">
                   <label className="text-xs" style={{ color: 'rgba(0,0,0,0.4)' }}>From</label>
-                  <input
-                    type="date"
-                    value={dateFrom}
+                  <input type="date" value={dateFrom}
                     onChange={e => { setDateFrom(e.target.value); setVisibleCount(PAGE_SIZE) }}
                     className="w-full px-3 py-2 rounded-xl text-xs outline-none"
-                    style={{ background: '#f0f2f5', color: '#333', border: 'none' }}
-                  />
+                    style={{ background: '#f0f2f5', color: '#333', border: 'none' }} />
                 </div>
                 <div className="text-xs mt-4" style={{ color: 'rgba(0,0,0,0.3)' }}>—</div>
                 <div className="flex flex-col gap-1 flex-1">
                   <label className="text-xs" style={{ color: 'rgba(0,0,0,0.4)' }}>To</label>
-                  <input
-                    type="date"
-                    value={dateTo}
+                  <input type="date" value={dateTo}
                     onChange={e => { setDateTo(e.target.value); setVisibleCount(PAGE_SIZE) }}
                     className="w-full px-3 py-2 rounded-xl text-xs outline-none"
-                    style={{ background: '#f0f2f5', color: '#333', border: 'none' }}
-                  />
+                    style={{ background: '#f0f2f5', color: '#333', border: 'none' }} />
                 </div>
               </div>
             </div>
-
           </div>
         )}
 
-        {/* Transactions */}
         {filtered.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16">
             <div className="text-3xl mb-3">📋</div>
@@ -301,23 +254,11 @@ export default function Transactions({ customer }) {
                 </div>
                 <div className="rounded-2xl overflow-hidden" style={{ background: '#fff' }}>
                   {group.items.map((txn, i) => (
-                    <div
-                      key={txn.id}
-                      className="flex items-center justify-between px-4 py-3"
-                      style={{
-                        borderBottom: i < group.items.length - 1
-                          ? '1px solid rgba(0,0,0,0.05)'
-                          : 'none'
-                      }}
-                    >
+                    <div key={txn.id} className="flex items-center justify-between px-4 py-3"
+                      style={{ borderBottom: i < group.items.length - 1 ? '1px solid rgba(0,0,0,0.05)' : 'none' }}>
                       <div className="flex items-center gap-3">
-                        <div
-                          className="w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0"
-                          style={{
-                            background: `${txColor(txn.type)}15`,
-                            color: txColor(txn.type)
-                          }}
-                        >
+                        <div className="w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0"
+                          style={{ background: `${txColor(txn.type)}15`, color: txColor(txn.type) }}>
                           {txIcon(txn.type)}
                         </div>
                         <div>
@@ -338,17 +279,11 @@ export default function Transactions({ customer }) {
               </div>
             ))}
 
-            {/* Load more */}
             {hasMore && (
               <button
                 onClick={() => setVisibleCount(v => v + PAGE_SIZE)}
                 className="w-full py-3 rounded-2xl text-xs font-semibold"
-                style={{
-                  background: '#fff',
-                  color: brand.primaryColor,
-                  border: `1.5px solid rgba(27,79,114,0.15)`
-                }}
-              >
+                style={{ background: '#fff', color: brand.primaryColor, border: `1.5px solid rgba(27,79,114,0.15)` }}>
                 Load more ({filtered.length - visibleCount} remaining)
               </button>
             )}
@@ -361,7 +296,6 @@ export default function Transactions({ customer }) {
 
       </div>
 
-      {/* Bottom nav */}
       <nav className="flex items-center justify-around px-4 py-3 border-t"
         style={{ background: '#fff', borderColor: 'rgba(0,0,0,0.08)' }}>
         {[
@@ -376,10 +310,7 @@ export default function Transactions({ customer }) {
               {item.icon}
             </span>
             <span className="text-xs"
-              style={{
-                color: item.path === '/portal/transactions' ? brand.primaryColor : 'rgba(0,0,0,0.3)',
-                fontWeight: item.path === '/portal/transactions' ? 600 : 400
-              }}>
+              style={{ color: item.path === '/portal/transactions' ? brand.primaryColor : 'rgba(0,0,0,0.3)', fontWeight: item.path === '/portal/transactions' ? 600 : 400 }}>
               {item.label}
             </span>
           </button>

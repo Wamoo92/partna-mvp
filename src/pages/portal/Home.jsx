@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../supabase'
-import { brand } from '../../lib/brandConfig'
+import { useBrand } from '../../lib/BrandContext'
 
 export default function Home({ customer, signOut }) {
+  const brand = useBrand()
   const navigate = useNavigate()
   const [campaign, setCampaign] = useState(null)
   const [wallet, setWallet] = useState(null)
@@ -125,7 +126,6 @@ export default function Home({ customer, signOut }) {
   return (
     <div className="min-h-screen flex flex-col" style={{ background: '#f0f2f5' }}>
 
-      {/* Header */}
       <header className="flex items-center justify-between px-4 py-3" style={{ background: brand.primaryColor }}>
         <div className="flex items-center gap-2">
           <img src={brand.logoUrl} alt={brand.businessName} className="w-8 h-8 object-contain"
@@ -151,7 +151,6 @@ export default function Home({ customer, signOut }) {
         </div>
       </header>
 
-      {/* KYC banner */}
       {kycPending && (
         <button
           onClick={() => navigate('/portal/kyc')}
@@ -168,7 +167,6 @@ export default function Home({ customer, signOut }) {
         </button>
       )}
 
-      {/* Hero */}
       <div className="px-5 pt-5 pb-10" style={{ background: brand.primaryColor }}>
         <div className="mb-4">
           <div className="text-xs mb-1" style={{ color: 'rgba(255,255,255,0.6)' }}>
@@ -180,7 +178,6 @@ export default function Home({ customer, signOut }) {
           </div>
         </div>
 
-        {/* Flippable card */}
         <div className="flex justify-center mb-5">
           <div className="cursor-pointer"
             style={{ perspective: '800px', width: `${CARD_W}px`, height: `${CARD_H}px` }}
@@ -191,7 +188,6 @@ export default function Home({ customer, signOut }) {
               transition: 'transform 0.6s ease',
               transform: cardFlipped ? 'rotateY(180deg)' : 'rotateY(0deg)',
             }}>
-              {/* Front */}
               <div className="rounded-2xl absolute inset-0 overflow-hidden" style={{
                 backfaceVisibility: 'hidden', WebkitBackfaceVisibility: 'hidden',
                 background: brand.primaryColor, border: `2px solid ${brand.secondaryColor}`,
@@ -232,7 +228,6 @@ export default function Home({ customer, signOut }) {
                   style={{ color: 'rgba(255,255,255,0.25)', fontSize: '8px' }}>tap to flip</div>
               </div>
 
-              {/* Back */}
               <div className="rounded-2xl absolute inset-0 overflow-hidden" style={{
                 backfaceVisibility: 'hidden', WebkitBackfaceVisibility: 'hidden',
                 transform: 'rotateY(180deg)', background: '#0f2d40',
@@ -266,7 +261,6 @@ export default function Home({ customer, signOut }) {
           </div>
         </div>
 
-        {/* Progress bar */}
         <div className="mb-2">
           <div className="flex justify-between text-xs mb-1.5" style={{ color: 'rgba(255,255,255,0.75)' }}>
             <span>{progress.toFixed(0)}% of goal</span>
@@ -285,11 +279,9 @@ export default function Home({ customer, signOut }) {
         </div>
       </div>
 
-      {/* Main content */}
       <div className="rounded-t-3xl flex-1 flex flex-col gap-4 px-5 py-5"
         style={{ background: '#f0f2f5', marginTop: '-16px' }}>
 
-        {/* Rewards strip */}
         {rewardsStrip && (
           <div className="rounded-2xl px-4 py-3"
             style={{ background: '#fff', border: '1.5px solid rgba(27,79,114,0.1)' }}>
@@ -302,11 +294,8 @@ export default function Home({ customer, signOut }) {
           </div>
         )}
 
-        {/* Action buttons + Recent activity */}
         <div className="flex gap-3">
           <div className="flex flex-col gap-3" style={{ width: '140px', flexShrink: 0 }}>
-
-            {/* Add money — locked if KYC pending */}
             <button
               onClick={() => kycPending ? navigate('/portal/kyc') : navigate('/portal/add-money')}
               className="flex flex-col items-center gap-2 py-4 rounded-2xl"
@@ -328,7 +317,6 @@ export default function Home({ customer, signOut }) {
               <span className="text-xs font-semibold text-white">Pay fees</span>
             </button>
 
-            {/* Withdraw — locked if KYC pending */}
             <button
               onClick={() => kycPending ? navigate('/portal/kyc') : navigate('/portal/withdraw')}
               className="flex flex-col items-center gap-2 py-4 rounded-2xl"
@@ -384,7 +372,6 @@ export default function Home({ customer, signOut }) {
           </div>
         </div>
 
-        {/* Card teaser */}
         <button onClick={() => navigate('/portal/card')}
           className="w-full rounded-2xl px-4 py-3 flex items-center justify-between"
           style={{ background: '#fff', border: '1.5px solid rgba(27,79,114,0.1)' }}>
@@ -402,7 +389,6 @@ export default function Home({ customer, signOut }) {
 
       </div>
 
-      {/* Bottom nav */}
       <nav className="flex items-center justify-around px-4 py-3 border-t"
         style={{ background: '#fff', borderColor: 'rgba(0,0,0,0.08)' }}>
         {[

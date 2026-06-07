@@ -1,11 +1,10 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../supabase'
-import { brand } from '../../lib/brandConfig'
+import { useBrand } from '../../lib/BrandContext'
 
 const CAMPAIGN_ID = 'b1b2c3d4-0000-0000-0000-000000000001'
 
-// Demo student lookup — will connect to business dashboard later
 const DEMO_STUDENTS = {
   'SC001': 'Aisha Nakato',
   'SC002': 'Brian Ssekandi',
@@ -20,6 +19,7 @@ const DEMO_STUDENTS = {
 }
 
 export default function Pay({ customer }) {
+  const brand = useBrand()
   const navigate = useNavigate()
   const [step, setStep] = useState(1)
   const [studentId, setStudentId] = useState('')
@@ -32,9 +32,14 @@ export default function Pay({ customer }) {
   const [loading, setLoading] = useState(true)
   const [paying, setPaying] = useState(false)
   const [error, setError] = useState('')
+  const [alreadyPaid, setAlreadyPaid] = useState(0)
 
   useEffect(() => {
     if (customer) loadData()
+  }, [customer])
+
+  useEffect(() => {
+    if (customer) loadPaid()
   }, [customer])
 
   async function loadData() {
@@ -49,6 +54,18 @@ export default function Pay({ customer }) {
       console.error(e)
     }
     setLoading(false)
+  }
+
+  async function loadPaid() {
+    const { data } = await supabase
+      .from('transactions')
+      .select('amount')
+      .eq('customer_id', customer.id)
+      .eq('type', 'payment')
+    if (data) {
+      const total = data.reduce((sum, t) => sum + Number(t.amount), 0)
+      setAlreadyPaid(total)
+    }
   }
 
   function formatUGX(n) {
@@ -69,25 +86,6 @@ export default function Pay({ customer }) {
 
   const balance = wallet ? Number(wallet.balance) : 0
   const target = campaign ? Number(campaign.target_amount) : 1500000
-
-  // Calculate how much has already been paid toward this campaign
-  const [alreadyPaid, setAlreadyPaid] = useState(0)
-  useEffect(() => {
-    if (customer) loadPaid()
-  }, [customer])
-
-  async function loadPaid() {
-    const { data } = await supabase
-      .from('transactions')
-      .select('amount')
-      .eq('customer_id', customer.id)
-      .eq('type', 'payment')
-    if (data) {
-      const total = data.reduce((sum, t) => sum + Number(t.amount), 0)
-      setAlreadyPaid(total)
-    }
-  }
-
   const remaining = Math.max(target - alreadyPaid, 0)
   const maxPayable = Math.min(remaining, balance)
   const parsedAmount = parseInt(amount.replace(/,/g, ''), 10)
@@ -99,24 +97,16 @@ export default function Pay({ customer }) {
     setStudentIdError('')
     setStudentIdValid(false)
     setStudentName('')
-
     if (upper.length >= 3) {
       const found = DEMO_STUDENTS[upper]
-      if (found) {
-        setStudentName(found)
-        setStudentIdValid(true)
-      }
+      if (found) { setStudentName(found); setStudentIdValid(true) }
     }
   }
 
   function handleStudentIdBlur() {
     if (!studentId) return
     const found = DEMO_STUDENTS[studentId.toUpperCase()]
-    if (!found) {
-      setStudentIdError('Student ID not found. Please check and try again.')
-      setStudentIdValid(false)
-      setStudentName('')
-    }
+    if (!found) { setStudentIdError('Student ID not found. Please check and try again.'); setStudentIdValid(false); setStudentName('') }
   }
 
   async function handlePay() {
@@ -135,13 +125,8 @@ export default function Pay({ customer }) {
       const w = wallets[0]
       const newBalance = Number(w.balance) - parsedAmount
 
-      if (newBalance < 0) {
-        setError('Insufficient balance.')
-        setPaying(false)
-        return
-      }
+      if (newBalance < 0) { setError('Insufficient balance.'); setPaying(false); return }
 
-      // Insert payment transaction
       const { data: txnData, error: txnError } = await supabase
         .from('transactions')
         .insert({
@@ -162,7 +147,6 @@ export default function Pay({ customer }) {
         return
       }
 
-      // Insert fee record — charged to business at 1%
       const txnId = txnData?.[0]?.id
       if (txnId) {
         const partnaFee = Math.round(parsedAmount * 0.01)
@@ -179,11 +163,8 @@ export default function Pay({ customer }) {
         })
       }
 
-      // Deduct from balance
       const { error: balanceError } = await supabase
-        .from('wallets')
-        .update({ balance: newBalance })
-        .eq('id', w.id)
+        .from('wallets').update({ balance: newBalance }).eq('id', w.id)
 
       if (balanceError) {
         console.error('Balance error:', balanceError)
@@ -210,12 +191,8 @@ export default function Pay({ customer }) {
   return (
     <div className="min-h-screen flex flex-col" style={{ background: '#f0f2f5' }}>
 
-      {/* Header */}
       <header className="flex items-center px-4 py-3 gap-3" style={{ background: brand.primaryColor }}>
-        <button
-          onClick={() => step === 1 ? navigate('/portal/home') : setStep(step - 1)}
-          className="text-white text-xl"
-        >
+        <button onClick={() => step === 1 ? navigate('/portal/home') : setStep(step - 1)} className="text-white text-xl">
           &#8592;
         </button>
         <div className="flex items-center gap-2">
@@ -224,7 +201,6 @@ export default function Pay({ customer }) {
         </div>
       </header>
 
-      {/* Step indicator */}
       {step < 4 && (
         <div className="px-5 pt-5 pb-8 text-center" style={{ background: brand.primaryColor }}>
           <div className="flex items-center justify-center gap-2 mb-3">
@@ -233,11 +209,7 @@ export default function Pay({ customer }) {
                 style={{
                   width: s === step ? '24px' : '8px',
                   height: '8px',
-                  background: s === step
-                    ? brand.secondaryColor
-                    : s < step
-                    ? 'rgba(212,175,55,0.5)'
-                    : 'rgba(255,255,255,0.25)',
+                  background: s === step ? brand.secondaryColor : s < step ? 'rgba(212,175,55,0.5)' : 'rgba(255,255,255,0.25)',
                 }} />
             ))}
           </div>
@@ -254,31 +226,21 @@ export default function Pay({ customer }) {
         </div>
       )}
 
-      {/* Step 4 success header */}
       {step === 4 && (
         <div className="px-5 pt-8 pb-10 text-center" style={{ background: brand.primaryColor }}>
           <div className="text-4xl mb-3">✅</div>
           <div className="text-white text-xl font-bold mb-1">Payment Successful</div>
-          <div className="text-xs" style={{ color: 'rgba(255,255,255,0.65)' }}>
-            Fees have been paid successfully
-          </div>
+          <div className="text-xs" style={{ color: 'rgba(255,255,255,0.65)' }}>Fees have been paid successfully</div>
         </div>
       )}
 
-      {/* Content */}
-      <div
-        className="rounded-t-3xl flex-1 flex flex-col px-5 py-6 gap-4"
-        style={{ background: '#f0f2f5', marginTop: '-16px' }}
-      >
+      <div className="rounded-t-3xl flex-1 flex flex-col px-5 py-6 gap-4"
+        style={{ background: '#f0f2f5', marginTop: '-16px' }}>
 
-        {/* ── STEP 1: Student Details ── */}
         {step === 1 && (
           <>
-            {/* Campaign info */}
             <div className="rounded-2xl p-4" style={{ background: '#fff' }}>
-              <div className="text-xs font-bold mb-3" style={{ color: 'rgba(0,0,0,0.35)' }}>
-                CAMPAIGN
-              </div>
+              <div className="text-xs font-bold mb-3" style={{ color: 'rgba(0,0,0,0.35)' }}>CAMPAIGN</div>
               {[
                 { label: 'Campaign', value: campaign?.name || 'Term 3 Fees 2026' },
                 { label: 'Target amount', value: formatUGX(target) },
@@ -296,58 +258,35 @@ export default function Pay({ customer }) {
               ))}
             </div>
 
-            {/* Student ID */}
             <div className="flex flex-col gap-1">
-              <label className="text-xs font-semibold" style={{ color: brand.primaryColor }}>
-                Student ID
-              </label>
+              <label className="text-xs font-semibold" style={{ color: brand.primaryColor }}>Student ID</label>
               <div className="relative">
-                <input
-                  type="text"
-                  placeholder="e.g. SC001"
-                  value={studentId}
+                <input type="text" placeholder="e.g. SC001" value={studentId}
                   onChange={e => handleStudentIdChange(e.target.value)}
                   onBlur={handleStudentIdBlur}
                   className="w-full px-4 py-3 rounded-xl text-sm outline-none uppercase"
                   style={{
                     background: '#fff',
-                    border: studentIdValid
-                      ? `1.5px solid #16A34A`
-                      : studentIdError
-                      ? `1.5px solid #DC2626`
-                      : '1.5px solid rgba(27,79,114,0.15)',
+                    border: studentIdValid ? '1.5px solid #16A34A' : studentIdError ? '1.5px solid #DC2626' : '1.5px solid rgba(27,79,114,0.15)',
                     color: '#333',
-                  }}
-                />
+                  }} />
                 {studentIdValid && (
                   <span className="absolute right-4 top-1/2 -translate-y-1/2 text-green-600 font-bold">✓</span>
                 )}
               </div>
-              {studentIdError && (
-                <div className="text-xs" style={{ color: '#DC2626' }}>{studentIdError}</div>
-              )}
+              {studentIdError && <div className="text-xs" style={{ color: '#DC2626' }}>{studentIdError}</div>}
             </div>
 
-            {/* Student name — autofilled */}
             <div className="flex flex-col gap-1">
-              <label className="text-xs font-semibold" style={{ color: brand.primaryColor }}>
-                Student name
-              </label>
-              <input
-                type="text"
-                placeholder="Auto-filled from Student ID"
-                value={studentName}
-                readOnly
+              <label className="text-xs font-semibold" style={{ color: brand.primaryColor }}>Student name</label>
+              <input type="text" placeholder="Auto-filled from Student ID" value={studentName} readOnly
                 className="w-full px-4 py-3 rounded-xl text-sm outline-none"
                 style={{
                   background: studentName ? 'rgba(22,163,74,0.05)' : '#f8f8f8',
-                  border: studentName
-                    ? '1.5px solid #16A34A'
-                    : '1.5px solid rgba(27,79,114,0.1)',
+                  border: studentName ? '1.5px solid #16A34A' : '1.5px solid rgba(27,79,114,0.1)',
                   color: studentName ? '#16A34A' : 'rgba(0,0,0,0.3)',
                   fontWeight: studentName ? 600 : 400,
-                }}
-              />
+                }} />
               {!studentName && (
                 <div className="text-xs" style={{ color: 'rgba(0,0,0,0.35)' }}>
                   Enter a valid Student ID to auto-fill the student name
@@ -356,33 +295,17 @@ export default function Pay({ customer }) {
             </div>
 
             <button
-              onClick={() => {
-                if (!studentIdValid) {
-                  setStudentIdError('Please enter a valid Student ID to continue.')
-                  return
-                }
-                setStep(2)
-              }}
+              onClick={() => { if (!studentIdValid) { setStudentIdError('Please enter a valid Student ID to continue.'); return } setStep(2) }}
               className="w-full py-3 rounded-xl text-sm font-bold mt-2"
-              style={{
-                background: studentIdValid ? brand.primaryColor : 'rgba(27,79,114,0.3)',
-                color: '#fff',
-              }}
-            >
+              style={{ background: studentIdValid ? brand.primaryColor : 'rgba(27,79,114,0.3)', color: '#fff' }}>
               Continue
             </button>
-
-            {/* Demo hint */}
-            <div className="text-center text-xs" style={{ color: 'rgba(0,0,0,0.3)' }}>
-              Demo: try SC001 — SC010
-            </div>
+            <div className="text-center text-xs" style={{ color: 'rgba(0,0,0,0.3)' }}>Demo: try SC001 — SC010</div>
           </>
         )}
 
-        {/* ── STEP 2: Amount ── */}
         {step === 2 && (
           <>
-            {/* Balance available */}
             <div className="rounded-2xl p-4" style={{ background: '#fff' }}>
               <div className="flex justify-between items-center">
                 <div>
@@ -396,81 +319,51 @@ export default function Pay({ customer }) {
               </div>
             </div>
 
-            {/* Amount input */}
             <div className="flex flex-col gap-1">
               <div className="flex items-center justify-between">
-                <label className="text-xs font-semibold" style={{ color: brand.primaryColor }}>
-                  Amount to pay (UGX)
-                </label>
-                <button
-                  onClick={() => setAmount(formatAmountInput(String(maxPayable)))}
+                <label className="text-xs font-semibold" style={{ color: brand.primaryColor }}>Amount to pay (UGX)</label>
+                <button onClick={() => setAmount(formatAmountInput(String(maxPayable)))}
                   className="text-xs font-semibold px-3 py-1 rounded-lg"
-                  style={{ background: brand.secondaryColor, color: brand.primaryColor }}
-                >
+                  style={{ background: brand.secondaryColor, color: brand.primaryColor }}>
                   Pay in full
                 </button>
               </div>
               <div className="relative">
                 <span className="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-semibold"
-                  style={{ color: 'rgba(0,0,0,0.35)' }}>
-                  UGX
-                </span>
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  placeholder="0"
-                  value={amount}
+                  style={{ color: 'rgba(0,0,0,0.35)' }}>UGX</span>
+                <input type="text" inputMode="numeric" placeholder="0" value={amount}
                   onChange={e => setAmount(formatAmountInput(e.target.value))}
                   className="w-full pl-14 pr-4 py-4 rounded-xl text-xl font-bold outline-none"
-                  style={{
-                    background: '#fff',
-                    border: '1.5px solid rgba(27,79,114,0.15)',
-                    color: brand.primaryColor,
-                  }}
-                />
+                  style={{ background: '#fff', border: '1.5px solid rgba(27,79,114,0.15)', color: brand.primaryColor }} />
               </div>
               <div className="text-xs mt-1" style={{ color: 'rgba(0,0,0,0.4)' }}>
                 Maximum payable: {formatUGX(maxPayable)}
               </div>
             </div>
 
-            {error && (
-              <div className="text-xs px-4 py-3 rounded-xl" style={{ background: '#FEE2E2', color: '#991B1B' }}>
-                {error}
-              </div>
-            )}
+            {error && <div className="text-xs px-4 py-3 rounded-xl" style={{ background: '#FEE2E2', color: '#991B1B' }}>{error}</div>}
 
             <button
               onClick={() => {
                 if (!validAmount) {
-                  if (isNaN(parsedAmount) || parsedAmount < 1000) {
-                    setError('Minimum payment is UGX 1,000.')
-                  } else if (parsedAmount > maxPayable) {
-                    setError('Amount exceeds your available balance or remaining fees.')
-                  }
+                  if (isNaN(parsedAmount) || parsedAmount < 1000) setError('Minimum payment is UGX 1,000.')
+                  else if (parsedAmount > maxPayable) setError('Amount exceeds your available balance or remaining fees.')
                   return
                 }
                 setError('')
                 setStep(3)
               }}
               className="w-full py-3 rounded-xl text-sm font-bold mt-2"
-              style={{
-                background: validAmount ? brand.primaryColor : 'rgba(27,79,114,0.3)',
-                color: '#fff',
-              }}
-            >
+              style={{ background: validAmount ? brand.primaryColor : 'rgba(27,79,114,0.3)', color: '#fff' }}>
               Continue
             </button>
           </>
         )}
 
-        {/* ── STEP 3: Confirm ── */}
         {step === 3 && (
           <>
             <div className="rounded-2xl p-4" style={{ background: '#fff' }}>
-              <div className="text-xs font-bold mb-3" style={{ color: 'rgba(0,0,0,0.35)' }}>
-                PAYMENT SUMMARY
-              </div>
+              <div className="text-xs font-bold mb-3" style={{ color: 'rgba(0,0,0,0.35)' }}>PAYMENT SUMMARY</div>
               {[
                 { label: 'Campaign', value: campaign?.name || 'Term 3 Fees 2026' },
                 { label: 'Student', value: studentName },
@@ -488,33 +381,20 @@ export default function Pay({ customer }) {
               ))}
             </div>
 
-            {error && (
-              <div className="text-xs px-4 py-3 rounded-xl" style={{ background: '#FEE2E2', color: '#991B1B' }}>
-                {error}
-              </div>
-            )}
+            {error && <div className="text-xs px-4 py-3 rounded-xl" style={{ background: '#FEE2E2', color: '#991B1B' }}>{error}</div>}
 
-            <button
-              onClick={handlePay}
-              disabled={paying}
+            <button onClick={handlePay} disabled={paying}
               className="w-full py-3 rounded-xl text-sm font-bold"
-              style={{
-                background: paying ? 'rgba(27,79,114,0.3)' : brand.primaryColor,
-                color: '#fff',
-              }}
-            >
+              style={{ background: paying ? 'rgba(27,79,114,0.3)' : brand.primaryColor, color: '#fff' }}>
               {paying ? 'Processing...' : `Confirm Payment of ${formatUGX(parsedAmount)}`}
             </button>
           </>
         )}
 
-        {/* ── STEP 4: Success ── */}
         {step === 4 && (
           <>
             <div className="rounded-2xl p-4" style={{ background: '#fff' }}>
-              <div className="text-xs font-bold mb-3" style={{ color: 'rgba(0,0,0,0.35)' }}>
-                TRANSACTION DETAILS
-              </div>
+              <div className="text-xs font-bold mb-3" style={{ color: 'rgba(0,0,0,0.35)' }}>TRANSACTION DETAILS</div>
               {[
                 { label: 'Campaign', value: campaign?.name || 'Term 3 Fees 2026' },
                 { label: 'Student', value: studentName },
@@ -534,23 +414,15 @@ export default function Pay({ customer }) {
               ))}
             </div>
 
-            <button
-              onClick={() => navigate('/portal/home')}
+            <button onClick={() => navigate('/portal/home')}
               className="w-full py-3 rounded-xl text-sm font-bold"
-              style={{ background: brand.primaryColor, color: '#fff' }}
-            >
+              style={{ background: brand.primaryColor, color: '#fff' }}>
               Back to Home
             </button>
 
-            <button
-              onClick={() => navigate('/portal/transactions')}
+            <button onClick={() => navigate('/portal/transactions')}
               className="w-full py-3 rounded-xl text-sm font-semibold"
-              style={{
-                background: 'transparent',
-                color: brand.primaryColor,
-                border: '1.5px solid rgba(27,79,114,0.2)'
-              }}
-            >
+              style={{ background: 'transparent', color: brand.primaryColor, border: '1.5px solid rgba(27,79,114,0.2)' }}>
               View transactions
             </button>
           </>

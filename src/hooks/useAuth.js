@@ -3,6 +3,7 @@ import { supabase } from '../supabase'
 
 export function useAuth() {
   const [customer, setCustomer] = useState(null)
+  const [business, setBusiness] = useState(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -20,6 +21,7 @@ export function useAuth() {
           fetchCustomer(session.user.id)
         } else {
           setCustomer(null)
+          setBusiness(null)
           setLoading(false)
         }
       }
@@ -39,17 +41,33 @@ export function useAuth() {
       return
     }
 
-    setCustomer(customerData[0])
+    const c = customerData[0]
+    setCustomer(c)
+
+    // Fetch business branding
+    if (c.business_id) {
+      const { data: businessData } = await supabase
+        .from('businesses')
+        .select('*')
+        .eq('id', c.business_id)
+
+      if (businessData && businessData.length > 0) {
+        setBusiness(businessData[0])
+      }
+    }
+
     setLoading(false)
   }
 
   async function signOut() {
     await supabase.auth.signOut()
     setCustomer(null)
+    setBusiness(null)
   }
 
   return {
     customer,
+    business,
     loading,
     signOut,
     refetch: () => customer && fetchCustomer(customer.auth_user_id)

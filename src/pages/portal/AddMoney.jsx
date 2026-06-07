@@ -1,9 +1,10 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../supabase'
-import { brand } from '../../lib/brandConfig'
+import { useBrand } from '../../lib/BrandContext'
 
 export default function AddMoney({ customer }) {
+  const brand = useBrand()
   const navigate = useNavigate()
   const [step, setStep] = useState(1)
   const [amount, setAmount] = useState('')
@@ -39,7 +40,6 @@ export default function AddMoney({ customer }) {
     }
     setLoading(true)
     try {
-      // Get wallet
       const { data: wallets, error: walletError } = await supabase
         .from('wallets').select('*').eq('customer_id', customer.id)
 
@@ -52,7 +52,6 @@ export default function AddMoney({ customer }) {
       const wallet = wallets[0]
       const newBalance = Number(wallet.balance) + parsedAmount
 
-      // Insert transaction
       const { error: txnError } = await supabase
         .from('transactions')
         .insert({
@@ -61,6 +60,7 @@ export default function AddMoney({ customer }) {
           type: 'deposit',
           amount: parsedAmount,
           status: 'completed',
+          network: network,
         })
 
       if (txnError) {
@@ -70,7 +70,6 @@ export default function AddMoney({ customer }) {
         return
       }
 
-      // Update balance
       const { error: balanceError } = await supabase
         .from('wallets')
         .update({ balance: newBalance })
@@ -94,12 +93,10 @@ export default function AddMoney({ customer }) {
   return (
     <div className="min-h-screen flex flex-col" style={{ background: '#f0f2f5' }}>
 
-      {/* Header */}
       <header className="flex items-center px-4 py-3 gap-3" style={{ background: brand.primaryColor }}>
         <button
           onClick={() => step === 1 ? navigate('/portal/home') : setStep(step - 1)}
-          className="text-white text-xl"
-        >
+          className="text-white text-xl">
           &#8592;
         </button>
         <div className="flex items-center gap-2">
@@ -108,7 +105,6 @@ export default function AddMoney({ customer }) {
         </div>
       </header>
 
-      {/* Step indicator */}
       {step < 3 && (
         <div className="px-5 pt-5 pb-8 text-center" style={{ background: brand.primaryColor }}>
           <div className="flex items-center justify-center gap-2 mb-3">
@@ -117,11 +113,7 @@ export default function AddMoney({ customer }) {
                 style={{
                   width: s === step ? '24px' : '8px',
                   height: '8px',
-                  background: s === step
-                    ? brand.secondaryColor
-                    : s < step
-                    ? 'rgba(212,175,55,0.5)'
-                    : 'rgba(255,255,255,0.25)',
+                  background: s === step ? brand.secondaryColor : s < step ? 'rgba(212,175,55,0.5)' : 'rgba(255,255,255,0.25)',
                 }} />
             ))}
           </div>
@@ -136,82 +128,48 @@ export default function AddMoney({ customer }) {
         </div>
       )}
 
-      {/* Step 3 success header */}
       {step === 3 && (
         <div className="px-5 pt-8 pb-10 text-center" style={{ background: brand.primaryColor }}>
           <div className="text-4xl mb-3">✅</div>
           <div className="text-white text-xl font-bold mb-1">Payment Received</div>
-          <div className="text-xs" style={{ color: 'rgba(255,255,255,0.65)' }}>
-            Your balance has been updated
-          </div>
+          <div className="text-xs" style={{ color: 'rgba(255,255,255,0.65)' }}>Your balance has been updated</div>
         </div>
       )}
 
-      {/* Content */}
-      <div
-        className="rounded-t-3xl flex-1 flex flex-col px-5 py-6 gap-4"
-        style={{ background: '#f0f2f5', marginTop: '-16px' }}
-      >
+      <div className="rounded-t-3xl flex-1 flex flex-col px-5 py-6 gap-4"
+        style={{ background: '#f0f2f5', marginTop: '-16px' }}>
 
-        {/* ── STEP 1: Amount ── */}
         {step === 1 && (
           <>
             <div className="flex flex-col gap-1">
-              <label className="text-xs font-semibold" style={{ color: brand.primaryColor }}>
-                Amount (UGX)
-              </label>
+              <label className="text-xs font-semibold" style={{ color: brand.primaryColor }}>Amount (UGX)</label>
               <div className="relative">
-                <span
-                  className="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-semibold"
-                  style={{ color: 'rgba(0,0,0,0.35)' }}
-                >
-                  UGX
-                </span>
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  placeholder="0"
-                  value={amount}
+                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-semibold"
+                  style={{ color: 'rgba(0,0,0,0.35)' }}>UGX</span>
+                <input type="text" inputMode="numeric" placeholder="0" value={amount}
                   onChange={e => setAmount(formatAmountInput(e.target.value))}
                   className="w-full pl-14 pr-4 py-4 rounded-xl text-xl font-bold outline-none"
-                  style={{
-                    background: '#fff',
-                    border: '1.5px solid rgba(27,79,114,0.15)',
-                    color: brand.primaryColor,
-                  }}
-                />
+                  style={{ background: '#fff', border: '1.5px solid rgba(27,79,114,0.15)', color: brand.primaryColor }} />
               </div>
-              <div className="text-xs mt-1" style={{ color: 'rgba(0,0,0,0.4)' }}>
-                Minimum deposit: UGX 1,000
-              </div>
+              <div className="text-xs mt-1" style={{ color: 'rgba(0,0,0,0.4)' }}>Minimum deposit: UGX 1,000</div>
             </div>
-
             {error && (
-              <div className="text-xs px-4 py-3 rounded-xl" style={{ background: '#FEE2E2', color: '#991B1B' }}>
-                {error}
-              </div>
+              <div className="text-xs px-4 py-3 rounded-xl" style={{ background: '#FEE2E2', color: '#991B1B' }}>{error}</div>
             )}
-
             <button
               onClick={() => {
                 if (validAmount) { setError(''); setStep(2) }
                 else setError('Please enter a valid amount of at least UGX 1,000.')
               }}
               className="w-full py-3 rounded-xl text-sm font-bold mt-2"
-              style={{
-                background: validAmount ? brand.primaryColor : 'rgba(27,79,114,0.3)',
-                color: '#fff',
-              }}
-            >
+              style={{ background: validAmount ? brand.primaryColor : 'rgba(27,79,114,0.3)', color: '#fff' }}>
               Continue
             </button>
           </>
         )}
 
-        {/* ── STEP 2: Mobile Money ── */}
         {step === 2 && (
           <>
-            {/* Network selector */}
             <div>
               <label className="text-xs font-semibold mb-2 block" style={{ color: brand.primaryColor }}>
                 Select network
@@ -221,65 +179,37 @@ export default function AddMoney({ customer }) {
                   { id: 'mtn', logo: '/mtn-logo.svg', label: 'MTN MoMo' },
                   { id: 'airtel', logo: '/airtel-logo.svg', label: 'Airtel Money' },
                 ].map(net => (
-                  <button
-                    key={net.id}
-                    onClick={() => setNetwork(net.id)}
+                  <button key={net.id} onClick={() => setNetwork(net.id)}
                     className="flex-1 rounded-2xl p-3 flex flex-col items-center gap-2"
                     style={{
                       background: '#fff',
-                      border: network === net.id
-                        ? `2px solid ${brand.secondaryColor}`
-                        : '2px solid rgba(0,0,0,0.06)',
-                    }}
-                  >
-                    <img
-                      src={net.logo}
-                      alt={net.label}
-                      className="w-12 h-12 object-contain rounded-xl"
-                    />
-                    <span className="text-xs font-semibold" style={{ color: brand.primaryColor }}>
-                      {net.label}
-                    </span>
+                      border: network === net.id ? `2px solid ${brand.secondaryColor}` : '2px solid rgba(0,0,0,0.06)',
+                    }}>
+                    <img src={net.logo} alt={net.label} className="w-12 h-12 object-contain rounded-xl" />
+                    <span className="text-xs font-semibold" style={{ color: brand.primaryColor }}>{net.label}</span>
                   </button>
                 ))}
               </div>
             </div>
 
-            {/* Phone number */}
             <div className="flex flex-col gap-1">
-              <label className="text-xs font-semibold" style={{ color: brand.primaryColor }}>
-                Mobile money number
-              </label>
-              <input
-                type="tel"
-                placeholder="+256 7XX XXX XXX"
-                value={momoPhone}
+              <label className="text-xs font-semibold" style={{ color: brand.primaryColor }}>Mobile money number</label>
+              <input type="tel" placeholder="+256 7XX XXX XXX" value={momoPhone}
                 onChange={e => setMomoPhone(e.target.value)}
                 className="w-full px-4 py-3 rounded-xl text-sm outline-none"
-                style={{
-                  background: '#fff',
-                  border: '1.5px solid rgba(27,79,114,0.15)',
-                  color: '#333',
-                }}
-              />
+                style={{ background: '#fff', border: '1.5px solid rgba(27,79,114,0.15)', color: '#333' }} />
             </div>
 
-            {/* Summary */}
             <div className="rounded-2xl p-4" style={{ background: '#fff' }}>
-              <div className="text-xs font-bold mb-3" style={{ color: 'rgba(0,0,0,0.35)' }}>
-                PAYMENT SUMMARY
-              </div>
+              <div className="text-xs font-bold mb-3" style={{ color: 'rgba(0,0,0,0.35)' }}>PAYMENT SUMMARY</div>
               {[
                 { label: 'Amount', value: formatUGX(parsedAmount) },
                 { label: 'Network', value: network === 'mtn' ? 'MTN MoMo' : 'Airtel Money' },
                 { label: 'Number', value: momoPhone || '—' },
                 { label: 'Date & time', value: nowDisplay() },
               ].map((row, i) => (
-                <div
-                  key={i}
-                  className="flex justify-between items-center py-1.5"
-                  style={{ borderBottom: i < 3 ? '1px solid rgba(0,0,0,0.05)' : 'none' }}
-                >
+                <div key={i} className="flex justify-between items-center py-1.5"
+                  style={{ borderBottom: i < 3 ? '1px solid rgba(0,0,0,0.05)' : 'none' }}>
                   <span className="text-xs" style={{ color: 'rgba(0,0,0,0.4)' }}>{row.label}</span>
                   <span className="text-xs font-semibold" style={{ color: brand.primaryColor }}>{row.value}</span>
                 </div>
@@ -287,32 +217,21 @@ export default function AddMoney({ customer }) {
             </div>
 
             {error && (
-              <div className="text-xs px-4 py-3 rounded-xl" style={{ background: '#FEE2E2', color: '#991B1B' }}>
-                {error}
-              </div>
+              <div className="text-xs px-4 py-3 rounded-xl" style={{ background: '#FEE2E2', color: '#991B1B' }}>{error}</div>
             )}
 
-            <button
-              onClick={handlePay}
-              disabled={loading}
+            <button onClick={handlePay} disabled={loading}
               className="w-full py-3 rounded-xl text-sm font-bold"
-              style={{
-                background: loading ? 'rgba(27,79,114,0.3)' : brand.primaryColor,
-                color: '#fff',
-              }}
-            >
+              style={{ background: loading ? 'rgba(27,79,114,0.3)' : brand.primaryColor, color: '#fff' }}>
               {loading ? 'Processing...' : `Pay ${formatUGX(parsedAmount)}`}
             </button>
           </>
         )}
 
-        {/* ── STEP 3: Success ── */}
         {step === 3 && (
           <>
             <div className="rounded-2xl p-4" style={{ background: '#fff' }}>
-              <div className="text-xs font-bold mb-3" style={{ color: 'rgba(0,0,0,0.35)' }}>
-                TRANSACTION DETAILS
-              </div>
+              <div className="text-xs font-bold mb-3" style={{ color: 'rgba(0,0,0,0.35)' }}>TRANSACTION DETAILS</div>
               {[
                 { label: 'Amount deposited', value: formatUGX(parsedAmount) },
                 { label: 'Network', value: network === 'mtn' ? 'MTN MoMo' : 'Airtel Money' },
@@ -320,39 +239,26 @@ export default function AddMoney({ customer }) {
                 { label: 'Status', value: '✓ Completed' },
                 { label: 'Date & time', value: nowDisplay() },
               ].map((row, i, arr) => (
-                <div
-                  key={i}
-                  className="flex justify-between items-center py-1.5"
-                  style={{ borderBottom: i < arr.length - 1 ? '1px solid rgba(0,0,0,0.05)' : 'none' }}
-                >
+                <div key={i} className="flex justify-between items-center py-1.5"
+                  style={{ borderBottom: i < arr.length - 1 ? '1px solid rgba(0,0,0,0.05)' : 'none' }}>
                   <span className="text-xs" style={{ color: 'rgba(0,0,0,0.4)' }}>{row.label}</span>
-                  <span
-                    className="text-xs font-semibold"
-                    style={{ color: row.label === 'Status' ? '#16A34A' : brand.primaryColor }}
-                  >
+                  <span className="text-xs font-semibold"
+                    style={{ color: row.label === 'Status' ? '#16A34A' : brand.primaryColor }}>
                     {row.value}
                   </span>
                 </div>
               ))}
             </div>
 
-            <button
-              onClick={() => navigate('/portal/home')}
+            <button onClick={() => navigate('/portal/home')}
               className="w-full py-3 rounded-xl text-sm font-bold"
-              style={{ background: brand.primaryColor, color: '#fff' }}
-            >
+              style={{ background: brand.primaryColor, color: '#fff' }}>
               Back to Home
             </button>
 
-            <button
-              onClick={() => navigate('/portal/transactions')}
+            <button onClick={() => navigate('/portal/transactions')}
               className="w-full py-3 rounded-xl text-sm font-semibold"
-              style={{
-                background: 'transparent',
-                color: brand.primaryColor,
-                border: '1.5px solid rgba(27,79,114,0.2)'
-              }}
-            >
+              style={{ background: 'transparent', color: brand.primaryColor, border: '1.5px solid rgba(27,79,114,0.2)' }}>
               View transactions
             </button>
           </>

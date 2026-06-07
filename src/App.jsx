@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { useAuth } from './hooks/useAuth'
+import { BrandContext, buildBrand } from './lib/BrandContext'
 
 import Landing from './pages/portal/Landing'
 import Register from './pages/portal/Register'
@@ -26,84 +27,87 @@ function PortalGuard({ customer, loading, children }) {
 }
 
 function App() {
-  const { customer, loading, signOut } = useAuth()
+  const { customer, business, loading, signOut } = useAuth()
+  const brand = buildBrand(business)
 
   return (
-    <BrowserRouter>
-      <Routes>
-        <Route path="/" element={<Navigate to="/portal" replace />} />
+    <BrandContext.Provider value={brand}>
+      <BrowserRouter>
+        <Routes>
+          <Route path="/" element={<Navigate to="/portal" replace />} />
 
-        <Route path="/portal" element={<Landing />} />
-        <Route path="/portal/register" element={<Register />} />
-        <Route path="/portal/login" element={<Login />} />
+          <Route path="/portal" element={<Landing />} />
+          <Route path="/portal/register" element={<Register />} />
+          <Route path="/portal/login" element={<Login />} />
 
-        <Route path="/portal/kyc" element={
-          <PortalGuard customer={customer} loading={loading}>
-            <KYC customer={customer} />
-          </PortalGuard>
-        } />
+          <Route path="/portal/kyc" element={
+            <PortalGuard customer={customer} loading={loading}>
+              <KYC customer={customer} />
+            </PortalGuard>
+          } />
 
-        <Route path="/portal/payment-source" element={
-          <PortalGuard customer={customer} loading={loading}>
-            <PaymentSource customer={customer} />
-          </PortalGuard>
-        } />
+          <Route path="/portal/payment-source" element={
+            <PortalGuard customer={customer} loading={loading}>
+              <PaymentSource customer={customer} />
+            </PortalGuard>
+          } />
 
-        <Route path="/portal/home" element={
-          <PortalGuard customer={customer} loading={loading}>
-            <Home customer={customer} signOut={signOut} />
-          </PortalGuard>
-        } />
+          <Route path="/portal/home" element={
+            <PortalGuard customer={customer} loading={loading}>
+              <Home customer={customer} signOut={signOut} />
+            </PortalGuard>
+          } />
 
-        <Route path="/portal/card" element={
-          <PortalGuard customer={customer} loading={loading}>
-            <CardDetail customer={customer} />
-          </PortalGuard>
-        } />
+          <Route path="/portal/card" element={
+            <PortalGuard customer={customer} loading={loading}>
+              <CardDetail customer={customer} />
+            </PortalGuard>
+          } />
 
-        <Route path="/portal/rewards" element={
-          <PortalGuard customer={customer} loading={loading}>
-            <Rewards customer={customer} />
-          </PortalGuard>
-        } />
+          <Route path="/portal/rewards" element={
+            <PortalGuard customer={customer} loading={loading}>
+              <Rewards customer={customer} />
+            </PortalGuard>
+          } />
 
-        <Route path="/portal/transactions" element={
-          <PortalGuard customer={customer} loading={loading}>
-            <Transactions customer={customer} />
-          </PortalGuard>
-        } />
+          <Route path="/portal/transactions" element={
+            <PortalGuard customer={customer} loading={loading}>
+              <Transactions customer={customer} />
+            </PortalGuard>
+          } />
 
-        <Route path="/portal/profile" element={
-          <PortalGuard customer={customer} loading={loading}>
-            <Profile customer={customer} signOut={signOut} />
-          </PortalGuard>
-        } />
+          <Route path="/portal/profile" element={
+            <PortalGuard customer={customer} loading={loading}>
+              <Profile customer={customer} signOut={signOut} />
+            </PortalGuard>
+          } />
 
-        <Route path="/portal/add-money" element={
-          <PortalGuard customer={customer} loading={loading}>
-            <AddMoney customer={customer} />
-          </PortalGuard>
-        } />
+          <Route path="/portal/add-money" element={
+            <PortalGuard customer={customer} loading={loading}>
+              <AddMoney customer={customer} />
+            </PortalGuard>
+          } />
 
-        <Route path="/portal/pay" element={
-          <PortalGuard customer={customer} loading={loading}>
-            <Pay customer={customer} />
-          </PortalGuard>
-        } />
+          <Route path="/portal/pay" element={
+            <PortalGuard customer={customer} loading={loading}>
+              <Pay customer={customer} />
+            </PortalGuard>
+          } />
 
-        <Route path="/portal/withdraw" element={
-          <PortalGuard customer={customer} loading={loading}>
-            <Withdraw customer={customer} />
-          </PortalGuard>
-        } />
+          <Route path="/portal/withdraw" element={
+            <PortalGuard customer={customer} loading={loading}>
+              <Withdraw customer={customer} />
+            </PortalGuard>
+          } />
 
-        <Route path="/dashboard/*" element={
-          <div className="p-8 text-2xl font-bold text-[#1B4F72]">
-            Business Dashboard — coming soon
-          </div>
-        } />
-      </Routes>
-    </BrowserRouter>
+          <Route path="/dashboard/*" element={
+            <div className="p-8 text-2xl font-bold text-[#1B4F72]">
+              Business Dashboard — coming soon
+            </div>
+          } />
+        </Routes>
+      </BrowserRouter>
+    </BrandContext.Provider>
   )
 }
 
