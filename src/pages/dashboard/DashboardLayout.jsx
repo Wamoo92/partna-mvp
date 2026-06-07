@@ -30,28 +30,26 @@ export default function DashboardLayout({ admin, business, signOut, children }) 
 
       {/* Sidebar */}
       <aside className="flex flex-col flex-shrink-0 transition-all"
-        style={{
-          width: sidebarOpen ? '240px' : '64px',
-          background: PARTNA_PRIMARY,
-          minHeight: '100vh',
-        }}>
+        style={{ width: sidebarOpen ? '240px' : '64px', background: PARTNA_PRIMARY, minHeight: '100vh' }}>
 
         {/* Logo + toggle */}
         <div className="flex items-center justify-between px-4 py-5"
           style={{ borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
           {sidebarOpen && (
             <div className="flex items-center gap-2">
-              <img src="/partna-icon.svg" alt="Partna" className="w-7 h-7"
-                style={{ filter: 'brightness(0) invert(1)' }} />
+              <img src="/partna-icon.svg" alt="Partna" className="w-8 h-8 flex-shrink-0" />
               <div>
                 <div className="text-white text-sm font-bold">Partna</div>
                 <div className="text-xs" style={{ color: 'rgba(255,255,255,0.5)' }}>Business</div>
               </div>
             </div>
           )}
+          {!sidebarOpen && (
+            <img src="/partna-icon.svg" alt="Partna" className="w-8 h-8 mx-auto" />
+          )}
           <button onClick={() => setSidebarOpen(!sidebarOpen)}
-            className="w-8 h-8 rounded-lg flex items-center justify-center text-white text-sm"
-            style={{ background: 'rgba(255,255,255,0.1)' }}>
+            className="w-8 h-8 rounded-lg flex items-center justify-center text-white text-sm flex-shrink-0"
+            style={{ background: 'rgba(255,255,255,0.1)', marginLeft: sidebarOpen ? '0' : 'auto' }}>
             {sidebarOpen ? '←' : '→'}
           </button>
         </div>
@@ -61,13 +59,19 @@ export default function DashboardLayout({ admin, business, signOut, children }) 
           <div className="px-4 py-3 mx-3 mt-3 rounded-xl"
             style={{ background: 'rgba(255,255,255,0.08)' }}>
             <div className="flex items-center gap-2">
-              <img src={business.logo_url || '/partna-icon.svg'} alt=""
-                className="w-8 h-8 rounded-lg object-contain flex-shrink-0"
-                style={{ background: 'rgba(255,255,255,0.1)' }} />
+              {business.logo_url && business.logo_url !== '/partna-icon.svg' ? (
+                <img src={business.logo_url} alt=""
+                  className="w-8 h-8 rounded-lg object-contain flex-shrink-0"
+                  style={{ background: 'rgba(255,255,255,0.15)' }} />
+              ) : (
+                <div className="w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold flex-shrink-0"
+                  style={{ background: 'rgba(255,255,255,0.2)', color: '#fff' }}>
+                  {business.name?.[0]?.toUpperCase() || 'B'}
+                </div>
+              )}
               <div className="overflow-hidden">
                 <div className="text-white text-xs font-semibold truncate">{business.name}</div>
-                <div className="text-xs truncate capitalize"
-                  style={{ color: 'rgba(255,255,255,0.5)' }}>
+                <div className="text-xs truncate capitalize" style={{ color: 'rgba(255,255,255,0.5)' }}>
                   {business.subscription_package || 'starter'} plan
                 </div>
               </div>
@@ -90,8 +94,7 @@ export default function DashboardLayout({ admin, business, signOut, children }) 
             const active = location.pathname === item.path ||
               (item.path !== '/dashboard/overview' && location.pathname.startsWith(item.path))
             return (
-              <button key={item.path}
-                onClick={() => navigate(item.path)}
+              <button key={item.path} onClick={() => navigate(item.path)}
                 className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition-all"
                 style={{
                   background: active ? 'rgba(255,255,255,0.15)' : 'transparent',
@@ -119,8 +122,7 @@ export default function DashboardLayout({ admin, business, signOut, children }) 
               </div>
               <div className="overflow-hidden">
                 <div className="text-white text-xs font-semibold truncate">{admin?.full_name}</div>
-                <div className="text-xs truncate capitalize"
-                  style={{ color: 'rgba(255,255,255,0.5)' }}>
+                <div className="text-xs truncate capitalize" style={{ color: 'rgba(255,255,255,0.5)' }}>
                   {admin?.role}
                 </div>
               </div>
@@ -131,8 +133,7 @@ export default function DashboardLayout({ admin, business, signOut, children }) 
               {initials(admin?.full_name)}
             </div>
           )}
-          <button
-            onClick={() => { signOut(); navigate('/dashboard/login') }}
+          <button onClick={() => { signOut(); navigate('/dashboard/login') }}
             className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold"
             style={{ background: 'rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.7)' }}>
             <span>↩</span>
@@ -158,7 +159,6 @@ export default function DashboardLayout({ admin, business, signOut, children }) 
               {business?.name} · {new Date().toLocaleDateString('en-UG', { day: 'numeric', month: 'long', year: 'numeric' })}
             </div>
           </div>
-
           <div className="flex items-center gap-3">
             {kybPending && (
               <button onClick={() => navigate('/dashboard/settings')}
@@ -181,9 +181,7 @@ export default function DashboardLayout({ admin, business, signOut, children }) 
               style={{ background: 'rgba(217,119,6,0.08)', border: '1px solid rgba(217,119,6,0.2)' }}>
               <span className="text-lg">🔒</span>
               <div className="flex-1">
-                <div className="text-xs font-bold" style={{ color: '#D97706' }}>
-                  Platform features are locked
-                </div>
+                <div className="text-xs font-bold" style={{ color: '#D97706' }}>Platform features are locked</div>
                 <div className="text-xs" style={{ color: 'rgba(0,0,0,0.5)' }}>
                   Complete your KYB verification to unlock all features.
                 </div>
