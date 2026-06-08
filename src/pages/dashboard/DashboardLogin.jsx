@@ -87,7 +87,7 @@ export default function DashboardLogin() {
           <div className="text-center mb-8">
             <div className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4"
               style={{ background: PARTNA_PRIMARY }}>
-              <img src="/partna-icon.svg" alt="Partna" className="w-10 h-10" style={{ filter: 'brightness(0) invert(1)' }} />
+              <img src="/partna-icon.svg" alt="Partna" className="w-10 h-10" />
             </div>
             <h1 className="text-2xl font-bold mb-1" style={{ color: PARTNA_PRIMARY }}>
               Welcome back

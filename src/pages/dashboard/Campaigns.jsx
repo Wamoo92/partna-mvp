@@ -24,13 +24,13 @@ export default function Campaigns({ admin, business }) {
   const [targetAmount, setTargetAmount] = useState('')
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
-  const [minDeposit, setMinDeposit] = useState('')
 
-  // Step 3
+  // Step 3 — payment schedule
   const [enableSchedule, setEnableSchedule] = useState(false)
-  const [installments, setInstallments] = useState([])
+  const [scheduleType, setScheduleType] = useState('flexible') // 'flexible' | 'fixed'
+  const [fixedPct, setFixedPct] = useState(25) // 25 or 50
 
-  // Step 4 — simplified checkboxes only
+  // Step 4
   const [enableVouchers, setEnableVouchers] = useState(false)
   const [enablePrize, setEnablePrize] = useState(false)
 
@@ -62,32 +62,9 @@ export default function Campaigns({ admin, business }) {
     return parseInt(targetAmount.replace(/,/g, ''), 10) || 0
   }
 
-  function autoSuggestInstallments() {
-    if (!startDate || !endDate || !targetAmount) return
-    const start = new Date(startDate)
-    const end = new Date(endDate)
-    const months = Math.max(1, Math.round((end - start) / (1000 * 60 * 60 * 24 * 30)))
-    const target = parsedTarget()
-    const amountPerInstallment = Math.round(target / months)
-    const suggested = []
-    for (let i = 0; i < months; i++) {
-      const dueDate = new Date(start)
-      dueDate.setMonth(dueDate.getMonth() + i + 1)
-      suggested.push({
-        installment_number: i + 1,
-        installment_name: `Installment ${i + 1}`,
-        due_date: dueDate.toISOString().split('T')[0],
-        amount: amountPerInstallment,
-        percentage_of_target: Math.round((amountPerInstallment / target) * 100),
-      })
-    }
-    setInstallments(suggested)
-  }
-
-  function updateInstallment(i, field, value) {
-    const updated = [...installments]
-    updated[i] = { ...updated[i], [field]: value }
-    setInstallments(updated)
+  // Minimum payment for fixed schedule
+  function fixedMinDeposit() {
+    return Math.round(parsedTarget() * (fixedPct / 100))
   }
 
   function validateStep(step) {
@@ -103,9 +80,6 @@ export default function Campaigns({ admin, business }) {
 
   function nextStep() {
     if (!validateStep(wizardStep)) return
-    if (wizardStep === 2 && enableSchedule && installments.length === 0) {
-      autoSuggestInstallments()
-    }
     setWizardStep(s => s + 1)
   }
 
@@ -113,6 +87,11 @@ export default function Campaigns({ admin, business }) {
     setError('')
     setSaving(true)
     try {
+      // Compute minimum deposit based on schedule type
+      const minDeposit = enableSchedule && scheduleType === 'fixed'
+        ? fixedMinDeposit()
+        : 0
+
       const { data: campaignData, error: campaignError } = await supabase
         .from('campaigns')
         .insert({
@@ -121,28 +100,16 @@ export default function Campaigns({ admin, business }) {
           description: description || null,
           target_amount: parsedTarget(),
           target_date: new Date(endDate).toISOString(),
-          minimum_deposit: minDeposit ? parseInt(minDeposit.replace(/,/g, ''), 10) : 0,
+          minimum_deposit: minDeposit,
           allow_partial_payments: enableSchedule,
-          minimum_payment: installments[0]?.amount || 0,
+          // Store schedule type in notes field for now
+          minimum_payment: minDeposit,
+          payment_discount_percentage: enableSchedule && scheduleType === 'fixed' ? fixedPct : 0,
           status: 'active',
         })
         .select().single()
 
       if (campaignError) throw campaignError
-
-      if (enableSchedule && installments.length > 0) {
-        await supabase.from('payment_schedules').insert(
-          installments.map(inst => ({
-            campaign_id: campaignData.id,
-            business_id: business.id,
-            installment_number: inst.installment_number,
-            installment_name: inst.installment_name,
-            due_date: new Date(inst.due_date).toISOString(),
-            amount: inst.amount,
-            percentage_of_target: inst.percentage_of_target,
-          }))
-        )
-      }
 
       await loadCampaigns()
       setShowWizard(false)
@@ -157,14 +124,54 @@ export default function Campaigns({ admin, business }) {
   function resetWizard() {
     setWizardStep(0)
     setName(''); setDescription(''); setTargetAmount('')
-    setStartDate(''); setEndDate(''); setMinDeposit('')
-    setEnableSchedule(false); setInstallments([])
+    setStartDate(''); setEndDate('')
+    setEnableSchedule(false); setScheduleType('flexible'); setFixedPct(25)
     setEnableVouchers(false); setEnablePrize(false)
     setError('')
   }
 
   function daysLeft(campaign) {
     return Math.max(Math.ceil((new Date(campaign.target_date).getTime() - Date.now()) / 86400000), 0)
+  }
+
+  // Toggle switch component
+  function Toggle({ checked, onChange }) {
+    return (
+      <button
+        onClick={() => onChange(!checked)}
+        className="relative flex-shrink-0"
+        style={{ width: '44px', height: '24px' }}>
+        <div className="absolute inset-0 rounded-full transition-all"
+          style={{ background: checked ? PARTNA_PRIMARY : 'rgba(0,0,0,0.15)' }} />
+        <div className="absolute top-1 rounded-full transition-all"
+          style={{
+            width: '16px', height: '16px', background: '#fff',
+            left: checked ? '24px' : '4px',
+            boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+            transition: 'left 0.2s ease',
+          }} />
+      </button>
+    )
+  }
+
+  // Sub-toggle for Flexible / Fixed
+  function ScheduleTypeToggle() {
+    return (
+      <div className="flex rounded-xl overflow-hidden border"
+        style={{ borderColor: 'rgba(27,79,114,0.2)', display: 'inline-flex' }}>
+        {['flexible', 'fixed'].map(type => (
+          <button key={type} onClick={() => setScheduleType(type)}
+            className="px-4 py-2 text-xs font-semibold capitalize"
+            style={{
+              background: scheduleType === type ? PARTNA_PRIMARY : '#fff',
+              color: scheduleType === type ? '#fff' : 'rgba(0,0,0,0.5)',
+              borderRight: type === 'flexible' ? '1px solid rgba(27,79,114,0.2)' : 'none',
+            }}>
+            {type}
+          </button>
+        ))}
+      </div>
+    )
   }
 
   return (
@@ -201,39 +208,46 @@ export default function Campaigns({ admin, business }) {
         </div>
       ) : (
         <div className="grid grid-cols-2 gap-4">
-          {campaigns.map(c => (
-            <div key={c.id} className="rounded-2xl p-5" style={{ background: '#fff' }}>
-              <div className="flex items-start justify-between mb-3">
-                <div>
-                  <div className="text-sm font-bold" style={{ color: PARTNA_PRIMARY }}>{c.name}</div>
-                  {c.description && (
-                    <div className="text-xs mt-0.5" style={{ color: 'rgba(0,0,0,0.4)' }}>{c.description}</div>
-                  )}
+          {campaigns.map(c => {
+            const scheduleLabel = !c.allow_partial_payments
+              ? 'Disabled'
+              : c.payment_discount_percentage > 0
+              ? `Fixed — ${c.payment_discount_percentage}% minimum`
+              : 'Flexible'
+            return (
+              <div key={c.id} className="rounded-2xl p-5" style={{ background: '#fff' }}>
+                <div className="flex items-start justify-between mb-3">
+                  <div>
+                    <div className="text-sm font-bold" style={{ color: PARTNA_PRIMARY }}>{c.name}</div>
+                    {c.description && (
+                      <div className="text-xs mt-0.5" style={{ color: 'rgba(0,0,0,0.4)' }}>{c.description}</div>
+                    )}
+                  </div>
+                  <span className="text-xs font-semibold px-2 py-0.5 rounded-full"
+                    style={{ background: c.status === 'active' ? 'rgba(22,163,74,0.1)' : 'rgba(0,0,0,0.06)', color: c.status === 'active' ? '#16A34A' : 'rgba(0,0,0,0.4)' }}>
+                    {c.status}
+                  </span>
                 </div>
-                <span className="text-xs font-semibold px-2 py-0.5 rounded-full"
-                  style={{ background: c.status === 'active' ? 'rgba(22,163,74,0.1)' : 'rgba(0,0,0,0.06)', color: c.status === 'active' ? '#16A34A' : 'rgba(0,0,0,0.4)' }}>
-                  {c.status}
-                </span>
+                {[
+                  { label: 'Target', value: formatUGX(c.target_amount) },
+                  { label: 'Deadline', value: new Date(c.target_date).toLocaleDateString('en-UG', { day: 'numeric', month: 'long', year: 'numeric' }) },
+                  { label: 'Days remaining', value: daysLeft(c) + ' days' },
+                  { label: 'Payment schedule', value: scheduleLabel },
+                  { label: 'Min. payment', value: c.minimum_deposit > 0 ? formatUGX(c.minimum_deposit) : 'None' },
+                ].map((row, i, arr) => (
+                  <div key={i} className="flex justify-between items-center py-1.5"
+                    style={{ borderBottom: i < arr.length - 1 ? '1px solid rgba(0,0,0,0.05)' : 'none' }}>
+                    <span className="text-xs" style={{ color: 'rgba(0,0,0,0.4)' }}>{row.label}</span>
+                    <span className="text-xs font-semibold" style={{ color: PARTNA_PRIMARY }}>{row.value}</span>
+                  </div>
+                ))}
               </div>
-              {[
-                { label: 'Target', value: formatUGX(c.target_amount) },
-                { label: 'Deadline', value: new Date(c.target_date).toLocaleDateString('en-UG', { day: 'numeric', month: 'long', year: 'numeric' }) },
-                { label: 'Days remaining', value: daysLeft(c) + ' days' },
-                { label: 'Min deposit', value: c.minimum_deposit ? formatUGX(c.minimum_deposit) : 'None' },
-                { label: 'Payment schedule', value: c.allow_partial_payments ? 'Enabled' : 'Disabled' },
-              ].map((row, i, arr) => (
-                <div key={i} className="flex justify-between items-center py-1.5"
-                  style={{ borderBottom: i < arr.length - 1 ? '1px solid rgba(0,0,0,0.05)' : 'none' }}>
-                  <span className="text-xs" style={{ color: 'rgba(0,0,0,0.4)' }}>{row.label}</span>
-                  <span className="text-xs font-semibold" style={{ color: PARTNA_PRIMARY }}>{row.value}</span>
-                </div>
-              ))}
-            </div>
-          ))}
+            )
+          })}
         </div>
       )}
 
-      {/* Campaign Wizard Modal */}
+      {/* ── WIZARD MODAL ── */}
       {showWizard && (
         <div className="fixed inset-0 z-50 flex items-center justify-center"
           style={{ background: 'rgba(0,0,0,0.5)' }}>
@@ -320,107 +334,152 @@ export default function Campaigns({ admin, business }) {
                         style={{ background: '#fff', border: '1.5px solid rgba(27,79,114,0.15)', color: '#333' }} />
                     </div>
                   </div>
-                  <div className="flex flex-col gap-1">
-                    <label className="text-xs font-semibold" style={{ color: PARTNA_PRIMARY }}>
-                      Minimum deposit per transaction <span style={{ color: 'rgba(0,0,0,0.35)' }}>(optional)</span>
-                    </label>
-                    <div className="relative">
-                      <span className="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-semibold"
-                        style={{ color: 'rgba(0,0,0,0.35)' }}>UGX</span>
-                      <input type="text" inputMode="numeric" value={minDeposit}
-                        onChange={e => setMinDeposit(formatAmountInput(e.target.value))}
-                        className="w-full pl-14 pr-4 py-3 rounded-xl text-sm outline-none"
-                        style={{ background: '#fff', border: '1.5px solid rgba(27,79,114,0.15)', color: '#333' }} />
-                    </div>
-                  </div>
                 </>
               )}
 
               {/* Step 2: Payment schedule */}
               {wizardStep === 2 && (
                 <>
-                  <label className="flex items-center gap-3 cursor-pointer rounded-xl px-4 py-3"
-                    style={{ background: '#fff' }}>
-                    <input type="checkbox" checked={enableSchedule}
-                      onChange={e => setEnableSchedule(e.target.checked)} className="w-4 h-4" />
-                    <div>
-                      <div className="text-sm font-semibold" style={{ color: PARTNA_PRIMARY }}>Enable payment installments</div>
-                      <div className="text-xs" style={{ color: 'rgba(0,0,0,0.4)' }}>
-                        Set milestone payment dates for customers
+                  {/* Enable toggle */}
+                  <div className="rounded-2xl p-4" style={{ background: '#fff' }}>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <div className="text-sm font-semibold" style={{ color: PARTNA_PRIMARY }}>
+                          Enable payment installments
+                        </div>
+                        <div className="text-xs mt-0.5" style={{ color: 'rgba(0,0,0,0.4)' }}>
+                          Allow customers to make partial payments toward their target
+                        </div>
                       </div>
+                      <button
+                        onClick={() => setEnableSchedule(v => !v)}
+                        className="relative flex-shrink-0 ml-4"
+                        style={{ width: '44px', height: '24px' }}>
+                        <div className="absolute inset-0 rounded-full transition-all"
+                          style={{ background: enableSchedule ? PARTNA_PRIMARY : 'rgba(0,0,0,0.15)' }} />
+                        <div className="absolute top-1 rounded-full"
+                          style={{
+                            width: '16px', height: '16px', background: '#fff',
+                            left: enableSchedule ? '24px' : '4px',
+                            transition: 'left 0.2s ease',
+                            boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+                          }} />
+                      </button>
                     </div>
-                  </label>
+                  </div>
 
+                  {/* Schedule type — only shown when enabled */}
                   {enableSchedule && (
                     <>
-                      <button onClick={autoSuggestInstallments}
-                        className="text-xs font-semibold px-4 py-2 rounded-lg self-start"
-                        style={{ background: 'rgba(27,79,114,0.08)', color: PARTNA_PRIMARY }}>
-                        ✨ Auto-suggest installments
-                      </button>
+                      <div className="rounded-2xl p-4" style={{ background: '#fff' }}>
+                        <div className="text-xs font-bold mb-3" style={{ color: 'rgba(0,0,0,0.35)' }}>
+                          PAYMENT TYPE
+                        </div>
 
-                      {installments.length > 0 && (
-                        <div className="rounded-2xl overflow-hidden" style={{ background: '#fff' }}>
-                          <div className="px-4 py-2 text-xs font-bold"
-                            style={{ color: 'rgba(0,0,0,0.35)', borderBottom: '1px solid rgba(0,0,0,0.06)' }}>
-                            INSTALLMENT SCHEDULE
-                          </div>
-                          {installments.map((inst, i) => (
-                            <div key={i} className="grid gap-3 px-4 py-3 items-center"
+                        {/* Flexible / Fixed toggle */}
+                        <div className="flex rounded-xl overflow-hidden mb-4"
+                          style={{ border: `1.5px solid rgba(27,79,114,0.2)`, display: 'inline-flex' }}>
+                          {['flexible', 'fixed'].map(type => (
+                            <button key={type} onClick={() => setScheduleType(type)}
+                              className="px-5 py-2.5 text-sm font-semibold capitalize"
                               style={{
-                                gridTemplateColumns: '1fr 1fr 1fr auto',
-                                borderBottom: i < installments.length - 1 ? '1px solid rgba(0,0,0,0.05)' : 'none'
+                                background: scheduleType === type ? PARTNA_PRIMARY : '#fff',
+                                color: scheduleType === type ? '#fff' : 'rgba(0,0,0,0.5)',
+                                borderRight: type === 'flexible' ? '1px solid rgba(27,79,114,0.2)' : 'none',
                               }}>
-                              <input type="text" value={inst.installment_name}
-                                onChange={e => updateInstallment(i, 'installment_name', e.target.value)}
-                                className="px-3 py-1.5 rounded-lg text-xs outline-none"
-                                style={{ background: '#f0f2f5', border: 'none', color: '#333' }} />
-                              <input type="date" value={inst.due_date}
-                                onChange={e => updateInstallment(i, 'due_date', e.target.value)}
-                                className="px-3 py-1.5 rounded-lg text-xs outline-none"
-                                style={{ background: '#f0f2f5', border: 'none', color: '#333' }} />
-                              <input type="text" value={inst.amount.toLocaleString()}
-                                onChange={e => updateInstallment(i, 'amount', parseInt(e.target.value.replace(/,/g, ''), 10) || 0)}
-                                className="px-3 py-1.5 rounded-lg text-xs outline-none"
-                                style={{ background: '#f0f2f5', border: 'none', color: '#333' }} />
-                              <button onClick={() => setInstallments(installments.filter((_, j) => j !== i))}
-                                className="text-xs" style={{ color: '#DC2626' }}>✕</button>
-                            </div>
+                              {type}
+                            </button>
                           ))}
                         </div>
-                      )}
+
+                        {/* Explanation */}
+                        {scheduleType === 'flexible' && (
+                          <div className="px-4 py-3 rounded-xl text-xs"
+                            style={{ background: 'rgba(27,79,114,0.06)', color: PARTNA_PRIMARY }}>
+                            <strong>Flexible:</strong> Customers can deposit any amount at any time toward their target. There is no minimum payment per transaction beyond the campaign minimum deposit (if set).
+                          </div>
+                        )}
+
+                        {scheduleType === 'fixed' && (
+                          <div className="flex flex-col gap-3">
+                            <div className="px-4 py-3 rounded-xl text-xs"
+                              style={{ background: 'rgba(27,79,114,0.06)', color: PARTNA_PRIMARY }}>
+                              <strong>Fixed:</strong> Each payment must be a set percentage of the target amount. Customers cannot pay less than this minimum per transaction.
+                            </div>
+
+                            <div className="flex flex-col gap-1">
+                              <label className="text-xs font-semibold" style={{ color: PARTNA_PRIMARY }}>
+                                Minimum payment per transaction
+                              </label>
+                              <div className="flex gap-3">
+                                {[25, 50].map(pct => (
+                                  <button key={pct} onClick={() => setFixedPct(pct)}
+                                    className="flex-1 py-3 rounded-xl text-sm font-bold flex flex-col items-center gap-1"
+                                    style={{
+                                      background: fixedPct === pct ? 'rgba(27,79,114,0.06)' : '#f8f9fa',
+                                      border: fixedPct === pct ? `2px solid ${PARTNA_PRIMARY}` : '2px solid rgba(0,0,0,0.06)',
+                                      color: PARTNA_PRIMARY,
+                                    }}>
+                                    <span className="text-xl font-black">{pct}%</span>
+                                    <span className="text-xs font-normal" style={{ color: 'rgba(0,0,0,0.4)' }}>
+                                      of target per payment
+                                    </span>
+                                    {parsedTarget() > 0 && (
+                                      <span className="text-xs font-semibold" style={{ color: fixedPct === pct ? PARTNA_PRIMARY : 'rgba(0,0,0,0.3)' }}>
+                                        = {formatUGX(Math.round(parsedTarget() * pct / 100))}
+                                      </span>
+                                    )}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                      </div>
                     </>
                   )}
                 </>
               )}
 
-              {/* Step 3: Vouchers & prizes — checkboxes only */}
+              {/* Step 3: Vouchers & prizes */}
               {wizardStep === 3 && (
                 <>
                   <div className="rounded-2xl p-4" style={{ background: '#fff' }}>
-                    <label className="flex items-center gap-3 cursor-pointer">
-                      <input type="checkbox" checked={enableVouchers}
-                        onChange={e => setEnableVouchers(e.target.checked)} className="w-4 h-4" />
+                    <div className="flex items-center justify-between">
                       <div>
                         <div className="text-sm font-semibold" style={{ color: PARTNA_PRIMARY }}>Enable vouchers</div>
                         <div className="text-xs mt-0.5" style={{ color: 'rgba(0,0,0,0.4)' }}>
-                          You can add and manage vouchers for this campaign from the Vouchers & Prizes section after launch.
+                          Add and manage vouchers from Vouchers & Prizes after launch.
                         </div>
                       </div>
-                    </label>
+                      <button onClick={() => setEnableVouchers(v => !v)}
+                        className="relative flex-shrink-0 ml-4"
+                        style={{ width: '44px', height: '24px' }}>
+                        <div className="absolute inset-0 rounded-full transition-all"
+                          style={{ background: enableVouchers ? PARTNA_PRIMARY : 'rgba(0,0,0,0.15)' }} />
+                        <div className="absolute top-1 rounded-full"
+                          style={{ width: '16px', height: '16px', background: '#fff', left: enableVouchers ? '24px' : '4px', transition: 'left 0.2s ease', boxShadow: '0 1px 3px rgba(0,0,0,0.2)' }} />
+                      </button>
+                    </div>
                   </div>
 
                   <div className="rounded-2xl p-4" style={{ background: '#fff' }}>
-                    <label className="flex items-center gap-3 cursor-pointer">
-                      <input type="checkbox" checked={enablePrize}
-                        onChange={e => setEnablePrize(e.target.checked)} className="w-4 h-4" />
+                    <div className="flex items-center justify-between">
                       <div>
                         <div className="text-sm font-semibold" style={{ color: PARTNA_PRIMARY }}>Enable prize draw</div>
                         <div className="text-xs mt-0.5" style={{ color: 'rgba(0,0,0,0.4)' }}>
-                          You can set up and manage prize draws for this campaign from the Vouchers & Prizes section after launch.
+                          Set up prize draws from Vouchers & Prizes after launch.
                         </div>
                       </div>
-                    </label>
+                      <button onClick={() => setEnablePrize(v => !v)}
+                        className="relative flex-shrink-0 ml-4"
+                        style={{ width: '44px', height: '24px' }}>
+                        <div className="absolute inset-0 rounded-full transition-all"
+                          style={{ background: enablePrize ? PARTNA_PRIMARY : 'rgba(0,0,0,0.15)' }} />
+                        <div className="absolute top-1 rounded-full"
+                          style={{ width: '16px', height: '16px', background: '#fff', left: enablePrize ? '24px' : '4px', transition: 'left 0.2s ease', boxShadow: '0 1px 3px rgba(0,0,0,0.2)' }} />
+                      </button>
+                    </div>
                   </div>
                 </>
               )}
@@ -435,8 +494,7 @@ export default function Campaigns({ admin, business }) {
                       { label: 'Target', value: formatUGX(parsedTarget()) },
                       { label: 'Start date', value: startDate },
                       { label: 'Deadline', value: endDate },
-                      { label: 'Min deposit', value: minDeposit ? formatUGX(parseInt(minDeposit.replace(/,/g, ''), 10)) : 'None' },
-                      { label: 'Payment schedule', value: enableSchedule ? `${installments.length} installments` : 'Disabled' },
+                      { label: 'Payment schedule', value: !enableSchedule ? 'Disabled' : scheduleType === 'flexible' ? 'Flexible' : `Fixed — ${fixedPct}% per payment (${formatUGX(fixedMinDeposit())})` },
                       { label: 'Vouchers', value: enableVouchers ? 'Enabled' : 'Disabled' },
                       { label: 'Prize draw', value: enablePrize ? 'Enabled' : 'Disabled' },
                     ].map((row, i, arr) => (

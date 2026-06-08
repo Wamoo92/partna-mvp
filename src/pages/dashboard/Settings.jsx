@@ -4,8 +4,6 @@ import { supabase } from '../../supabase'
 const PARTNA_PRIMARY = '#1B4F72'
 const PARTNA_GOLD = '#D4AF37'
 
-const SECTORS = ['Education', 'Retail', 'Healthcare', 'Hospitality', 'Other']
-
 const REG_TYPES = [
   { value: 'sole_proprietor', label: 'Sole Proprietorship' },
   { value: 'partnership', label: 'Partnership' },
@@ -43,6 +41,14 @@ const PACKAGES = [
   { id: 'enterprise', name: 'Enterprise', monthly: 399, annual: 3830, features: ['Unlimited campaigns', 'Unlimited customers', 'All vouchers', 'All prize types incl. cash'] },
 ]
 
+const ADDRESS_LABELS = [
+  'Address line 1 (Street)',
+  'Address line 2 (Area / Village)',
+  'City / Town',
+  'Postal code',
+  'P.O. Box',
+]
+
 function FileUploadField({ label, businessId, docSlug }) {
   const [file, setFile] = useState(null)
   const [uploading, setUploading] = useState(false)
@@ -73,12 +79,11 @@ function FileUploadField({ label, businessId, docSlug }) {
     setUploading(false)
   }
 
-  async function handleRemove() {
+  function handleRemove() {
     setFile(null)
     setUploaded(false)
     setUploadedName('')
     setError('')
-    // Optionally delete from storage - skip for now
   }
 
   return (
@@ -121,12 +126,7 @@ export default function Settings({ admin, business }) {
   const [success, setSuccess] = useState('')
   const [error, setError] = useState('')
 
-  // Business profile
-  const [bizName, setBizName] = useState(business?.name || '')
-  const [sector, setSector] = useState(business?.sector || '')
-  const [address, setAddress] = useState(business?.address || '')
-  const [bizPhone, setBizPhone] = useState(business?.phone || '')
-  const [website, setWebsite] = useState(business?.website || '')
+  // Branding only (profile info is read-only)
   const [primaryColor, setPrimaryColor] = useState(business?.primary_color || '#1B4F72')
   const [secondaryColor, setSecondaryColor] = useState(business?.secondary_color || '#D4AF37')
   const [logoPreview, setLogoPreview] = useState(business?.logo_url || null)
@@ -194,18 +194,19 @@ export default function Settings({ admin, business }) {
     reader.readAsDataURL(file)
   }
 
-  async function saveProfile() {
+  // Only save branding — business info is read-only
+  async function saveBranding() {
     setSaving(true)
     try {
       const { error: err } = await supabase.from('businesses').update({
-        name: bizName, sector, address, phone: bizPhone,
-        website: website || null, primary_color: primaryColor,
-        secondary_color: secondaryColor, logo_url: logoPreview || business?.logo_url,
+        primary_color: primaryColor,
+        secondary_color: secondaryColor,
+        logo_url: logoPreview || business?.logo_url,
       }).eq('id', business.id)
       if (err) throw err
-      flash('Business profile updated.')
+      flash('Branding updated.')
     } catch (e) {
-      flash('Could not save profile. Please try again.', true)
+      flash('Could not save branding. Please try again.', true)
     }
     setSaving(false)
   }
@@ -230,9 +231,7 @@ export default function Settings({ admin, business }) {
         auth_user_id: null,
       })
       setShowInvite(false)
-      setInviteName('')
-      setInviteEmail('')
-      setInviteRole('admin')
+      setInviteName(''); setInviteEmail(''); setInviteRole('admin')
       await loadAdmins()
       flash('Admin invited. They must register at /dashboard/register using this email.')
     } catch (e) {
@@ -269,20 +268,13 @@ export default function Settings({ admin, business }) {
   }
 
   async function handleCancelSubscription() {
-    if (cancelConfirmText !== 'CANCEL') {
-      flash('Please type CANCEL to confirm.', true); return
-    }
+    if (cancelConfirmText !== 'CANCEL') { flash('Please type CANCEL to confirm.', true); return }
     setCancelling(true)
     try {
-      await supabase.from('business_subscriptions')
-        .update({ status: 'cancelled' })
-        .eq('id', subscription.id)
-      await supabase.from('businesses')
-        .update({ subscription_package: null })
-        .eq('id', business.id)
+      await supabase.from('business_subscriptions').update({ status: 'cancelled' }).eq('id', subscription.id)
+      await supabase.from('businesses').update({ subscription_package: null }).eq('id', business.id)
       setShowCancelModal(false)
-      setCancelReason('')
-      setCancelConfirmText('')
+      setCancelReason(''); setCancelConfirmText('')
       flash('Subscription cancelled. You will retain access until the end of your current billing period.')
       await loadSubscription()
     } catch (e) {
@@ -292,6 +284,9 @@ export default function Settings({ admin, business }) {
   }
 
   const kybReadOnly = business?.kyb_status === 'verified' || business?.kyb_status === 'pending'
+
+  // Parse address back into parts
+  const addressParts = (business?.address || '').split(', ').filter(Boolean)
 
   const TABS = [
     { id: 'profile', label: '🏢 Business Profile' },
@@ -304,7 +299,7 @@ export default function Settings({ admin, business }) {
   return (
     <div className="flex gap-6">
 
-      {/* Cancel subscription modal */}
+      {/* ── CANCEL SUBSCRIPTION MODAL ── */}
       {showCancelModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center"
           style={{ background: 'rgba(0,0,0,0.5)' }}>
@@ -314,13 +309,11 @@ export default function Settings({ admin, business }) {
               <button onClick={() => setShowCancelModal(false)}
                 className="text-lg" style={{ color: 'rgba(0,0,0,0.3)' }}>✕</button>
             </div>
-
             <div className="px-4 py-3 rounded-xl mb-4 text-xs"
               style={{ background: '#FEF2F2', border: '1px solid #FECACA', color: '#991B1B' }}>
-              ⚠ Cancelling will immediately end your subscription at the close of your current billing period.
-              All campaigns will be paused and customers will lose access to new features. This cannot be undone.
+              ⚠ Cancelling will end your subscription at the close of your current billing period.
+              All campaigns will be paused and customers will lose access to new features.
             </div>
-
             <div className="flex flex-col gap-3 mb-4">
               <div className="flex flex-col gap-1">
                 <label className="text-xs font-semibold" style={{ color: PARTNA_PRIMARY }}>
@@ -338,7 +331,6 @@ export default function Settings({ admin, business }) {
                   <option value="other">Other</option>
                 </select>
               </div>
-
               <div className="flex flex-col gap-1">
                 <label className="text-xs font-semibold" style={{ color: PARTNA_PRIMARY }}>
                   Type <strong>CANCEL</strong> to confirm
@@ -350,19 +342,16 @@ export default function Settings({ admin, business }) {
                   style={{ background: '#f0f2f5', border: 'none', color: '#333' }} />
               </div>
             </div>
-
             <div className="flex gap-3">
               <button onClick={() => { setShowCancelModal(false); setCancelConfirmText('') }}
                 className="flex-1 py-2.5 rounded-xl text-sm font-semibold"
                 style={{ background: '#f0f2f5', color: PARTNA_PRIMARY }}>
                 Keep subscription
               </button>
-              <button onClick={handleCancelSubscription} disabled={cancelling || cancelConfirmText !== 'CANCEL'}
+              <button onClick={handleCancelSubscription}
+                disabled={cancelling || cancelConfirmText !== 'CANCEL'}
                 className="flex-1 py-2.5 rounded-xl text-sm font-bold"
-                style={{
-                  background: cancelConfirmText === 'CANCEL' ? '#DC2626' : 'rgba(220,38,38,0.3)',
-                  color: '#fff'
-                }}>
+                style={{ background: cancelConfirmText === 'CANCEL' ? '#DC2626' : 'rgba(220,38,38,0.3)', color: '#fff' }}>
                 {cancelling ? 'Cancelling...' : 'Confirm cancellation'}
               </button>
             </div>
@@ -402,48 +391,64 @@ export default function Settings({ admin, business }) {
         {/* ── PROFILE TAB ── */}
         {tab === 'profile' && (
           <div className="flex flex-col gap-4">
+
+            {/* Business info — READ ONLY */}
             <div className="rounded-2xl p-6" style={{ background: '#fff' }}>
-              <div className="text-sm font-bold mb-4" style={{ color: PARTNA_PRIMARY }}>Business Information</div>
-              <div className="grid grid-cols-2 gap-4 mb-4">
-                <div className="flex flex-col gap-1">
-                  <label className="text-xs font-semibold" style={{ color: PARTNA_PRIMARY }}>Business name</label>
-                  <input type="text" value={bizName} onChange={e => setBizName(e.target.value)}
-                    className="w-full px-4 py-3 rounded-xl text-sm outline-none"
-                    style={{ background: '#f0f2f5', border: 'none', color: '#333' }} />
-                </div>
-                <div className="flex flex-col gap-1">
-                  <label className="text-xs font-semibold" style={{ color: PARTNA_PRIMARY }}>Sector</label>
-                  <select value={sector} onChange={e => setSector(e.target.value)}
-                    className="w-full px-4 py-3 rounded-xl text-sm outline-none"
-                    style={{ background: '#f0f2f5', border: 'none', color: '#333' }}>
-                    <option value="">Select sector</option>
-                    {SECTORS.map(s => <option key={s} value={s}>{s}</option>)}
-                  </select>
-                </div>
+              <div className="flex items-center justify-between mb-4">
+                <div className="text-sm font-bold" style={{ color: PARTNA_PRIMARY }}>Business Information</div>
+                <span className="text-xs px-3 py-1.5 rounded-lg font-semibold"
+                  style={{ background: 'rgba(27,79,114,0.08)', color: PARTNA_PRIMARY }}>
+                  🔒 Read only
+                </span>
               </div>
-              <div className="flex flex-col gap-1 mb-4">
-                <label className="text-xs font-semibold" style={{ color: PARTNA_PRIMARY }}>Full address</label>
-                <input type="text" value={address} onChange={e => setAddress(e.target.value)}
-                  className="w-full px-4 py-3 rounded-xl text-sm outline-none"
-                  style={{ background: '#f0f2f5', border: 'none', color: '#333' }} />
+
+              {[
+                { label: 'Business name', value: business?.name },
+                { label: 'Sector', value: business?.sector },
+                { label: 'Business phone', value: business?.phone },
+                { label: 'Website', value: business?.website || '—' },
+              ].map((row, i) => (
+                <div key={i} className="flex justify-between items-center py-2.5"
+                  style={{ borderBottom: '1px solid rgba(0,0,0,0.05)' }}>
+                  <span className="text-xs" style={{ color: 'rgba(0,0,0,0.4)' }}>{row.label}</span>
+                  <span className="text-xs font-semibold"
+                    style={{ color: row.value && row.value !== '—' ? PARTNA_PRIMARY : 'rgba(0,0,0,0.25)' }}>
+                    {row.value || '—'}
+                  </span>
+                </div>
+              ))}
+
+              {/* Address — split into individual labelled fields */}
+              <div className="pt-3 mt-1">
+                <div className="text-xs font-bold mb-2" style={{ color: 'rgba(0,0,0,0.35)' }}>
+                  BUSINESS ADDRESS
+                </div>
+                {addressParts.length === 0 ? (
+                  <div className="text-xs py-2" style={{ color: 'rgba(0,0,0,0.25)' }}>No address on file</div>
+                ) : (
+                  [...addressParts, 'Uganda'].map((part, i) => (
+                    <div key={i} className="flex justify-between items-center py-2"
+                      style={{ borderBottom: i < addressParts.length ? '1px solid rgba(0,0,0,0.05)' : 'none' }}>
+                      <span className="text-xs" style={{ color: 'rgba(0,0,0,0.4)' }}>
+                        {i < addressParts.length ? (ADDRESS_LABELS[i] || 'Other') : 'Country'}
+                      </span>
+                      <span className="text-xs font-semibold" style={{ color: PARTNA_PRIMARY }}>{part}</span>
+                    </div>
+                  ))
+                )}
               </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="flex flex-col gap-1">
-                  <label className="text-xs font-semibold" style={{ color: PARTNA_PRIMARY }}>Business phone</label>
-                  <input type="tel" value={bizPhone} onChange={e => setBizPhone(e.target.value)}
-                    className="w-full px-4 py-3 rounded-xl text-sm outline-none"
-                    style={{ background: '#f0f2f5', border: 'none', color: '#333' }} />
-                </div>
-                <div className="flex flex-col gap-1">
-                  <label className="text-xs font-semibold" style={{ color: PARTNA_PRIMARY }}>Website</label>
-                  <input type="url" value={website} onChange={e => setWebsite(e.target.value)}
-                    className="w-full px-4 py-3 rounded-xl text-sm outline-none"
-                    style={{ background: '#f0f2f5', border: 'none', color: '#333' }} />
-                </div>
+
+              <div className="mt-4 pt-3" style={{ borderTop: '1px solid rgba(0,0,0,0.06)' }}>
+                <span className="text-xs" style={{ color: 'rgba(0,0,0,0.35)' }}>
+                  To update your business information, contact{' '}
+                  <a href="mailto:support@partna.co" style={{ color: PARTNA_PRIMARY, fontWeight: 600 }}>
+                    support@partna.co
+                  </a>
+                </span>
               </div>
             </div>
 
-            {/* Branding */}
+            {/* Branding — still editable */}
             <div className="rounded-2xl p-6" style={{ background: '#fff' }}>
               <div className="text-sm font-bold mb-4" style={{ color: PARTNA_PRIMARY }}>Branding</div>
               <div className="grid grid-cols-3 gap-4 items-start mb-4">
@@ -481,13 +486,15 @@ export default function Settings({ admin, business }) {
                   <div className="text-xs" style={{ color: 'rgba(0,0,0,0.35)' }}>Accents, highlights</div>
                 </div>
               </div>
+
+              {/* Live preview */}
               <div className="rounded-xl overflow-hidden" style={{ border: '1px solid rgba(0,0,0,0.08)' }}>
                 <div className="px-4 py-3 flex items-center gap-3" style={{ background: primaryColor }}>
                   {logoPreview
                     ? <img src={logoPreview} alt="" className="w-7 h-7 object-contain" style={{ mixBlendMode: 'screen' }} />
                     : <div className="w-7 h-7 rounded-full" style={{ background: secondaryColor }} />
                   }
-                  <span className="text-white text-xs font-semibold">{bizName || 'Your Business'}</span>
+                  <span className="text-white text-xs font-semibold">{business?.name || 'Your Business'}</span>
                   <div className="ml-auto w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold"
                     style={{ background: secondaryColor, color: primaryColor }}>A</div>
                 </div>
@@ -497,10 +504,10 @@ export default function Settings({ admin, business }) {
               </div>
             </div>
 
-            <button onClick={saveProfile} disabled={saving}
+            <button onClick={saveBranding} disabled={saving}
               className="self-start px-6 py-3 rounded-xl text-sm font-bold"
               style={{ background: saving ? 'rgba(27,79,114,0.3)' : PARTNA_PRIMARY, color: '#fff' }}>
-              {saving ? 'Saving...' : 'Save changes'}
+              {saving ? 'Saving...' : 'Save branding'}
             </button>
           </div>
         )}
@@ -508,7 +515,6 @@ export default function Settings({ admin, business }) {
         {/* ── KYB TAB ── */}
         {tab === 'kyb' && (
           <div className="flex flex-col gap-4">
-            {/* Status banner */}
             <div className="px-4 py-3 rounded-xl"
               style={{
                 background: business?.kyb_status === 'verified' ? 'rgba(22,163,74,0.08)' : 'rgba(217,119,6,0.08)',
@@ -529,23 +535,22 @@ export default function Settings({ admin, business }) {
               </div>
             </div>
 
-            {/* Read-only legal details */}
+            {/* Legal details — always read only */}
             <div className="rounded-2xl p-6" style={{ background: '#fff' }}>
               <div className="flex items-center justify-between mb-4">
                 <div className="text-sm font-bold" style={{ color: PARTNA_PRIMARY }}>Legal Business Details</div>
-                {kybReadOnly && (
-                  <span className="text-xs px-2 py-1 rounded-lg font-semibold"
-                    style={{ background: 'rgba(27,79,114,0.08)', color: PARTNA_PRIMARY }}>
-                    🔒 Read only
-                  </span>
-                )}
+                <span className="text-xs px-2 py-1 rounded-lg font-semibold"
+                  style={{ background: 'rgba(27,79,114,0.08)', color: PARTNA_PRIMARY }}>
+                  🔒 Read only
+                </span>
               </div>
               <div className="text-xs mb-4" style={{ color: 'rgba(0,0,0,0.4)' }}>
-                {kybReadOnly
-                  ? 'Legal details cannot be edited after submission. Contact support@partna.co to make changes.'
-                  : 'Fill in your legal business details to begin the KYB verification process.'}
+                Legal details cannot be edited after submission. Contact{' '}
+                <a href="mailto:support@partna.co" style={{ color: PARTNA_PRIMARY, fontWeight: 600 }}>
+                  support@partna.co
+                </a>{' '}
+                to make changes.
               </div>
-
               {[
                 { label: 'Registration type', value: business?.registration_type ? REG_TYPES.find(r => r.value === business.registration_type)?.label : 'Not provided' },
                 { label: 'Legal business name', value: business?.legal_name || 'Not provided' },
@@ -563,12 +568,12 @@ export default function Settings({ admin, business }) {
               ))}
             </div>
 
-            {/* Document uploads — always active */}
+            {/* Document uploads */}
             {business?.registration_type && KYB_DOCS[business.registration_type] && (
               <div className="rounded-2xl p-6" style={{ background: '#fff' }}>
                 <div className="text-sm font-bold mb-1" style={{ color: PARTNA_PRIMARY }}>Required Documents</div>
                 <div className="text-xs mb-4" style={{ color: 'rgba(0,0,0,0.4)' }}>
-                  Upload all required documents. Accepted formats: PDF, JPEG, PNG. Max 10MB per file.
+                  Upload all required documents. Accepted: PDF, JPEG, PNG. Max 10MB per file.
                 </div>
                 {KYB_DOCS[business.registration_type].map((doc, i) => (
                   <FileUploadField
@@ -578,7 +583,6 @@ export default function Settings({ admin, business }) {
                     docSlug={doc.toLowerCase().replace(/[^a-z0-9]/g, '_').slice(0, 40)}
                   />
                 ))}
-
                 {business?.kyb_status !== 'verified' && (
                   <button
                     onClick={async () => {
@@ -733,12 +737,9 @@ export default function Settings({ admin, business }) {
                       </div>
                     </div>
                     <span className="text-xs font-semibold px-3 py-1.5 rounded-full"
-                      style={{ background: 'rgba(22,163,74,0.1)', color: '#16A34A' }}>
-                      ✓ Active
-                    </span>
+                      style={{ background: 'rgba(22,163,74,0.1)', color: '#16A34A' }}>✓ Active</span>
                   </div>
-                  <button
-                    onClick={() => setShowCancelModal(true)}
+                  <button onClick={() => setShowCancelModal(true)}
                     className="text-xs font-semibold px-4 py-2 rounded-lg"
                     style={{ background: '#FEE2E2', color: '#DC2626' }}>
                     Cancel subscription
@@ -756,16 +757,10 @@ export default function Settings({ admin, business }) {
               {['monthly', 'annual'].map(cycle => (
                 <button key={cycle} onClick={() => setBillingCycle(cycle)}
                   className="px-4 py-2 rounded-lg text-xs font-semibold capitalize"
-                  style={{
-                    background: billingCycle === cycle ? PARTNA_PRIMARY : '#fff',
-                    color: billingCycle === cycle ? '#fff' : PARTNA_PRIMARY,
-                    border: `1.5px solid ${PARTNA_PRIMARY}`,
-                  }}>
+                  style={{ background: billingCycle === cycle ? PARTNA_PRIMARY : '#fff', color: billingCycle === cycle ? '#fff' : PARTNA_PRIMARY, border: `1.5px solid ${PARTNA_PRIMARY}` }}>
                   {cycle}
                   {cycle === 'annual' && (
-                    <span className="ml-1.5" style={{ color: billingCycle === 'annual' ? PARTNA_GOLD : 'rgba(27,79,114,0.5)' }}>
-                      ~20% off
-                    </span>
+                    <span className="ml-1.5" style={{ color: billingCycle === 'annual' ? PARTNA_GOLD : 'rgba(27,79,114,0.5)' }}>~20% off</span>
                   )}
                 </button>
               ))}

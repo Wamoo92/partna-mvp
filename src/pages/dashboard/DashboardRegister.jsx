@@ -29,7 +29,7 @@ const PACKAGES = [
   },
 ]
 
-const SECTORS = ['Education', 'Retail', 'Healthcare', 'Hospitality', 'Other']
+const SECTORS = ['Education', 'Retail']
 
 const REG_TYPES = [
   { value: 'sole_proprietor', label: 'Sole Proprietorship' },
@@ -110,7 +110,6 @@ function generateBusinessId() {
 }
 
 function generateCardNumber() {
-  // Mastercard prefix 5412 + 12 random digits
   const digits = Math.floor(Math.random() * 1e12).toString().padStart(12, '0')
   return '5412' + digits
 }
@@ -222,7 +221,6 @@ export default function DashboardRegister() {
 
   const pkg = PACKAGES.find(p => p.id === selectedPackage)
 
-  // Pricing for sidebar
   const subPrice = billingCycle === 'monthly' ? (pkg?.monthly || 0) : (pkg?.annual || 0)
   const setupFee = 299
   const trialDiscount = subPrice + setupFee
@@ -236,7 +234,6 @@ export default function DashboardRegister() {
     if (!validateStep4(skip)) return
     setLoading(true)
     try {
-      // 1. Create auth user
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: email.toLowerCase().trim(),
         password,
@@ -261,7 +258,6 @@ export default function DashboardRegister() {
       const newBusinessId = generateBusinessId()
       const fullAddress = [addrLine1, addrLine2, addrCity, addrPostal, addrPOBox].filter(Boolean).join(', ')
 
-      // 2. Create business record
       const { error: bizError } = await supabase.from('businesses').insert({
         id: newBusinessId,
         name: businessName,
@@ -288,7 +284,6 @@ export default function DashboardRegister() {
         return
       }
 
-      // 3. Create business admin record
       const { error: adminError } = await supabase.from('business_admins').insert({
         business_id: newBusinessId,
         full_name: fullName,
@@ -305,7 +300,6 @@ export default function DashboardRegister() {
         return
       }
 
-      // 4. Create subscription record
       const { data: pkgData } = await supabase
         .from('subscription_packages').select('id').eq('name', pkg.name).maybeSingle()
 
@@ -319,13 +313,11 @@ export default function DashboardRegister() {
         })
       }
 
-      // 5. Auto-create business wallet
       await supabase.from('business_wallets').insert({
         business_id: newBusinessId,
         balance: 0,
       })
 
-      // 6. Auto-create business card
       await supabase.from('business_cards').insert({
         business_id: newBusinessId,
         card_number: generateCardNumber(),
@@ -333,7 +325,6 @@ export default function DashboardRegister() {
         expiry_date: '2029-12-31',
       })
 
-      // 7. Sign in immediately
       await supabase.auth.signInWithPassword({
         email: email.toLowerCase().trim(),
         password,
@@ -360,7 +351,6 @@ export default function DashboardRegister() {
           <div className="w-full max-w-md flex flex-col overflow-y-auto"
             style={{ background: '#fff', boxShadow: '-8px 0 32px rgba(0,0,0,0.15)' }}>
 
-            {/* Sidebar header */}
             <div className="flex items-center justify-between px-6 py-5 border-b"
               style={{ borderColor: 'rgba(0,0,0,0.08)' }}>
               <div className="text-base font-bold" style={{ color: PARTNA_PRIMARY }}>Payment details</div>
@@ -368,10 +358,8 @@ export default function DashboardRegister() {
                 className="text-xl" style={{ color: 'rgba(0,0,0,0.3)' }}>✕</button>
             </div>
 
-            {/* Order summary */}
             <div className="px-6 py-4 border-b" style={{ borderColor: 'rgba(0,0,0,0.06)', background: '#f8f9fa' }}>
               <div className="text-xs font-bold mb-3" style={{ color: 'rgba(0,0,0,0.35)' }}>ORDER SUMMARY</div>
-
               <div className="flex justify-between items-center py-1.5">
                 <span className="text-xs" style={{ color: 'rgba(0,0,0,0.4)' }}>
                   {pkg?.name} plan ({billingCycle === 'monthly' ? 'monthly' : 'annual'})
@@ -380,39 +368,26 @@ export default function DashboardRegister() {
                   {billingCycle === 'monthly' ? `$${pkg?.monthly}/mo` : `$${pkg?.annual}/yr`}
                 </span>
               </div>
-
               <div className="flex justify-between items-center py-1.5">
-                <span className="text-xs" style={{ color: 'rgba(0,0,0,0.4)' }}>
-                  Platform setup fee (one-time)
-                </span>
+                <span className="text-xs" style={{ color: 'rgba(0,0,0,0.4)' }}>Platform setup fee (one-time)</span>
                 <span className="text-xs font-semibold" style={{ color: PARTNA_PRIMARY }}>$299.00</span>
               </div>
-
               <div className="flex justify-between items-center py-1.5">
-                <span className="text-xs font-semibold" style={{ color: '#16A34A' }}>
-                  3-month free trial (100% off)
-                </span>
-                <span className="text-xs font-semibold" style={{ color: '#16A34A' }}>
-                  −${trialDiscount}
-                </span>
+                <span className="text-xs font-semibold" style={{ color: '#16A34A' }}>3-month free trial (100% off)</span>
+                <span className="text-xs font-semibold" style={{ color: '#16A34A' }}>−${trialDiscount}</span>
               </div>
-
               <div className="h-px my-3" style={{ background: 'rgba(0,0,0,0.08)' }} />
-
               <div className="flex justify-between items-center mb-3">
                 <span className="text-sm font-bold" style={{ color: PARTNA_PRIMARY }}>Due today</span>
                 <span className="text-xl font-bold" style={{ color: PARTNA_GOLD }}>$0.00</span>
               </div>
-
               <div className="px-3 py-2 rounded-lg text-xs"
                 style={{ background: 'rgba(22,163,74,0.08)', border: '1px solid rgba(22,163,74,0.2)', color: '#16A34A' }}>
                 First billing date: {firstBillingDate}
               </div>
             </div>
 
-            {/* Payment form */}
             <div className="px-6 py-5 flex flex-col gap-4">
-
               <div className="flex flex-col gap-1">
                 <label className="text-xs font-semibold" style={{ color: PARTNA_PRIMARY }}>Card type</label>
                 <div className="flex gap-3">
@@ -429,57 +404,47 @@ export default function DashboardRegister() {
                   ))}
                 </div>
               </div>
-
               <div className="flex flex-col gap-1">
                 <label className="text-xs font-semibold" style={{ color: PARTNA_PRIMARY }}>Cardholder name</label>
-                <input type="text" autoComplete="cc-name"
-                  value={cardholderName} onChange={e => setCardholderName(e.target.value)}
+                <input type="text" autoComplete="cc-name" value={cardholderName}
+                  onChange={e => setCardholderName(e.target.value)}
                   className="w-full px-4 py-3 rounded-xl text-sm outline-none"
                   style={{ background: '#f0f2f5', border: 'none', color: '#333' }} />
                 <div className="text-xs" style={{ color: 'rgba(0,0,0,0.35)' }}>Exact name as it appears on the card</div>
               </div>
-
               <div className="flex flex-col gap-1">
                 <label className="text-xs font-semibold" style={{ color: PARTNA_PRIMARY }}>Card number</label>
                 <input type="text" inputMode="numeric" autoComplete="cc-number"
-                  placeholder="•••• •••• •••• ••••"
-                  value={cardNumber} onChange={e => setCardNumber(formatCardNumber(e.target.value))}
-                  maxLength={19}
+                  placeholder="•••• •••• •••• ••••" value={cardNumber}
+                  onChange={e => setCardNumber(formatCardNumber(e.target.value))} maxLength={19}
                   className="w-full px-4 py-3 rounded-xl text-sm outline-none font-mono tracking-widest"
                   style={{ background: '#f0f2f5', border: 'none', color: '#333' }} />
               </div>
-
               <div className="grid grid-cols-2 gap-3">
                 <div className="flex flex-col gap-1">
                   <label className="text-xs font-semibold" style={{ color: PARTNA_PRIMARY }}>Expiry date</label>
-                  <input type="text" inputMode="numeric" autoComplete="cc-exp"
-                    placeholder="MM/YY"
-                    value={cardExpiry} onChange={e => setCardExpiry(formatExpiry(e.target.value))}
-                    maxLength={5}
+                  <input type="text" inputMode="numeric" autoComplete="cc-exp" placeholder="MM/YY"
+                    value={cardExpiry} onChange={e => setCardExpiry(formatExpiry(e.target.value))} maxLength={5}
                     className="w-full px-4 py-3 rounded-xl text-sm outline-none"
                     style={{ background: '#f0f2f5', border: 'none', color: '#333' }} />
                 </div>
                 <div className="flex flex-col gap-1">
                   <label className="text-xs font-semibold" style={{ color: PARTNA_PRIMARY }}>CVV / CVC</label>
-                  <input type="password" inputMode="numeric"
-                    placeholder="•••"
-                    value={cardCvv} onChange={e => setCardCvv(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                  <input type="password" inputMode="numeric" placeholder="•••" value={cardCvv}
+                    onChange={e => setCardCvv(e.target.value.replace(/\D/g, '').slice(0, 4))}
                     minLength={3} maxLength={4}
                     className="w-full px-4 py-3 rounded-xl text-sm outline-none"
                     style={{ background: '#f0f2f5', border: 'none', color: '#333' }} />
                   <div className="text-xs" style={{ color: 'rgba(0,0,0,0.35)' }}>3–4 digits on back of card</div>
                 </div>
               </div>
-
               <div className="text-xs font-bold pt-1" style={{ color: 'rgba(0,0,0,0.35)' }}>BILLING ADDRESS</div>
-
               <div className="flex flex-col gap-1">
                 <label className="text-xs font-semibold" style={{ color: PARTNA_PRIMARY }}>Address line 1</label>
                 <input type="text" value={billingAddr1} onChange={e => setBillingAddr1(e.target.value)}
                   className="w-full px-4 py-3 rounded-xl text-sm outline-none"
                   style={{ background: '#f0f2f5', border: 'none', color: '#333' }} />
               </div>
-
               <div className="flex flex-col gap-1">
                 <label className="text-xs font-semibold" style={{ color: PARTNA_PRIMARY }}>
                   Address line 2 <span style={{ color: 'rgba(0,0,0,0.35)' }}>(optional)</span>
@@ -488,14 +453,12 @@ export default function DashboardRegister() {
                   className="w-full px-4 py-3 rounded-xl text-sm outline-none"
                   style={{ background: '#f0f2f5', border: 'none', color: '#333' }} />
               </div>
-
               <div className="flex flex-col gap-1">
                 <label className="text-xs font-semibold" style={{ color: PARTNA_PRIMARY }}>City</label>
                 <input type="text" value={billingCity} onChange={e => setBillingCity(e.target.value)}
                   className="w-full px-4 py-3 rounded-xl text-sm outline-none"
                   style={{ background: '#f0f2f5', border: 'none', color: '#333' }} />
               </div>
-
               <div className="flex flex-col gap-1">
                 <label className="text-xs font-semibold" style={{ color: PARTNA_PRIMARY }}>Country</label>
                 <select className="w-full px-4 py-3 rounded-xl text-sm outline-none"
@@ -503,7 +466,6 @@ export default function DashboardRegister() {
                   <option value="UG">Uganda</option>
                 </select>
               </div>
-
               <button onClick={() => { setShowPaymentSidebar(false); setStep(3) }}
                 className="w-full py-3 rounded-xl text-sm font-bold"
                 style={{ background: PARTNA_PRIMARY, color: '#fff' }}>
