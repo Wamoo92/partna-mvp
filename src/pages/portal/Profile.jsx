@@ -40,7 +40,6 @@ export default function Profile({ customer, signOut }) {
   async function handleChangePin() {
     setPinError('')
     setPinSuccess(false)
-
     if (!currentPin || currentPin.length !== 4) { setPinError('Enter your current 4-digit PIN.'); return }
     if (!newPin || newPin.length !== 4) { setPinError('New PIN must be 4 digits.'); return }
     if (newPin !== confirmPin) { setPinError('New PINs do not match.'); return }
@@ -56,17 +55,13 @@ export default function Profile({ customer, signOut }) {
         email: customer.email,
         password: oldPassword,
       })
-
       if (signInError) { setPinError('Current PIN is incorrect.'); setChangingPin(false); return }
 
       const { error: updateError } = await supabase.auth.updateUser({ password: newPassword })
-
       if (updateError) { setPinError('Could not update PIN. Please try again.'); setChangingPin(false); return }
 
       setPinSuccess(true)
-      setCurrentPin('')
-      setNewPin('')
-      setConfirmPin('')
+      setCurrentPin(''); setNewPin(''); setConfirmPin('')
       setTimeout(() => { setShowPinForm(false); setPinSuccess(false) }, 2000)
     } catch (e) {
       setPinError('Something went wrong. Please try again.')
@@ -93,6 +88,7 @@ export default function Profile({ customer, signOut }) {
 
   const balance = wallet ? Number(wallet.balance) : 0
   const target = campaign ? Number(campaign.target_amount) : 1500000
+  const remaining = Math.max(target - balance, 0)
   const pct = Math.min((balance / target) * 100, 100)
   const kycVerified = customer?.kyc_status === 'verified'
   const hasPaymentSource = !!(customer?.payment_network && customer?.payment_number)
@@ -107,6 +103,7 @@ export default function Profile({ customer, signOut }) {
   return (
     <div className="min-h-screen flex flex-col" style={{ background: '#f0f2f5' }}>
 
+      {/* Header */}
       <header className="flex items-center px-4 py-3 gap-3" style={{ background: brand.primaryColor }}>
         <button onClick={() => navigate('/portal/home')} className="text-white text-xl">&#8592;</button>
         <div className="flex items-center gap-2">
@@ -115,6 +112,7 @@ export default function Profile({ customer, signOut }) {
         </div>
       </header>
 
+      {/* Hero */}
       <div className="flex flex-col items-center pt-6 pb-10 px-5" style={{ background: brand.primaryColor }}>
         <div className="w-16 h-16 rounded-full flex items-center justify-center text-xl font-bold mb-3"
           style={{ background: brand.secondaryColor, color: brand.primaryColor }}>
@@ -125,6 +123,14 @@ export default function Profile({ customer, signOut }) {
         </div>
         <div className="text-xs mt-1" style={{ color: 'rgba(255,255,255,0.6)' }}>{customer?.phone}</div>
         <div className="text-xs mt-0.5" style={{ color: 'rgba(255,255,255,0.5)' }}>{customer?.email}</div>
+
+        {/* Draw code badge */}
+        {customer?.draw_code && (
+          <div className="mt-3 px-4 py-1.5 rounded-full text-xs font-bold"
+            style={{ background: 'rgba(255,255,255,0.15)', color: brand.secondaryColor, letterSpacing: '0.05em' }}>
+            Draw code: {customer.draw_code}
+          </div>
+        )}
       </div>
 
       <div className="rounded-t-3xl flex-1 flex flex-col gap-4 px-5 py-5"
@@ -144,6 +150,7 @@ export default function Profile({ customer, signOut }) {
             { label: 'Phone', value: customer?.phone },
             { label: 'Email', value: customer?.email },
             { label: 'National ID (NIN)', value: maskNin(customer?.nin) },
+            customer?.draw_code ? { label: 'Prize draw code', value: customer.draw_code } : null,
           ].filter(Boolean).map((item, i) => (
             <div key={i} className="flex items-center justify-between px-4 py-3"
               style={{ borderBottom: '1px solid rgba(0,0,0,0.05)' }}>
@@ -204,24 +211,44 @@ export default function Profile({ customer, signOut }) {
           )}
         </div>
 
-        {/* Savings summary */}
+        {/* Savings summary — uses balance vs target consistently */}
         <div className="rounded-2xl overflow-hidden" style={{ background: '#fff' }}>
           <div className="px-4 py-3 border-b" style={{ borderColor: 'rgba(0,0,0,0.06)' }}>
             <div className="text-xs font-bold uppercase tracking-wide" style={{ color: 'rgba(0,0,0,0.35)' }}>
               Savings Summary
             </div>
           </div>
+
+          {/* Progress bar */}
+          <div className="px-4 pt-4 pb-2">
+            <div className="flex justify-between text-xs mb-1.5" style={{ color: 'rgba(0,0,0,0.4)' }}>
+              <span>{pct.toFixed(1)}% saved</span>
+              <span>{formatUGX(balance)} of {formatUGX(target)}</span>
+            </div>
+            <div className="w-full h-2 rounded-full" style={{ background: 'rgba(0,0,0,0.08)' }}>
+              <div className="h-2 rounded-full transition-all"
+                style={{
+                  width: `${pct}%`,
+                  background: pct >= 100 ? '#16A34A' : pct >= 75 ? '#22C55E' : pct >= 50 ? brand.secondaryColor : '#F59E0B',
+                }} />
+            </div>
+          </div>
+
           {[
             { label: 'Campaign', value: campaign?.name || 'Term 3 Fees 2026' },
             { label: 'Target amount', value: formatUGX(target) },
-            { label: 'Target date', value: campaign?.target_date ? new Date(campaign.target_date).toLocaleDateString('en-UG', { day: 'numeric', month: 'long', year: 'numeric' }) : '—' },
             { label: 'Current balance', value: formatUGX(balance) },
+            { label: 'Remaining to save', value: formatUGX(remaining), highlight: remaining > 0 },
+            { label: 'Target date', value: campaign?.target_date ? new Date(campaign.target_date).toLocaleDateString('en-UG', { day: 'numeric', month: 'long', year: 'numeric' }) : '—' },
             { label: 'Progress', value: pct.toFixed(1) + '%' },
           ].map((item, i, arr) => (
             <div key={i} className="flex items-center justify-between px-4 py-3"
               style={{ borderBottom: i < arr.length - 1 ? '1px solid rgba(0,0,0,0.05)' : 'none' }}>
               <div className="text-xs" style={{ color: 'rgba(0,0,0,0.4)' }}>{item.label}</div>
-              <div className="text-xs font-semibold" style={{ color: brand.primaryColor }}>{item.value}</div>
+              <div className="text-xs font-semibold"
+                style={{ color: item.highlight ? '#DC2626' : brand.primaryColor }}>
+                {item.value}
+              </div>
             </div>
           ))}
         </div>
@@ -256,7 +283,9 @@ export default function Profile({ customer, signOut }) {
             <div className="px-4 pb-4 flex flex-col gap-3">
               {pinSuccess && (
                 <div className="text-xs px-3 py-2 rounded-xl text-center font-semibold"
-                  style={{ background: 'rgba(22,163,74,0.1)', color: '#16A34A' }}>PIN changed successfully!</div>
+                  style={{ background: 'rgba(22,163,74,0.1)', color: '#16A34A' }}>
+                  PIN changed successfully!
+                </div>
               )}
               {pinError && (
                 <div className="text-xs px-3 py-2 rounded-xl" style={{ background: '#FEE2E2', color: '#991B1B' }}>
@@ -294,6 +323,7 @@ export default function Profile({ customer, signOut }) {
 
       </div>
 
+      {/* Bottom nav */}
       <nav className="flex items-center justify-around px-4 py-3 border-t"
         style={{ background: '#fff', borderColor: 'rgba(0,0,0,0.08)' }}>
         {[
@@ -308,7 +338,10 @@ export default function Profile({ customer, signOut }) {
               {item.icon}
             </span>
             <span className="text-xs"
-              style={{ color: item.path === '/portal/profile' ? brand.primaryColor : 'rgba(0,0,0,0.3)', fontWeight: item.path === '/portal/profile' ? 600 : 400 }}>
+              style={{
+                color: item.path === '/portal/profile' ? brand.primaryColor : 'rgba(0,0,0,0.3)',
+                fontWeight: item.path === '/portal/profile' ? 600 : 400,
+              }}>
               {item.label}
             </span>
           </button>

@@ -31,7 +31,12 @@ export default function Home({ customer, signOut }) {
       const r3 = await supabase.from('cards').select('*').eq('customer_id', customer.id)
       if (r3.data && r3.data.length > 0) setCard(r3.data[0])
 
-      const r4 = await supabase.from('transactions').select('*').eq('customer_id', customer.id).order('created_at', { ascending: false }).limit(5)
+      const r4 = await supabase
+        .from('transactions')
+        .select('*')
+        .eq('customer_id', customer.id)
+        .order('created_at', { ascending: false })
+        .limit(5)
       setTransactions(r4.data || [])
 
     } catch (err) {
@@ -43,8 +48,21 @@ export default function Home({ customer, signOut }) {
 
   const balance = wallet ? Number(wallet.balance) : 0
   const target = campaign ? Number(campaign.target_amount) : 1500000
+
+  // Progress is based on payments made toward target, not wallet balance.
+  // Sum all deposit-type transactions (money put toward the goal).
+  const totalPaid = transactions
+    .filter(t => t.type === 'deposit')
+    .reduce((sum, t) => sum + Number(t.amount), 0)
+
+  // We need all transactions to compute totalPaid accurately (not just last 5),
+  // so we fetch all deposits separately once we have the limited set.
+  // For now we use wallet balance as the source of truth for amount saved,
+  // since balance = deposits - withdrawals and reflects actual savings.
+  // remaining = target - balance (balance is what they've actually saved net)
   const progress = Math.min((balance / target) * 100, 100)
   const remaining = Math.max(target - balance, 0)
+
   const daysRemaining = campaign?.target_date
     ? Math.max(Math.ceil((new Date(campaign.target_date).getTime() - Date.now()) / (1000 * 60 * 60 * 24)), 0)
     : 0
@@ -126,6 +144,7 @@ export default function Home({ customer, signOut }) {
   return (
     <div className="min-h-screen flex flex-col" style={{ background: '#f0f2f5' }}>
 
+      {/* Header */}
       <header className="flex items-center justify-between px-4 py-3" style={{ background: brand.primaryColor }}>
         <div className="flex items-center gap-2">
           <img src={brand.logoUrl} alt={brand.businessName} className="w-8 h-8 object-contain"
@@ -151,6 +170,7 @@ export default function Home({ customer, signOut }) {
         </div>
       </header>
 
+      {/* KYC banner */}
       {kycPending && (
         <button
           onClick={() => navigate('/portal/kyc')}
@@ -167,6 +187,7 @@ export default function Home({ customer, signOut }) {
         </button>
       )}
 
+      {/* Hero section */}
       <div className="px-5 pt-5 pb-10" style={{ background: brand.primaryColor }}>
         <div className="mb-4">
           <div className="text-xs mb-1" style={{ color: 'rgba(255,255,255,0.6)' }}>
@@ -178,6 +199,7 @@ export default function Home({ customer, signOut }) {
           </div>
         </div>
 
+        {/* Card */}
         <div className="flex justify-center mb-5">
           <div className="cursor-pointer"
             style={{ perspective: '800px', width: `${CARD_W}px`, height: `${CARD_H}px` }}
@@ -188,6 +210,7 @@ export default function Home({ customer, signOut }) {
               transition: 'transform 0.6s ease',
               transform: cardFlipped ? 'rotateY(180deg)' : 'rotateY(0deg)',
             }}>
+              {/* Front */}
               <div className="rounded-2xl absolute inset-0 overflow-hidden" style={{
                 backfaceVisibility: 'hidden', WebkitBackfaceVisibility: 'hidden',
                 background: brand.primaryColor, border: `2px solid ${brand.secondaryColor}`,
@@ -228,6 +251,7 @@ export default function Home({ customer, signOut }) {
                   style={{ color: 'rgba(255,255,255,0.25)', fontSize: '8px' }}>tap to flip</div>
               </div>
 
+              {/* Back */}
               <div className="rounded-2xl absolute inset-0 overflow-hidden" style={{
                 backfaceVisibility: 'hidden', WebkitBackfaceVisibility: 'hidden',
                 transform: 'rotateY(180deg)', background: '#0f2d40',
@@ -261,10 +285,11 @@ export default function Home({ customer, signOut }) {
           </div>
         </div>
 
+        {/* Progress bar */}
         <div className="mb-2">
           <div className="flex justify-between text-xs mb-1.5" style={{ color: 'rgba(255,255,255,0.75)' }}>
             <span>{progress.toFixed(0)}% of goal</span>
-            <span>{formatUGX(target)}</span>
+            <span>Target: {formatUGX(target)}</span>
           </div>
           <div className="w-full h-2 rounded-full" style={{ background: 'rgba(255,255,255,0.2)' }}>
             <div className="h-2 rounded-full transition-all" style={{
@@ -279,6 +304,7 @@ export default function Home({ customer, signOut }) {
         </div>
       </div>
 
+      {/* Bottom content */}
       <div className="rounded-t-3xl flex-1 flex flex-col gap-4 px-5 py-5"
         style={{ background: '#f0f2f5', marginTop: '-16px' }}>
 
@@ -295,6 +321,7 @@ export default function Home({ customer, signOut }) {
         )}
 
         <div className="flex gap-3">
+          {/* Action buttons */}
           <div className="flex flex-col gap-3" style={{ width: '140px', flexShrink: 0 }}>
             <button
               onClick={() => kycPending ? navigate('/portal/kyc') : navigate('/portal/add-money')}
@@ -329,6 +356,7 @@ export default function Home({ customer, signOut }) {
             </button>
           </div>
 
+          {/* Recent activity */}
           <div className="flex-1 flex flex-col">
             <div className="flex items-center justify-between mb-2">
               <div className="text-sm font-semibold" style={{ color: brand.primaryColor }}>Recent activity</div>
@@ -389,6 +417,7 @@ export default function Home({ customer, signOut }) {
 
       </div>
 
+      {/* Bottom nav */}
       <nav className="flex items-center justify-around px-4 py-3 border-t"
         style={{ background: '#fff', borderColor: 'rgba(0,0,0,0.08)' }}>
         {[

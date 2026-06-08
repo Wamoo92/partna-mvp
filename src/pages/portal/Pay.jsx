@@ -89,7 +89,23 @@ export default function Pay({ customer }) {
   const remaining = Math.max(target - alreadyPaid, 0)
   const maxPayable = Math.min(remaining, balance)
   const parsedAmount = parseInt(amount.replace(/,/g, ''), 10)
-  const validAmount = !isNaN(parsedAmount) && parsedAmount >= 1000 && parsedAmount <= maxPayable
+
+  // ── Fixed payment schedule logic ──
+  // campaign.payment_discount_percentage stores the fixed % (25 or 50)
+  // campaign.minimum_deposit stores the actual UGX minimum per payment
+  const isFixedSchedule = campaign?.allow_partial_payments &&
+    Number(campaign?.payment_discount_percentage) > 0
+  const fixedPct = isFixedSchedule ? Number(campaign.payment_discount_percentage) : 0
+  const fixedMinimumUGX = isFixedSchedule
+    ? Math.round(target * (fixedPct / 100))
+    : 1000 // default minimum for flexible
+
+  // For flexible: min is 1,000. For fixed: min is fixedMinimumUGX (but can't exceed remaining or balance)
+  const effectiveMinimum = Math.min(fixedMinimumUGX, maxPayable)
+
+  const validAmount = !isNaN(parsedAmount) &&
+    parsedAmount >= effectiveMinimum &&
+    parsedAmount <= maxPayable
 
   function handleStudentIdChange(val) {
     const upper = val.toUpperCase()
@@ -106,7 +122,11 @@ export default function Pay({ customer }) {
   function handleStudentIdBlur() {
     if (!studentId) return
     const found = DEMO_STUDENTS[studentId.toUpperCase()]
-    if (!found) { setStudentIdError('Student ID not found. Please check and try again.'); setStudentIdValid(false); setStudentName('') }
+    if (!found) {
+      setStudentIdError('Student ID not found. Please check and try again.')
+      setStudentIdValid(false)
+      setStudentName('')
+    }
   }
 
   async function handlePay() {
@@ -191,8 +211,11 @@ export default function Pay({ customer }) {
   return (
     <div className="min-h-screen flex flex-col" style={{ background: '#f0f2f5' }}>
 
+      {/* Header */}
       <header className="flex items-center px-4 py-3 gap-3" style={{ background: brand.primaryColor }}>
-        <button onClick={() => step === 1 ? navigate('/portal/home') : setStep(step - 1)} className="text-white text-xl">
+        <button
+          onClick={() => step === 1 ? navigate('/portal/home') : setStep(step - 1)}
+          className="text-white text-xl">
           &#8592;
         </button>
         <div className="flex items-center gap-2">
@@ -201,6 +224,7 @@ export default function Pay({ customer }) {
         </div>
       </header>
 
+      {/* Step indicator */}
       {step < 4 && (
         <div className="px-5 pt-5 pb-8 text-center" style={{ background: brand.primaryColor }}>
           <div className="flex items-center justify-center gap-2 mb-3">
@@ -209,7 +233,9 @@ export default function Pay({ customer }) {
                 style={{
                   width: s === step ? '24px' : '8px',
                   height: '8px',
-                  background: s === step ? brand.secondaryColor : s < step ? 'rgba(212,175,55,0.5)' : 'rgba(255,255,255,0.25)',
+                  background: s === step
+                    ? brand.secondaryColor
+                    : s < step ? 'rgba(212,175,55,0.5)' : 'rgba(255,255,255,0.25)',
                 }} />
             ))}
           </div>
@@ -226,6 +252,7 @@ export default function Pay({ customer }) {
         </div>
       )}
 
+      {/* Success header */}
       {step === 4 && (
         <div className="px-5 pt-8 pb-10 text-center" style={{ background: brand.primaryColor }}>
           <div className="text-4xl mb-3">✅</div>
@@ -237,6 +264,7 @@ export default function Pay({ customer }) {
       <div className="rounded-t-3xl flex-1 flex flex-col px-5 py-6 gap-4"
         style={{ background: '#f0f2f5', marginTop: '-16px' }}>
 
+        {/* ── STEP 1: Student details ── */}
         {step === 1 && (
           <>
             <div className="rounded-2xl p-4" style={{ background: '#fff' }}>
@@ -256,6 +284,18 @@ export default function Pay({ customer }) {
                   </span>
                 </div>
               ))}
+
+              {/* Payment schedule info */}
+              {isFixedSchedule && (
+                <div className="mt-3 pt-3" style={{ borderTop: '1px solid rgba(0,0,0,0.06)' }}>
+                  <div className="px-3 py-2 rounded-lg text-xs"
+                    style={{ background: 'rgba(27,79,114,0.06)', color: brand.primaryColor }}>
+                    📋 This campaign has a <strong>fixed payment schedule</strong>.
+                    Each payment must be at least{' '}
+                    <strong>{fixedPct}% of the target ({formatUGX(fixedMinimumUGX)})</strong>.
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="flex flex-col gap-1">
@@ -267,14 +307,19 @@ export default function Pay({ customer }) {
                   className="w-full px-4 py-3 rounded-xl text-sm outline-none uppercase"
                   style={{
                     background: '#fff',
-                    border: studentIdValid ? '1.5px solid #16A34A' : studentIdError ? '1.5px solid #DC2626' : '1.5px solid rgba(27,79,114,0.15)',
+                    border: studentIdValid
+                      ? '1.5px solid #16A34A'
+                      : studentIdError ? '1.5px solid #DC2626' : '1.5px solid rgba(27,79,114,0.15)',
                     color: '#333',
                   }} />
                 {studentIdValid && (
-                  <span className="absolute right-4 top-1/2 -translate-y-1/2 text-green-600 font-bold">✓</span>
+                  <span className="absolute right-4 top-1/2 -translate-y-1/2 font-bold"
+                    style={{ color: '#16A34A' }}>✓</span>
                 )}
               </div>
-              {studentIdError && <div className="text-xs" style={{ color: '#DC2626' }}>{studentIdError}</div>}
+              {studentIdError && (
+                <div className="text-xs" style={{ color: '#DC2626' }}>{studentIdError}</div>
+              )}
             </div>
 
             <div className="flex flex-col gap-1">
@@ -295,33 +340,57 @@ export default function Pay({ customer }) {
             </div>
 
             <button
-              onClick={() => { if (!studentIdValid) { setStudentIdError('Please enter a valid Student ID to continue.'); return } setStep(2) }}
+              onClick={() => {
+                if (!studentIdValid) {
+                  setStudentIdError('Please enter a valid Student ID to continue.')
+                  return
+                }
+                setStep(2)
+              }}
               className="w-full py-3 rounded-xl text-sm font-bold mt-2"
               style={{ background: studentIdValid ? brand.primaryColor : 'rgba(27,79,114,0.3)', color: '#fff' }}>
               Continue
             </button>
-            <div className="text-center text-xs" style={{ color: 'rgba(0,0,0,0.3)' }}>Demo: try SC001 — SC010</div>
+            <div className="text-center text-xs" style={{ color: 'rgba(0,0,0,0.3)' }}>
+              Demo: try SC001 — SC010
+            </div>
           </>
         )}
 
+        {/* ── STEP 2: Amount ── */}
         {step === 2 && (
           <>
             <div className="rounded-2xl p-4" style={{ background: '#fff' }}>
               <div className="flex justify-between items-center">
                 <div>
                   <div className="text-xs mb-0.5" style={{ color: 'rgba(0,0,0,0.4)' }}>Available balance</div>
-                  <div className="text-base font-bold" style={{ color: brand.primaryColor }}>{formatUGX(balance)}</div>
+                  <div className="text-base font-bold" style={{ color: brand.primaryColor }}>
+                    {formatUGX(balance)}
+                  </div>
                 </div>
                 <div className="text-right">
                   <div className="text-xs mb-0.5" style={{ color: 'rgba(0,0,0,0.4)' }}>Remaining fees</div>
-                  <div className="text-base font-bold" style={{ color: '#DC2626' }}>{formatUGX(remaining)}</div>
+                  <div className="text-base font-bold" style={{ color: '#DC2626' }}>
+                    {formatUGX(remaining)}
+                  </div>
                 </div>
               </div>
             </div>
 
+            {/* Fixed schedule notice */}
+            {isFixedSchedule && (
+              <div className="px-4 py-3 rounded-xl text-xs"
+                style={{ background: 'rgba(27,79,114,0.06)', border: '1px solid rgba(27,79,114,0.12)', color: brand.primaryColor }}>
+                📋 Fixed payment schedule: minimum payment is{' '}
+                <strong>{fixedPct}% of target = {formatUGX(effectiveMinimum)}</strong>
+              </div>
+            )}
+
             <div className="flex flex-col gap-1">
               <div className="flex items-center justify-between">
-                <label className="text-xs font-semibold" style={{ color: brand.primaryColor }}>Amount to pay (UGX)</label>
+                <label className="text-xs font-semibold" style={{ color: brand.primaryColor }}>
+                  Amount to pay (UGX)
+                </label>
                 <button onClick={() => setAmount(formatAmountInput(String(maxPayable)))}
                   className="text-xs font-semibold px-3 py-1 rounded-lg"
                   style={{ background: brand.secondaryColor, color: brand.primaryColor }}>
@@ -334,20 +403,39 @@ export default function Pay({ customer }) {
                 <input type="text" inputMode="numeric" placeholder="0" value={amount}
                   onChange={e => setAmount(formatAmountInput(e.target.value))}
                   className="w-full pl-14 pr-4 py-4 rounded-xl text-xl font-bold outline-none"
-                  style={{ background: '#fff', border: '1.5px solid rgba(27,79,114,0.15)', color: brand.primaryColor }} />
+                  style={{
+                    background: '#fff',
+                    border: '1.5px solid rgba(27,79,114,0.15)',
+                    color: brand.primaryColor,
+                  }} />
               </div>
-              <div className="text-xs mt-1" style={{ color: 'rgba(0,0,0,0.4)' }}>
-                Maximum payable: {formatUGX(maxPayable)}
+              <div className="flex justify-between text-xs mt-1" style={{ color: 'rgba(0,0,0,0.4)' }}>
+                <span>
+                  Minimum: {formatUGX(effectiveMinimum)}
+                  {isFixedSchedule && ` (${fixedPct}% of target)`}
+                </span>
+                <span>Maximum: {formatUGX(maxPayable)}</span>
               </div>
             </div>
 
-            {error && <div className="text-xs px-4 py-3 rounded-xl" style={{ background: '#FEE2E2', color: '#991B1B' }}>{error}</div>}
+            {error && (
+              <div className="text-xs px-4 py-3 rounded-xl" style={{ background: '#FEE2E2', color: '#991B1B' }}>
+                {error}
+              </div>
+            )}
 
             <button
               onClick={() => {
-                if (!validAmount) {
-                  if (isNaN(parsedAmount) || parsedAmount < 1000) setError('Minimum payment is UGX 1,000.')
-                  else if (parsedAmount > maxPayable) setError('Amount exceeds your available balance or remaining fees.')
+                if (isNaN(parsedAmount) || parsedAmount < effectiveMinimum) {
+                  setError(
+                    isFixedSchedule
+                      ? `This campaign requires a minimum payment of ${formatUGX(effectiveMinimum)} (${fixedPct}% of target).`
+                      : 'Minimum payment is UGX 1,000.'
+                  )
+                  return
+                }
+                if (parsedAmount > maxPayable) {
+                  setError('Amount exceeds your available balance or remaining fees.')
                   return
                 }
                 setError('')
@@ -360,6 +448,7 @@ export default function Pay({ customer }) {
           </>
         )}
 
+        {/* ── STEP 3: Confirm ── */}
         {step === 3 && (
           <>
             <div className="rounded-2xl p-4" style={{ background: '#fff' }}>
@@ -381,7 +470,11 @@ export default function Pay({ customer }) {
               ))}
             </div>
 
-            {error && <div className="text-xs px-4 py-3 rounded-xl" style={{ background: '#FEE2E2', color: '#991B1B' }}>{error}</div>}
+            {error && (
+              <div className="text-xs px-4 py-3 rounded-xl" style={{ background: '#FEE2E2', color: '#991B1B' }}>
+                {error}
+              </div>
+            )}
 
             <button onClick={handlePay} disabled={paying}
               className="w-full py-3 rounded-xl text-sm font-bold"
@@ -391,6 +484,7 @@ export default function Pay({ customer }) {
           </>
         )}
 
+        {/* ── STEP 4: Success ── */}
         {step === 4 && (
           <>
             <div className="rounded-2xl p-4" style={{ background: '#fff' }}>
@@ -400,6 +494,7 @@ export default function Pay({ customer }) {
                 { label: 'Student', value: studentName },
                 { label: 'Student ID', value: studentId },
                 { label: 'Amount paid', value: formatUGX(parsedAmount) },
+                { label: 'Remaining fees', value: formatUGX(Math.max(remaining - parsedAmount, 0)) },
                 { label: 'Status', value: '✓ Completed' },
                 { label: 'Date & time', value: nowDisplay() },
               ].map((row, i, arr) => (
