@@ -20,10 +20,12 @@ export default function Home({ customer, signOut }) {
   async function fetchData() {
     setLoading(true)
     try {
-      const campaignId = customer.campaign_id || 'b1b2c3d4-0000-0000-0000-000000000001'
-
-      const r1 = await supabase.from('campaigns').select('*').eq('id', campaignId)
-      if (r1.data && r1.data.length > 0) setCampaign(r1.data[0])
+      // Use the customer's selected campaign — no hardcoded fallback
+      const campaignId = customer.campaign_id
+      if (campaignId) {
+        const r1 = await supabase.from('campaigns').select('*').eq('id', campaignId)
+        if (r1.data && r1.data.length > 0) setCampaign(r1.data[0])
+      }
 
       const r2 = await supabase.from('wallets').select('*').eq('customer_id', customer.id)
       if (r2.data && r2.data.length > 0) setWallet(r2.data[0])
@@ -47,21 +49,9 @@ export default function Home({ customer, signOut }) {
   }
 
   const balance = wallet ? Number(wallet.balance) : 0
-  const target = campaign ? Number(campaign.target_amount) : 1500000
-
-  // Progress is based on payments made toward target, not wallet balance.
-  // Sum all deposit-type transactions (money put toward the goal).
-  const totalPaid = transactions
-    .filter(t => t.type === 'deposit')
-    .reduce((sum, t) => sum + Number(t.amount), 0)
-
-  // We need all transactions to compute totalPaid accurately (not just last 5),
-  // so we fetch all deposits separately once we have the limited set.
-  // For now we use wallet balance as the source of truth for amount saved,
-  // since balance = deposits - withdrawals and reflects actual savings.
-  // remaining = target - balance (balance is what they've actually saved net)
-  const progress = Math.min((balance / target) * 100, 100)
-  const remaining = Math.max(target - balance, 0)
+  const target = campaign ? Number(campaign.target_amount) : 0
+  const progress = target > 0 ? Math.min((balance / target) * 100, 100) : 0
+  const remaining = target > 0 ? Math.max(target - balance, 0) : 0
 
   const daysRemaining = campaign?.target_date
     ? Math.max(Math.ceil((new Date(campaign.target_date).getTime() - Date.now()) / (1000 * 60 * 60 * 24)), 0)
@@ -104,7 +94,7 @@ export default function Home({ customer, signOut }) {
   }
 
   function getRewardsStrip() {
-    if (!wallet || !campaign) return null
+    if (!wallet || !campaign || target === 0) return null
     const pct = (balance / target) * 100
     if (pct >= 75) {
       return {
@@ -195,7 +185,7 @@ export default function Home({ customer, signOut }) {
           </div>
           <div className="text-white text-3xl font-bold mb-0.5">{formatUGX(balance)}</div>
           <div className="text-xs" style={{ color: 'rgba(255,255,255,0.6)' }}>
-            saved toward {campaign?.name}
+            saved toward {campaign?.name || '—'}
           </div>
         </div>
 

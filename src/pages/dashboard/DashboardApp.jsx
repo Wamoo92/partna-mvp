@@ -10,6 +10,7 @@ import Campaigns from './Campaigns'
 import Payments from './Payments'
 import VouchersPrizes from './VouchersPrizes'
 import Settings from './Settings'
+import Products from './Products'
 
 function DashboardGuard({ admin, loading, children }) {
   if (loading) return (
@@ -39,6 +40,8 @@ export default function DashboardApp() {
               <Route path="/payments" element={<Payments admin={admin} business={business} />} />
               <Route path="/vouchers" element={<VouchersPrizes admin={admin} business={business} />} />
               <Route path="/settings" element={<Settings admin={admin} business={business} />} />
+              {/* Products page — retail businesses only */}
+              <Route path="/products" element={<Products admin={admin} business={business} />} />
               <Route path="/" element={<Navigate to="/dashboard/overview" replace />} />
             </Routes>
           </DashboardLayout>

@@ -15,6 +15,7 @@ import Pay from './pages/portal/Pay'
 import Withdraw from './pages/portal/Withdraw'
 import KYC from './pages/portal/KYC'
 import PaymentSource from './pages/portal/PaymentSource'
+import SelectCampaign from './pages/portal/SelectCampaign'
 import DashboardApp from './pages/dashboard/DashboardApp'
 
 function PortalGuard({ customer, loading, children }) {
@@ -24,6 +25,19 @@ function PortalGuard({ customer, loading, children }) {
     </div>
   )
   if (!customer) return <Navigate to="/portal" replace />
+  return children
+}
+
+// Guard that also enforces campaign selection before home
+function HomeGuard({ customer, loading, children }) {
+  if (loading) return (
+    <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className="w-8 h-8 border-4 border-[#1B4F72] border-t-transparent rounded-full animate-spin" />
+    </div>
+  )
+  if (!customer) return <Navigate to="/portal" replace />
+  // If customer has no campaign selected, redirect to campaign selection
+  if (!customer.campaign_id) return <Navigate to="/portal/select-campaign" replace />
   return children
 }
 
@@ -53,52 +67,60 @@ function App() {
             </PortalGuard>
           } />
 
-          <Route path="/portal/home" element={
+          {/* Campaign selection — required before home, not skippable */}
+          <Route path="/portal/select-campaign" element={
             <PortalGuard customer={customer} loading={loading}>
-              <Home customer={customer} signOut={signOut} />
+              <SelectCampaign customer={customer} business={business} />
             </PortalGuard>
+          } />
+
+          {/* All home-level routes use HomeGuard which enforces campaign selection */}
+          <Route path="/portal/home" element={
+            <HomeGuard customer={customer} loading={loading}>
+              <Home customer={customer} signOut={signOut} />
+            </HomeGuard>
           } />
 
           <Route path="/portal/card" element={
-            <PortalGuard customer={customer} loading={loading}>
+            <HomeGuard customer={customer} loading={loading}>
               <CardDetail customer={customer} />
-            </PortalGuard>
+            </HomeGuard>
           } />
 
           <Route path="/portal/rewards" element={
-            <PortalGuard customer={customer} loading={loading}>
+            <HomeGuard customer={customer} loading={loading}>
               <Rewards customer={customer} />
-            </PortalGuard>
+            </HomeGuard>
           } />
 
           <Route path="/portal/transactions" element={
-            <PortalGuard customer={customer} loading={loading}>
+            <HomeGuard customer={customer} loading={loading}>
               <Transactions customer={customer} />
-            </PortalGuard>
+            </HomeGuard>
           } />
 
           <Route path="/portal/profile" element={
-            <PortalGuard customer={customer} loading={loading}>
+            <HomeGuard customer={customer} loading={loading}>
               <Profile customer={customer} signOut={signOut} />
-            </PortalGuard>
+            </HomeGuard>
           } />
 
           <Route path="/portal/add-money" element={
-            <PortalGuard customer={customer} loading={loading}>
+            <HomeGuard customer={customer} loading={loading}>
               <AddMoney customer={customer} />
-            </PortalGuard>
+            </HomeGuard>
           } />
 
           <Route path="/portal/pay" element={
-            <PortalGuard customer={customer} loading={loading}>
+            <HomeGuard customer={customer} loading={loading}>
               <Pay customer={customer} />
-            </PortalGuard>
+            </HomeGuard>
           } />
 
           <Route path="/portal/withdraw" element={
-            <PortalGuard customer={customer} loading={loading}>
+            <HomeGuard customer={customer} loading={loading}>
               <Withdraw customer={customer} />
-            </PortalGuard>
+            </HomeGuard>
           } />
 
           <Route path="/dashboard/*" element={<DashboardApp />} />

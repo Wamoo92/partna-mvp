@@ -4,13 +4,14 @@ import { useNavigate, useLocation } from 'react-router-dom'
 const PARTNA_PRIMARY = '#1B4F72'
 const PARTNA_GOLD = '#D4AF37'
 
-const NAV_ITEMS = [
-  { path: '/dashboard/overview', label: 'Overview', icon: '▦' },
-  { path: '/dashboard/customers', label: 'Customers', icon: '👥' },
-  { path: '/dashboard/campaigns', label: 'Campaigns', icon: '🎯' },
-  { path: '/dashboard/payments', label: 'Payments', icon: '💳' },
-  { path: '/dashboard/vouchers', label: 'Vouchers & Prizes', icon: '🎁' },
-  { path: '/dashboard/settings', label: 'Settings', icon: '⚙️' },
+const BASE_NAV_ITEMS = [
+  { path: '/dashboard/overview', label: 'Overview', icon: '▦', sectors: null },
+  { path: '/dashboard/customers', label: 'Customers', icon: '👥', sectors: null },
+  { path: '/dashboard/products', label: 'Products', icon: '🛍️', sectors: ['Retail'] },
+  { path: '/dashboard/campaigns', label: 'Campaigns', icon: '🎯', sectors: null },
+  { path: '/dashboard/payments', label: 'Payments', icon: '💳', sectors: null },
+  { path: '/dashboard/vouchers', label: 'Vouchers & Prizes', icon: '🎁', sectors: null },
+  { path: '/dashboard/settings', label: 'Settings', icon: '⚙️', sectors: null },
 ]
 
 export default function DashboardLayout({ admin, business, signOut, children }) {
@@ -19,6 +20,18 @@ export default function DashboardLayout({ admin, business, signOut, children }) 
   const [sidebarOpen, setSidebarOpen] = useState(true)
 
   const kybPending = business?.kyb_status !== 'verified'
+  const sector = business?.sector || ''
+
+  // Filter nav items by sector — null means shown for all sectors
+  const NAV_ITEMS = BASE_NAV_ITEMS.filter(item =>
+    item.sectors === null || item.sectors.includes(sector)
+  )
+
+  // Active page label — check both base and filtered list
+  const activeItem = BASE_NAV_ITEMS.find(n =>
+    location.pathname === n.path ||
+    (n.path !== '/dashboard/overview' && location.pathname.startsWith(n.path))
+  )
 
   function initials(name) {
     if (!name) return 'A'
@@ -72,7 +85,7 @@ export default function DashboardLayout({ admin, business, signOut, children }) 
               <div className="overflow-hidden">
                 <div className="text-white text-xs font-semibold truncate">{business.name}</div>
                 <div className="text-xs truncate capitalize" style={{ color: 'rgba(255,255,255,0.5)' }}>
-                  {business.subscription_package || 'starter'} plan
+                  {business.subscription_package || 'starter'} plan · {sector}
                 </div>
               </div>
             </div>
@@ -88,7 +101,7 @@ export default function DashboardLayout({ admin, business, signOut, children }) 
           </div>
         )}
 
-        {/* Nav items */}
+        {/* Nav items — filtered by sector */}
         <nav className="flex-1 px-3 py-4 flex flex-col gap-1">
           {NAV_ITEMS.map(item => {
             const active = location.pathname === item.path ||
@@ -150,10 +163,7 @@ export default function DashboardLayout({ admin, business, signOut, children }) 
           style={{ background: '#fff', borderColor: 'rgba(0,0,0,0.08)' }}>
           <div>
             <h1 className="text-base font-bold" style={{ color: PARTNA_PRIMARY }}>
-              {NAV_ITEMS.find(n =>
-                location.pathname === n.path ||
-                (n.path !== '/dashboard/overview' && location.pathname.startsWith(n.path))
-              )?.label || 'Dashboard'}
+              {activeItem?.label || 'Dashboard'}
             </h1>
             <div className="text-xs" style={{ color: 'rgba(0,0,0,0.4)' }}>
               {business?.name} · {new Date().toLocaleDateString('en-UG', { day: 'numeric', month: 'long', year: 'numeric' })}
