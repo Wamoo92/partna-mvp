@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../supabase'
 import { useBrand } from '../../lib/BrandContext'
+import { getEffectiveStatus } from '../../lib/campaignUtils'
 
 export default function Home({ customer, signOut }) {
   const brand = useBrand()
@@ -20,7 +21,6 @@ export default function Home({ customer, signOut }) {
   async function fetchData() {
     setLoading(true)
     try {
-      // Use the customer's selected campaign — no hardcoded fallback
       const campaignId = customer.campaign_id
       if (campaignId) {
         const r1 = await supabase.from('campaigns').select('*').eq('id', campaignId)
@@ -52,12 +52,13 @@ export default function Home({ customer, signOut }) {
   const target = campaign ? Number(campaign.target_amount) : 0
   const progress = target > 0 ? Math.min((balance / target) * 100, 100) : 0
   const remaining = target > 0 ? Math.max(target - balance, 0) : 0
-
   const daysRemaining = campaign?.target_date
     ? Math.max(Math.ceil((new Date(campaign.target_date).getTime() - Date.now()) / (1000 * 60 * 60 * 24)), 0)
     : 0
 
   const kycPending = customer?.kyc_status === 'pending'
+  const campaignStatus = campaign ? getEffectiveStatus(campaign) : 'active'
+  const campaignLocked = campaignStatus === 'paused' || campaignStatus === 'deleted'
 
   function formatUGX(amount) {
     return 'UGX ' + Number(amount).toLocaleString('en-UG', { maximumFractionDigits: 0 })
@@ -94,29 +95,12 @@ export default function Home({ customer, signOut }) {
   }
 
   function getRewardsStrip() {
-    if (!wallet || !campaign || target === 0) return null
+    if (!wallet || !campaign || target === 0 || campaignLocked) return null
     const pct = (balance / target) * 100
-    if (pct >= 75) {
-      return {
-        title: '🎯 Next voucher at 100%',
-        body: 'Save ' + formatUGX(Math.max(target - balance, 0)) + ' more to reach your savings goal',
-      }
-    } else if (pct >= 50) {
-      return {
-        title: '🎯 Next voucher at 75%',
-        body: 'Save ' + formatUGX(Math.max(target * 0.75 - balance, 0)) + ' more to unlock your next voucher',
-      }
-    } else if (pct >= 25) {
-      return {
-        title: '🎯 Next voucher at 50%',
-        body: 'Save ' + formatUGX(Math.max(target * 0.50 - balance, 0)) + ' more to unlock your next voucher',
-      }
-    } else {
-      return {
-        title: '🎯 First voucher at 25%',
-        body: 'Save ' + formatUGX(Math.max(target * 0.25 - balance, 0)) + ' more to unlock your first voucher',
-      }
-    }
+    if (pct >= 75) return { title: '🎯 Next voucher at 100%', body: 'Save ' + formatUGX(Math.max(target - balance, 0)) + ' more to reach your savings goal' }
+    if (pct >= 50) return { title: '🎯 Next voucher at 75%', body: 'Save ' + formatUGX(Math.max(target * 0.75 - balance, 0)) + ' more to unlock your next voucher' }
+    if (pct >= 25) return { title: '🎯 Next voucher at 50%', body: 'Save ' + formatUGX(Math.max(target * 0.50 - balance, 0)) + ' more to unlock your next voucher' }
+    return { title: '🎯 First voucher at 25%', body: 'Save ' + formatUGX(Math.max(target * 0.25 - balance, 0)) + ' more to unlock your first voucher' }
   }
 
   const rewardsStrip = getRewardsStrip()
@@ -135,10 +119,11 @@ export default function Home({ customer, signOut }) {
     <div className="min-h-screen flex flex-col" style={{ background: '#f0f2f5' }}>
 
       {/* Header */}
-      <header className="flex items-center justify-between px-4 py-3" style={{ background: brand.primaryColor }}>
+      <header className="flex items-center justify-between px-4 py-3"
+        style={{ background: campaignLocked ? '#6B7280' : brand.primaryColor }}>
         <div className="flex items-center gap-2">
           <img src={brand.logoUrl} alt={brand.businessName} className="w-8 h-8 object-contain"
-            style={{ mixBlendMode: 'screen' }} />
+            style={{ mixBlendMode: 'screen', filter: campaignLocked ? 'grayscale(1)' : 'none' }} />
           <div>
             <div className="text-white text-xs font-semibold">{brand.businessName}</div>
             <div className="text-xs" style={{ color: 'rgba(255,255,255,0.5)' }}>Savings Program</div>
@@ -154,14 +139,31 @@ export default function Home({ customer, signOut }) {
           <button
             onClick={() => navigate('/portal/profile')}
             className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold"
-            style={{ background: brand.secondaryColor, color: brand.primaryColor }}>
+            style={{ background: campaignLocked ? 'rgba(255,255,255,0.2)' : brand.secondaryColor, color: campaignLocked ? '#fff' : brand.primaryColor }}>
             {customer?.first_name?.[0]}{customer?.last_name?.[0]}
           </button>
         </div>
       </header>
 
-      {/* KYC banner */}
-      {kycPending && (
+      {/* Campaign cancelled banner */}
+      {campaignLocked && (
+        <div className="w-full flex items-start gap-3 px-4 py-4"
+          style={{ background: '#DC2626' }}>
+          <span className="text-xl flex-shrink-0">⚠️</span>
+          <div className="text-left flex-1">
+            <div className="text-xs font-bold text-white">
+              {brand.businessName} has cancelled this campaign
+            </div>
+            <div className="text-xs mt-0.5" style={{ color: 'rgba(255,255,255,0.85)' }}>
+              All funds saved or partial payments will be automatically withdrawn to your
+              payment source within 2–5 working days.
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* KYC banner — only show when campaign is not locked */}
+      {kycPending && !campaignLocked && (
         <button
           onClick={() => navigate('/portal/kyc')}
           className="w-full flex items-center gap-3 px-4 py-3"
@@ -178,32 +180,36 @@ export default function Home({ customer, signOut }) {
       )}
 
       {/* Hero section */}
-      <div className="px-5 pt-5 pb-10" style={{ background: brand.primaryColor }}>
+      <div className="px-5 pt-5 pb-10"
+        style={{ background: campaignLocked ? '#6B7280' : brand.primaryColor }}>
         <div className="mb-4">
           <div className="text-xs mb-1" style={{ color: 'rgba(255,255,255,0.6)' }}>
             Welcome back, {customer?.first_name}
           </div>
           <div className="text-white text-3xl font-bold mb-0.5">{formatUGX(balance)}</div>
           <div className="text-xs" style={{ color: 'rgba(255,255,255,0.6)' }}>
-            saved toward {campaign?.name || '—'}
+            {campaignLocked ? 'pending refund' : `saved toward ${campaign?.name || '—'}`}
           </div>
         </div>
 
-        {/* Card */}
+        {/* Card — greyed and non-flippable when locked */}
         <div className="flex justify-center mb-5">
-          <div className="cursor-pointer"
+          <div
+            className={campaignLocked ? '' : 'cursor-pointer'}
             style={{ perspective: '800px', width: `${CARD_W}px`, height: `${CARD_H}px` }}
-            onClick={() => setCardFlipped(!cardFlipped)}>
+            onClick={() => !campaignLocked && setCardFlipped(!cardFlipped)}>
             <div style={{
               width: `${CARD_W}px`, height: `${CARD_H}px`,
               position: 'relative', transformStyle: 'preserve-3d',
               transition: 'transform 0.6s ease',
-              transform: cardFlipped ? 'rotateY(180deg)' : 'rotateY(0deg)',
+              transform: !campaignLocked && cardFlipped ? 'rotateY(180deg)' : 'rotateY(0deg)',
+              filter: campaignLocked ? 'grayscale(1) opacity(0.6)' : 'none',
             }}>
               {/* Front */}
               <div className="rounded-2xl absolute inset-0 overflow-hidden" style={{
                 backfaceVisibility: 'hidden', WebkitBackfaceVisibility: 'hidden',
-                background: brand.primaryColor, border: `2px solid ${brand.secondaryColor}`,
+                background: campaignLocked ? '#9CA3AF' : brand.primaryColor,
+                border: `2px solid ${campaignLocked ? 'rgba(255,255,255,0.2)' : brand.secondaryColor}`,
               }}>
                 <div className="absolute inset-0"
                   style={{ background: 'linear-gradient(135deg, rgba(212,175,55,0.2) 0%, transparent 60%)' }} />
@@ -219,7 +225,7 @@ export default function Home({ customer, signOut }) {
                   style={{ width: '40px', height: '28px', top: '70px', left: '16px', background: 'linear-gradient(135deg,#EDE5A6,#CFA255)' }} />
                 <div className="absolute font-mono font-semibold tracking-widest"
                   style={{ bottom: '44px', left: '16px', right: '16px', color: 'rgba(255,255,255,0.9)', fontSize: '15px', letterSpacing: '2px' }}>
-                  {formatCardNumber(card?.card_number)}
+                  {campaignLocked ? '•••• •••• •••• ••••' : formatCardNumber(card?.card_number)}
                 </div>
                 <div className="absolute flex justify-between items-end"
                   style={{ bottom: '16px', left: '16px', right: '16px' }}>
@@ -231,46 +237,52 @@ export default function Home({ customer, signOut }) {
                     </div>
                   </div>
                   <div className="text-right">
-                    <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '8px', marginBottom: '2px' }}>EXPIRES</div>
+                    <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '8px', marginBottom: '2px' }}>
+                      {campaignLocked ? 'STATUS' : 'EXPIRES'}
+                    </div>
                     <div className="font-mono font-semibold" style={{ color: 'rgba(255,255,255,0.9)', fontSize: '11px' }}>
-                      {formatExpiry(card?.expiry_date)}
+                      {campaignLocked ? 'LOCKED' : formatExpiry(card?.expiry_date)}
                     </div>
                   </div>
                 </div>
-                <div className="absolute bottom-1 left-0 right-0 text-center"
-                  style={{ color: 'rgba(255,255,255,0.25)', fontSize: '8px' }}>tap to flip</div>
+                {!campaignLocked && (
+                  <div className="absolute bottom-1 left-0 right-0 text-center"
+                    style={{ color: 'rgba(255,255,255,0.25)', fontSize: '8px' }}>tap to flip</div>
+                )}
               </div>
 
-              {/* Back */}
-              <div className="rounded-2xl absolute inset-0 overflow-hidden" style={{
-                backfaceVisibility: 'hidden', WebkitBackfaceVisibility: 'hidden',
-                transform: 'rotateY(180deg)', background: '#0f2d40',
-                border: `2px solid ${brand.secondaryColor}`,
-              }}>
-                <div className="absolute w-full" style={{ height: '40px', top: '28px', background: '#111' }} />
-                <div className="absolute flex items-center" style={{ top: '86px', left: '16px', right: '16px' }}>
-                  <div className="flex-1 rounded-l"
-                    style={{ height: '32px', background: 'repeating-linear-gradient(90deg, #e8e8e8 0px, #e8e8e8 4px, #ccc 4px, #ccc 8px)' }} />
-                  <div className="rounded-r flex items-center justify-center font-mono font-bold"
-                    style={{ width: '48px', height: '32px', background: '#fff', color: '#333', fontSize: '14px' }}>
-                    {card?.cvv || '•••'}
+              {/* Back — only visible when not locked */}
+              {!campaignLocked && (
+                <div className="rounded-2xl absolute inset-0 overflow-hidden" style={{
+                  backfaceVisibility: 'hidden', WebkitBackfaceVisibility: 'hidden',
+                  transform: 'rotateY(180deg)', background: '#0f2d40',
+                  border: `2px solid ${brand.secondaryColor}`,
+                }}>
+                  <div className="absolute w-full" style={{ height: '40px', top: '28px', background: '#111' }} />
+                  <div className="absolute flex items-center" style={{ top: '86px', left: '16px', right: '16px' }}>
+                    <div className="flex-1 rounded-l"
+                      style={{ height: '32px', background: 'repeating-linear-gradient(90deg, #e8e8e8 0px, #e8e8e8 4px, #ccc 4px, #ccc 8px)' }} />
+                    <div className="rounded-r flex items-center justify-center font-mono font-bold"
+                      style={{ width: '48px', height: '32px', background: '#fff', color: '#333', fontSize: '14px' }}>
+                      {card?.cvv || '•••'}
+                    </div>
+                  </div>
+                  <div className="absolute text-right"
+                    style={{ top: '122px', right: '16px', color: 'rgba(255,255,255,0.4)', fontSize: '9px' }}>CVV</div>
+                  <div className="absolute font-mono"
+                    style={{ bottom: '28px', left: '16px', color: 'rgba(255,255,255,0.4)', fontSize: '11px', letterSpacing: '1px' }}>
+                    {formatCardNumber(card?.card_number)}
+                  </div>
+                  <div className="absolute"
+                    style={{ bottom: '12px', left: '16px', color: 'rgba(255,255,255,0.3)', fontSize: '9px' }}>
+                    Valid thru {formatExpiry(card?.expiry_date)}
+                  </div>
+                  <div className="absolute bottom-4 right-4 flex">
+                    <div className="w-6 h-6 rounded-full opacity-70" style={{ background: '#EB001B' }} />
+                    <div className="w-6 h-6 rounded-full opacity-70 -ml-2" style={{ background: '#F79E1B' }} />
                   </div>
                 </div>
-                <div className="absolute text-right"
-                  style={{ top: '122px', right: '16px', color: 'rgba(255,255,255,0.4)', fontSize: '9px' }}>CVV</div>
-                <div className="absolute font-mono"
-                  style={{ bottom: '28px', left: '16px', color: 'rgba(255,255,255,0.4)', fontSize: '11px', letterSpacing: '1px' }}>
-                  {formatCardNumber(card?.card_number)}
-                </div>
-                <div className="absolute"
-                  style={{ bottom: '12px', left: '16px', color: 'rgba(255,255,255,0.3)', fontSize: '9px' }}>
-                  Valid thru {formatExpiry(card?.expiry_date)}
-                </div>
-                <div className="absolute bottom-4 right-4 flex">
-                  <div className="w-6 h-6 rounded-full opacity-70" style={{ background: '#EB001B' }} />
-                  <div className="w-6 h-6 rounded-full opacity-70 -ml-2" style={{ background: '#F79E1B' }} />
-                </div>
-              </div>
+              )}
             </div>
           </div>
         </div>
@@ -284,7 +296,7 @@ export default function Home({ customer, signOut }) {
           <div className="w-full h-2 rounded-full" style={{ background: 'rgba(255,255,255,0.2)' }}>
             <div className="h-2 rounded-full transition-all" style={{
               width: `${progress}%`,
-              background: progress >= 75 ? '#22C55E' : progress >= 50 ? brand.secondaryColor : '#F59E0B',
+              background: campaignLocked ? 'rgba(255,255,255,0.4)' : progress >= 75 ? '#22C55E' : progress >= 50 ? brand.secondaryColor : '#F59E0B',
             }} />
           </div>
         </div>
@@ -298,35 +310,45 @@ export default function Home({ customer, signOut }) {
       <div className="rounded-t-3xl flex-1 flex flex-col gap-4 px-5 py-5"
         style={{ background: '#f0f2f5', marginTop: '-16px' }}>
 
-        {rewardsStrip && (
+        {rewardsStrip && !campaignLocked && (
           <div className="rounded-2xl px-4 py-3"
             style={{ background: '#fff', border: '1.5px solid rgba(27,79,114,0.1)' }}>
             <div className="text-xs font-semibold mb-0.5" style={{ color: brand.primaryColor }}>
               {rewardsStrip.title}
             </div>
-            <div className="text-xs" style={{ color: 'rgba(0,0,0,0.5)' }}>
-              {rewardsStrip.body}
-            </div>
+            <div className="text-xs" style={{ color: 'rgba(0,0,0,0.5)' }}>{rewardsStrip.body}</div>
           </div>
         )}
 
         <div className="flex gap-3">
-          {/* Action buttons */}
+          {/* Action buttons — locked when campaign cancelled */}
           <div className="flex flex-col gap-3" style={{ width: '140px', flexShrink: 0 }}>
             <button
-              onClick={() => kycPending ? navigate('/portal/kyc') : navigate('/portal/add-money')}
+              disabled={campaignLocked}
+              onClick={() => !campaignLocked && (kycPending ? navigate('/portal/kyc') : navigate('/portal/add-money'))}
               className="flex flex-col items-center gap-2 py-4 rounded-2xl"
-              style={{ background: '#fff', border: '1.5px solid rgba(27,79,114,0.1)' }}>
+              style={{
+                background: '#fff',
+                border: '1.5px solid rgba(27,79,114,0.1)',
+                opacity: campaignLocked ? 0.4 : 1,
+                cursor: campaignLocked ? 'not-allowed' : 'pointer',
+              }}>
               <div className="w-10 h-10 rounded-full flex items-center justify-center text-lg font-light"
                 style={{ background: 'rgba(27,79,114,0.1)', color: brand.primaryColor }}>
-                {kycPending ? '🔒' : '+'}
+                {campaignLocked ? '🔒' : kycPending ? '🔒' : '+'}
               </div>
               <span className="text-xs font-semibold" style={{ color: brand.primaryColor }}>Add money</span>
             </button>
 
-            <button onClick={() => navigate('/portal/pay')}
+            <button
+              disabled={campaignLocked}
+              onClick={() => !campaignLocked && navigate('/portal/pay')}
               className="flex flex-col items-center gap-2 py-4 rounded-2xl"
-              style={{ background: brand.primaryColor }}>
+              style={{
+                background: campaignLocked ? '#9CA3AF' : brand.primaryColor,
+                opacity: campaignLocked ? 0.4 : 1,
+                cursor: campaignLocked ? 'not-allowed' : 'pointer',
+              }}>
               <div className="w-10 h-10 rounded-full flex items-center justify-center"
                 style={{ background: 'rgba(255,255,255,0.15)' }}>
                 <span className="text-white text-lg">↑</span>
@@ -335,12 +357,18 @@ export default function Home({ customer, signOut }) {
             </button>
 
             <button
-              onClick={() => kycPending ? navigate('/portal/kyc') : navigate('/portal/withdraw')}
+              disabled={campaignLocked}
+              onClick={() => !campaignLocked && (kycPending ? navigate('/portal/kyc') : navigate('/portal/withdraw'))}
               className="flex flex-col items-center gap-2 py-4 rounded-2xl"
-              style={{ background: '#fff', border: '1.5px solid rgba(27,79,114,0.1)' }}>
+              style={{
+                background: '#fff',
+                border: '1.5px solid rgba(27,79,114,0.1)',
+                opacity: campaignLocked ? 0.4 : 1,
+                cursor: campaignLocked ? 'not-allowed' : 'pointer',
+              }}>
               <div className="w-10 h-10 rounded-full flex items-center justify-center"
                 style={{ background: 'rgba(27,79,114,0.1)', color: brand.primaryColor }}>
-                {kycPending ? '🔒' : '↓'}
+                {campaignLocked ? '🔒' : kycPending ? '🔒' : '↓'}
               </div>
               <span className="text-xs font-semibold" style={{ color: brand.primaryColor }}>Withdraw</span>
             </button>
@@ -373,7 +401,7 @@ export default function Home({ customer, signOut }) {
                       </div>
                       <div>
                         <div className="text-xs font-semibold capitalize" style={{ color: '#333' }}>
-                          {txn.type === 'payment' ? 'Fee payment' : txn.type}
+                          {txn.type === 'payment' ? 'Fee payment' : txn.type === 'withdrawal' && txn.notes?.includes('cancelled') ? 'Refund pending' : txn.type}
                         </div>
                         <div style={{ color: 'rgba(0,0,0,0.4)', fontSize: '10px' }}>
                           {formatDate(txn.created_at)}
@@ -390,21 +418,22 @@ export default function Home({ customer, signOut }) {
           </div>
         </div>
 
-        <button onClick={() => navigate('/portal/card')}
-          className="w-full rounded-2xl px-4 py-3 flex items-center justify-between"
-          style={{ background: '#fff', border: '1.5px solid rgba(27,79,114,0.1)' }}>
-          <div className="flex items-center gap-3">
-            <div className="flex">
-              <div className="w-5 h-5 rounded-full" style={{ background: '#EB001B' }} />
-              <div className="w-5 h-5 rounded-full -ml-2" style={{ background: '#F79E1B' }} />
+        {!campaignLocked && (
+          <button onClick={() => navigate('/portal/card')}
+            className="w-full rounded-2xl px-4 py-3 flex items-center justify-between"
+            style={{ background: '#fff', border: '1.5px solid rgba(27,79,114,0.1)' }}>
+            <div className="flex items-center gap-3">
+              <div className="flex">
+                <div className="w-5 h-5 rounded-full" style={{ background: '#EB001B' }} />
+                <div className="w-5 h-5 rounded-full -ml-2" style={{ background: '#F79E1B' }} />
+              </div>
+              <div className="text-xs font-semibold" style={{ color: brand.primaryColor }}>
+                View your savings card
+              </div>
             </div>
-            <div className="text-xs font-semibold" style={{ color: brand.primaryColor }}>
-              View your savings card
-            </div>
-          </div>
-          <span className="text-xs" style={{ color: 'rgba(0,0,0,0.3)' }}>→</span>
-        </button>
-
+            <span className="text-xs" style={{ color: 'rgba(0,0,0,0.3)' }}>→</span>
+          </button>
+        )}
       </div>
 
       {/* Bottom nav */}
@@ -430,7 +459,6 @@ export default function Home({ customer, signOut }) {
           </button>
         ))}
       </nav>
-
     </div>
   )
 }

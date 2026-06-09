@@ -4,6 +4,7 @@ import { supabase } from '../supabase'
 export function useAuth() {
   const [customer, setCustomer] = useState(null)
   const [business, setBusiness] = useState(null)
+  const [campaign, setCampaign] = useState(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -22,6 +23,7 @@ export function useAuth() {
         } else {
           setCustomer(null)
           setBusiness(null)
+          setCampaign(null)
           setLoading(false)
         }
       }
@@ -56,6 +58,19 @@ export function useAuth() {
       }
     }
 
+    // Fetch customer's selected campaign (needed for HomeGuard deletion check)
+    if (c.campaign_id) {
+      const { data: campaignData } = await supabase
+        .from('campaigns')
+        .select('*')
+        .eq('id', c.campaign_id)
+        .maybeSingle()
+
+      setCampaign(campaignData || null)
+    } else {
+      setCampaign(null)
+    }
+
     setLoading(false)
   }
 
@@ -63,11 +78,13 @@ export function useAuth() {
     await supabase.auth.signOut()
     setCustomer(null)
     setBusiness(null)
+    setCampaign(null)
   }
 
   return {
     customer,
     business,
+    campaign,
     loading,
     signOut,
     refetch: () => customer && fetchCustomer(customer.auth_user_id)
