@@ -127,6 +127,7 @@ export default function DashboardRegister() {
 
   // Step 1
   const [fullName, setFullName] = useState('')
+  const [jobTitle, setJobTitle] = useState('')
   const [businessName, setBusinessName] = useState('')
   const [email, setEmail] = useState('')
   const [phone, setPhone] = useState('')
@@ -187,7 +188,7 @@ export default function DashboardRegister() {
 
   function validateStep1() {
     setError('')
-    if (!fullName || !businessName || !email || !phone || !password || !confirmPassword) {
+    if (!fullName || !jobTitle || !businessName || !email || !phone || !password || !confirmPassword) {
       setError('Please fill in all required fields.'); return false
     }
     if (!email.includes('@') || !email.includes('.')) {
@@ -284,9 +285,11 @@ export default function DashboardRegister() {
         return
       }
 
+      // Include job_title in admin record
       const { error: adminError } = await supabase.from('business_admins').insert({
         business_id: newBusinessId,
         full_name: fullName,
+        job_title: jobTitle,
         email: email.toLowerCase().trim(),
         phone,
         role: 'owner',
@@ -552,27 +555,34 @@ export default function DashboardRegister() {
                     style={{ background: '#fff', border: '1.5px solid rgba(27,79,114,0.15)', color: '#333' }} />
                 </div>
                 <div className="flex flex-col gap-1">
-                  <label className="text-xs font-semibold" style={{ color: PARTNA_PRIMARY }}>Business name *</label>
-                  <input type="text" value={businessName} onChange={e => setBusinessName(e.target.value)}
+                  <label className="text-xs font-semibold" style={{ color: PARTNA_PRIMARY }}>Job title *</label>
+                  <input type="text" value={jobTitle} onChange={e => setJobTitle(e.target.value)}
+                    placeholder="e.g. School Principal, Store Manager"
                     className="w-full px-4 py-3 rounded-xl text-sm outline-none"
                     style={{ background: '#fff', border: '1.5px solid rgba(27,79,114,0.15)', color: '#333' }} />
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-semibold" style={{ color: PARTNA_PRIMARY }}>Business name *</label>
+                  <input type="text" value={businessName} onChange={e => setBusinessName(e.target.value)}
+                    className="w-full px-4 py-3 rounded-xl text-sm outline-none"
+                    style={{ background: '#fff', border: '1.5px solid rgba(27,79,114,0.15)', color: '#333' }} />
+                </div>
                 <div className="flex flex-col gap-1">
                   <label className="text-xs font-semibold" style={{ color: PARTNA_PRIMARY }}>Email address *</label>
                   <input type="email" value={email} onChange={e => setEmail(e.target.value)}
                     className="w-full px-4 py-3 rounded-xl text-sm outline-none"
                     style={{ background: '#fff', border: '1.5px solid rgba(27,79,114,0.15)', color: '#333' }} />
                 </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
                 <div className="flex flex-col gap-1">
                   <label className="text-xs font-semibold" style={{ color: PARTNA_PRIMARY }}>Phone number *</label>
                   <input type="tel" value={phone} onChange={e => setPhone(e.target.value)}
                     className="w-full px-4 py-3 rounded-xl text-sm outline-none"
                     style={{ background: '#fff', border: '1.5px solid rgba(27,79,114,0.15)', color: '#333' }} />
                 </div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
                 <div className="flex flex-col gap-1">
                   <label className="text-xs font-semibold" style={{ color: PARTNA_PRIMARY }}>Password *</label>
                   <input type="password" value={password} onChange={e => setPassword(e.target.value)}
@@ -580,12 +590,12 @@ export default function DashboardRegister() {
                     style={{ background: '#fff', border: '1.5px solid rgba(27,79,114,0.15)', color: '#333' }} />
                   <div className="text-xs" style={{ color: 'rgba(0,0,0,0.35)' }}>Minimum 8 characters</div>
                 </div>
-                <div className="flex flex-col gap-1">
-                  <label className="text-xs font-semibold" style={{ color: PARTNA_PRIMARY }}>Confirm password *</label>
-                  <input type="password" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)}
-                    className="w-full px-4 py-3 rounded-xl text-sm outline-none"
-                    style={{ background: '#fff', border: '1.5px solid rgba(27,79,114,0.15)', color: '#333' }} />
-                </div>
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-semibold" style={{ color: PARTNA_PRIMARY }}>Confirm password *</label>
+                <input type="password" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)}
+                  className="w-full px-4 py-3 rounded-xl text-sm outline-none"
+                  style={{ background: '#fff', border: '1.5px solid rgba(27,79,114,0.15)', color: '#333' }} />
               </div>
               <button onClick={() => { if (validateStep1()) setStep(2) }}
                 className="w-full py-3 rounded-xl text-sm font-bold"

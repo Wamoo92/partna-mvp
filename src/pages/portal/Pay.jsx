@@ -3,29 +3,32 @@ import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../supabase'
 import { useBrand } from '../../lib/BrandContext'
 
-const CAMPAIGN_ID = 'b1b2c3d4-0000-0000-0000-000000000001'
-
-const DEMO_STUDENTS = {
-  'SC001': 'Aisha Nakato',
-  'SC002': 'Brian Ssekandi',
-  'SC003': 'Christine Namugga',
-  'SC004': 'David Mukasa',
-  'SC005': 'Esther Nabirye',
-  'SC006': 'Frank Wasswa',
-  'SC007': 'Grace Nalubega',
-  'SC008': 'Henry Kato',
-  'SC009': 'Irene Ssemwogerere',
-  'SC010': 'James Mugisha',
+function generateReference() {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+  let ref = 'TXN-'
+  for (let i = 0; i < 6; i++) {
+    ref += chars[Math.floor(Math.random() * chars.length)]
+  }
+  return ref
 }
 
 export default function Pay({ customer }) {
   const brand = useBrand()
   const navigate = useNavigate()
+  const isEducation = brand.sector === 'Education'
+
+  // Education: 3 steps (Student ID → Amount → Confirm → Success)
+  // Retail:    2 steps (Amount → Confirm → Success)
   const [step, setStep] = useState(1)
+
+  // Education-only state
   const [studentId, setStudentId] = useState('')
   const [studentName, setStudentName] = useState('')
   const [studentIdError, setStudentIdError] = useState('')
   const [studentIdValid, setStudentIdValid] = useState(false)
+  const [studentLookingUp, setStudentLookingUp] = useState(false)
+
+  // Shared state
   const [amount, setAmount] = useState('')
   const [wallet, setWallet] = useState(null)
   const [campaign, setCampaign] = useState(null)
@@ -33,13 +36,32 @@ export default function Pay({ customer }) {
   const [paying, setPaying] = useState(false)
   const [error, setError] = useState('')
   const [alreadyPaid, setAlreadyPaid] = useState(0)
+  const [txnReference, setTxnReference] = useState('')
+
+  // Step labels and total steps differ by sector
+  const totalSteps = isEducation ? 3 : 2
+  const stepLabels = isEducation
+    ? ['Student Details', 'Enter Amount', 'Confirm Payment']
+    : ['Enter Amount', 'Confirm Payment']
+  const stepSubs = isEducation
+    ? [
+        'Step 1 of 3 — Enter the student details',
+        'Step 2 of 3 — How much would you like to pay?',
+        'Step 3 of 3 — Review and confirm your payment',
+      ]
+    : [
+        'Step 1 of 2 — How much would you like to pay?',
+        'Step 2 of 2 — Review and confirm your payment',
+      ]
+
+  // For Education: step 1=student, 2=amount, 3=confirm, 4=success
+  // For Retail:    step 1=amount,   2=confirm,          3=success
+  const successStep = isEducation ? 4 : 3
+  const amountStep  = isEducation ? 2 : 1
+  const confirmStep = isEducation ? 3 : 2
 
   useEffect(() => {
     if (customer) loadData()
-  }, [customer])
-
-  useEffect(() => {
-    if (customer) loadPaid()
   }, [customer])
 
   async function loadData() {
@@ -48,24 +70,24 @@ export default function Pay({ customer }) {
       const r1 = await supabase.from('wallets').select('*').eq('customer_id', customer.id)
       if (r1.data && r1.data.length > 0) setWallet(r1.data[0])
 
-      const r2 = await supabase.from('campaigns').select('*').eq('id', CAMPAIGN_ID)
-      if (r2.data && r2.data.length > 0) setCampaign(r2.data[0])
+      const campaignId = customer.campaign_id
+      if (campaignId) {
+        const r2 = await supabase.from('campaigns').select('*').eq('id', campaignId)
+        if (r2.data && r2.data.length > 0) setCampaign(r2.data[0])
+      }
+
+      const { data: paidData } = await supabase
+        .from('transactions')
+        .select('amount')
+        .eq('customer_id', customer.id)
+        .eq('type', 'payment')
+      if (paidData) {
+        setAlreadyPaid(paidData.reduce((sum, t) => sum + Number(t.amount), 0))
+      }
     } catch (e) {
       console.error(e)
     }
     setLoading(false)
-  }
-
-  async function loadPaid() {
-    const { data } = await supabase
-      .from('transactions')
-      .select('amount')
-      .eq('customer_id', customer.id)
-      .eq('type', 'payment')
-    if (data) {
-      const total = data.reduce((sum, t) => sum + Number(t.amount), 0)
-      setAlreadyPaid(total)
-    }
   }
 
   function formatUGX(n) {
@@ -85,48 +107,55 @@ export default function Pay({ customer }) {
   }
 
   const balance = wallet ? Number(wallet.balance) : 0
-  const target = campaign ? Number(campaign.target_amount) : 1500000
+  const target = campaign ? Number(campaign.target_amount) : 0
   const remaining = Math.max(target - alreadyPaid, 0)
   const maxPayable = Math.min(remaining, balance)
   const parsedAmount = parseInt(amount.replace(/,/g, ''), 10)
 
-  // ── Fixed payment schedule logic ──
-  // campaign.payment_discount_percentage stores the fixed % (25 or 50)
-  // campaign.minimum_deposit stores the actual UGX minimum per payment
   const isFixedSchedule = campaign?.allow_partial_payments &&
     Number(campaign?.payment_discount_percentage) > 0
   const fixedPct = isFixedSchedule ? Number(campaign.payment_discount_percentage) : 0
-  const fixedMinimumUGX = isFixedSchedule
-    ? Math.round(target * (fixedPct / 100))
-    : 1000 // default minimum for flexible
-
-  // For flexible: min is 1,000. For fixed: min is fixedMinimumUGX (but can't exceed remaining or balance)
+  const fixedMinimumUGX = isFixedSchedule ? Math.round(target * (fixedPct / 100)) : 1000
   const effectiveMinimum = Math.min(fixedMinimumUGX, maxPayable)
 
   const validAmount = !isNaN(parsedAmount) &&
     parsedAmount >= effectiveMinimum &&
     parsedAmount <= maxPayable
 
-  function handleStudentIdChange(val) {
+  // ── Education only: student ID lookup ──
+  async function handleStudentIdChange(val) {
     const upper = val.toUpperCase()
     setStudentId(upper)
     setStudentIdError('')
     setStudentIdValid(false)
     setStudentName('')
-    if (upper.length >= 3) {
-      const found = DEMO_STUDENTS[upper]
-      if (found) { setStudentName(found); setStudentIdValid(true) }
+    if (upper.length < 2) return
+    setStudentLookingUp(true)
+    try {
+      const { data } = await supabase
+        .from('customers')
+        .select('id, first_name, last_name, other_names, student_id')
+        .eq('business_id', customer.business_id)
+        .ilike('student_id', upper)
+        .maybeSingle()
+      if (data) {
+        const fullName = [data.first_name, data.other_names, data.last_name]
+          .filter(Boolean).join(' ')
+        setStudentName(fullName)
+        setStudentIdValid(true)
+      } else {
+        setStudentIdValid(false)
+        setStudentName('')
+      }
+    } catch (e) {
+      console.error('Student lookup error:', e)
     }
+    setStudentLookingUp(false)
   }
 
   function handleStudentIdBlur() {
-    if (!studentId) return
-    const found = DEMO_STUDENTS[studentId.toUpperCase()]
-    if (!found) {
-      setStudentIdError('Student ID not found. Please check and try again.')
-      setStudentIdValid(false)
-      setStudentName('')
-    }
+    if (!studentId || studentIdValid) return
+    setStudentIdError('Student ID not found. Please check and try again.')
   }
 
   async function handlePay() {
@@ -144,19 +173,24 @@ export default function Pay({ customer }) {
 
       const w = wallets[0]
       const newBalance = Number(w.balance) - parsedAmount
-
       if (newBalance < 0) { setError('Insufficient balance.'); setPaying(false); return }
+
+      const reference = generateReference()
+      setTxnReference(reference)
 
       const { data: txnData, error: txnError } = await supabase
         .from('transactions')
         .insert({
           customer_id: customer.id,
           wallet_id: w.id,
-          campaign_id: CAMPAIGN_ID,
+          campaign_id: customer.campaign_id,
           type: 'payment',
           amount: parsedAmount,
           status: 'completed',
-          notes: 'Student: ' + studentName + ' (' + studentId + ')',
+          reference,
+          notes: isEducation && studentName
+            ? 'Student: ' + studentName + ' (' + studentId + ')'
+            : null,
         })
         .select()
 
@@ -183,17 +217,9 @@ export default function Pay({ customer }) {
         })
       }
 
-      const { error: balanceError } = await supabase
-        .from('wallets').update({ balance: newBalance }).eq('id', w.id)
+      await supabase.from('wallets').update({ balance: newBalance }).eq('id', w.id)
 
-      if (balanceError) {
-        console.error('Balance error:', balanceError)
-        setError('Could not update balance. Please try again.')
-        setPaying(false)
-        return
-      }
-
-      setStep(4)
+      setStep(successStep)
     } catch (e) {
       console.error('Unexpected error:', e)
       setError('Something went wrong. Please try again.')
@@ -220,15 +246,17 @@ export default function Pay({ customer }) {
         </button>
         <div className="flex items-center gap-2">
           <img src={brand.logoUrl} alt="" className="w-8 h-8 object-contain" style={{ mixBlendMode: 'screen' }} />
-          <div className="text-white text-xs font-semibold">Pay Fees</div>
+          <div className="text-white text-xs font-semibold">
+            {isEducation ? 'Pay Fees' : 'Make Payment'}
+          </div>
         </div>
       </header>
 
       {/* Step indicator */}
-      {step < 4 && (
+      {step < successStep && (
         <div className="px-5 pt-5 pb-8 text-center" style={{ background: brand.primaryColor }}>
           <div className="flex items-center justify-center gap-2 mb-3">
-            {[1, 2, 3].map(s => (
+            {Array.from({ length: totalSteps }, (_, i) => i + 1).map(s => (
               <div key={s} className="rounded-full transition-all"
                 style={{
                   width: s === step ? '24px' : '8px',
@@ -240,37 +268,40 @@ export default function Pay({ customer }) {
             ))}
           </div>
           <div className="text-white text-lg font-bold mb-1">
-            {step === 1 && 'Student Details'}
-            {step === 2 && 'Enter Amount'}
-            {step === 3 && 'Confirm Payment'}
+            {stepLabels[step - 1]}
           </div>
           <div className="text-xs" style={{ color: 'rgba(255,255,255,0.65)' }}>
-            {step === 1 && 'Step 1 of 3 — Enter the student details'}
-            {step === 2 && 'Step 2 of 3 — How much would you like to pay?'}
-            {step === 3 && 'Step 3 of 3 — Review and confirm your payment'}
+            {stepSubs[step - 1]}
           </div>
         </div>
       )}
 
       {/* Success header */}
-      {step === 4 && (
+      {step === successStep && (
         <div className="px-5 pt-8 pb-10 text-center" style={{ background: brand.primaryColor }}>
           <div className="text-4xl mb-3">✅</div>
           <div className="text-white text-xl font-bold mb-1">Payment Successful</div>
-          <div className="text-xs" style={{ color: 'rgba(255,255,255,0.65)' }}>Fees have been paid successfully</div>
+          <div className="text-xs" style={{ color: 'rgba(255,255,255,0.65)' }}>
+            {isEducation ? 'Fees have been paid successfully' : 'Your payment has been processed'}
+          </div>
+          {txnReference && (
+            <div className="mt-2 text-xs font-mono font-bold" style={{ color: brand.secondaryColor }}>
+              {txnReference}
+            </div>
+          )}
         </div>
       )}
 
       <div className="rounded-t-3xl flex-1 flex flex-col px-5 py-6 gap-4"
         style={{ background: '#f0f2f5', marginTop: '-16px' }}>
 
-        {/* ── STEP 1: Student details ── */}
-        {step === 1 && (
+        {/* ── EDUCATION STEP 1: Student details ── */}
+        {isEducation && step === 1 && (
           <>
             <div className="rounded-2xl p-4" style={{ background: '#fff' }}>
               <div className="text-xs font-bold mb-3" style={{ color: 'rgba(0,0,0,0.35)' }}>CAMPAIGN</div>
               {[
-                { label: 'Campaign', value: campaign?.name || 'Term 3 Fees 2026' },
+                { label: 'Campaign', value: campaign?.name || '—' },
                 { label: 'Target amount', value: formatUGX(target) },
                 { label: 'Already paid', value: formatUGX(alreadyPaid) },
                 { label: 'Remaining', value: formatUGX(remaining) },
@@ -284,15 +315,12 @@ export default function Pay({ customer }) {
                   </span>
                 </div>
               ))}
-
-              {/* Payment schedule info */}
               {isFixedSchedule && (
                 <div className="mt-3 pt-3" style={{ borderTop: '1px solid rgba(0,0,0,0.06)' }}>
                   <div className="px-3 py-2 rounded-lg text-xs"
                     style={{ background: 'rgba(27,79,114,0.06)', color: brand.primaryColor }}>
-                    📋 This campaign has a <strong>fixed payment schedule</strong>.
-                    Each payment must be at least{' '}
-                    <strong>{fixedPct}% of the target ({formatUGX(fixedMinimumUGX)})</strong>.
+                    📋 Fixed payment schedule — minimum{' '}
+                    <strong>{fixedPct}% of target ({formatUGX(fixedMinimumUGX)})</strong> per payment.
                   </div>
                 </div>
               )}
@@ -301,18 +329,22 @@ export default function Pay({ customer }) {
             <div className="flex flex-col gap-1">
               <label className="text-xs font-semibold" style={{ color: brand.primaryColor }}>Student ID</label>
               <div className="relative">
-                <input type="text" placeholder="e.g. SC001" value={studentId}
+                <input type="text" placeholder="Enter student ID" value={studentId}
                   onChange={e => handleStudentIdChange(e.target.value)}
                   onBlur={handleStudentIdBlur}
                   className="w-full px-4 py-3 rounded-xl text-sm outline-none uppercase"
                   style={{
                     background: '#fff',
-                    border: studentIdValid
-                      ? '1.5px solid #16A34A'
-                      : studentIdError ? '1.5px solid #DC2626' : '1.5px solid rgba(27,79,114,0.15)',
+                    border: studentIdValid ? '1.5px solid #16A34A'
+                      : studentIdError ? '1.5px solid #DC2626'
+                      : '1.5px solid rgba(27,79,114,0.15)',
                     color: '#333',
                   }} />
-                {studentIdValid && (
+                {studentLookingUp && (
+                  <div className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 border-2 rounded-full animate-spin"
+                    style={{ borderColor: brand.primaryColor, borderTopColor: 'transparent' }} />
+                )}
+                {studentIdValid && !studentLookingUp && (
                   <span className="absolute right-4 top-1/2 -translate-y-1/2 font-bold"
                     style={{ color: '#16A34A' }}>✓</span>
                 )}
@@ -351,14 +383,11 @@ export default function Pay({ customer }) {
               style={{ background: studentIdValid ? brand.primaryColor : 'rgba(27,79,114,0.3)', color: '#fff' }}>
               Continue
             </button>
-            <div className="text-center text-xs" style={{ color: 'rgba(0,0,0,0.3)' }}>
-              Demo: try SC001 — SC010
-            </div>
           </>
         )}
 
-        {/* ── STEP 2: Amount ── */}
-        {step === 2 && (
+        {/* ── AMOUNT STEP ── */}
+        {step === amountStep && (
           <>
             <div className="rounded-2xl p-4" style={{ background: '#fff' }}>
               <div className="flex justify-between items-center">
@@ -369,7 +398,9 @@ export default function Pay({ customer }) {
                   </div>
                 </div>
                 <div className="text-right">
-                  <div className="text-xs mb-0.5" style={{ color: 'rgba(0,0,0,0.4)' }}>Remaining fees</div>
+                  <div className="text-xs mb-0.5" style={{ color: 'rgba(0,0,0,0.4)' }}>
+                    {isEducation ? 'Remaining fees' : 'Remaining to pay'}
+                  </div>
                   <div className="text-base font-bold" style={{ color: '#DC2626' }}>
                     {formatUGX(remaining)}
                   </div>
@@ -377,8 +408,38 @@ export default function Pay({ customer }) {
               </div>
             </div>
 
-            {/* Fixed schedule notice */}
-            {isFixedSchedule && (
+            {/* Show campaign summary for Retail on amount step */}
+            {!isEducation && (
+              <div className="rounded-2xl p-4" style={{ background: '#fff' }}>
+                <div className="text-xs font-bold mb-3" style={{ color: 'rgba(0,0,0,0.35)' }}>PRODUCT</div>
+                {[
+                  { label: 'Product', value: campaign?.name || '—' },
+                  { label: 'Total price', value: formatUGX(target) },
+                  { label: 'Already paid', value: formatUGX(alreadyPaid) },
+                  { label: 'Remaining', value: formatUGX(remaining) },
+                ].map((row, i, arr) => (
+                  <div key={i} className="flex justify-between items-center py-1.5"
+                    style={{ borderBottom: i < arr.length - 1 ? '1px solid rgba(0,0,0,0.05)' : 'none' }}>
+                    <span className="text-xs" style={{ color: 'rgba(0,0,0,0.4)' }}>{row.label}</span>
+                    <span className="text-xs font-semibold"
+                      style={{ color: row.label === 'Remaining' ? '#DC2626' : brand.primaryColor }}>
+                      {row.value}
+                    </span>
+                  </div>
+                ))}
+                {isFixedSchedule && (
+                  <div className="mt-3 pt-3" style={{ borderTop: '1px solid rgba(0,0,0,0.06)' }}>
+                    <div className="px-3 py-2 rounded-lg text-xs"
+                      style={{ background: 'rgba(27,79,114,0.06)', color: brand.primaryColor }}>
+                      📋 Fixed payment schedule — minimum{' '}
+                      <strong>{fixedPct}% of target ({formatUGX(fixedMinimumUGX)})</strong> per payment.
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {isFixedSchedule && isEducation && (
               <div className="px-4 py-3 rounded-xl text-xs"
                 style={{ background: 'rgba(27,79,114,0.06)', border: '1px solid rgba(27,79,114,0.12)', color: brand.primaryColor }}>
                 📋 Fixed payment schedule: minimum payment is{' '}
@@ -403,17 +464,10 @@ export default function Pay({ customer }) {
                 <input type="text" inputMode="numeric" placeholder="0" value={amount}
                   onChange={e => setAmount(formatAmountInput(e.target.value))}
                   className="w-full pl-14 pr-4 py-4 rounded-xl text-xl font-bold outline-none"
-                  style={{
-                    background: '#fff',
-                    border: '1.5px solid rgba(27,79,114,0.15)',
-                    color: brand.primaryColor,
-                  }} />
+                  style={{ background: '#fff', border: '1.5px solid rgba(27,79,114,0.15)', color: brand.primaryColor }} />
               </div>
               <div className="flex justify-between text-xs mt-1" style={{ color: 'rgba(0,0,0,0.4)' }}>
-                <span>
-                  Minimum: {formatUGX(effectiveMinimum)}
-                  {isFixedSchedule && ` (${fixedPct}% of target)`}
-                </span>
+                <span>Minimum: {formatUGX(effectiveMinimum)}{isFixedSchedule && ` (${fixedPct}%)`}</span>
                 <span>Maximum: {formatUGX(maxPayable)}</span>
               </div>
             </div>
@@ -427,19 +481,17 @@ export default function Pay({ customer }) {
             <button
               onClick={() => {
                 if (isNaN(parsedAmount) || parsedAmount < effectiveMinimum) {
-                  setError(
-                    isFixedSchedule
-                      ? `This campaign requires a minimum payment of ${formatUGX(effectiveMinimum)} (${fixedPct}% of target).`
-                      : 'Minimum payment is UGX 1,000.'
-                  )
+                  setError(isFixedSchedule
+                    ? `Minimum payment is ${formatUGX(effectiveMinimum)} (${fixedPct}% of target).`
+                    : 'Minimum payment is UGX 1,000.')
                   return
                 }
                 if (parsedAmount > maxPayable) {
-                  setError('Amount exceeds your available balance or remaining fees.')
+                  setError('Amount exceeds your available balance or remaining amount.')
                   return
                 }
                 setError('')
-                setStep(3)
+                setStep(confirmStep)
               }}
               className="w-full py-3 rounded-xl text-sm font-bold mt-2"
               style={{ background: validAmount ? brand.primaryColor : 'rgba(27,79,114,0.3)', color: '#fff' }}>
@@ -448,24 +500,30 @@ export default function Pay({ customer }) {
           </>
         )}
 
-        {/* ── STEP 3: Confirm ── */}
-        {step === 3 && (
+        {/* ── CONFIRM STEP ── */}
+        {step === confirmStep && (
           <>
             <div className="rounded-2xl p-4" style={{ background: '#fff' }}>
-              <div className="text-xs font-bold mb-3" style={{ color: 'rgba(0,0,0,0.35)' }}>PAYMENT SUMMARY</div>
+              <div className="text-xs font-bold mb-3" style={{ color: 'rgba(0,0,0,0.35)' }}>
+                PAYMENT SUMMARY
+              </div>
               {[
-                { label: 'Campaign', value: campaign?.name || 'Term 3 Fees 2026' },
-                { label: 'Student', value: studentName },
-                { label: 'Student ID', value: studentId },
+                { label: isEducation ? 'Campaign' : 'Product', value: campaign?.name || '—' },
+                ...(isEducation ? [
+                  { label: 'Student', value: studentName },
+                  { label: 'Student ID', value: studentId },
+                ] : []),
                 { label: 'Amount paying', value: formatUGX(parsedAmount) },
                 { label: 'Balance after payment', value: formatUGX(balance - parsedAmount) },
-                { label: 'Remaining fees after payment', value: formatUGX(Math.max(remaining - parsedAmount, 0)) },
+                { label: isEducation ? 'Remaining fees after' : 'Remaining to pay after', value: formatUGX(Math.max(remaining - parsedAmount, 0)) },
                 { label: 'Date & time', value: nowDisplay() },
               ].map((row, i, arr) => (
                 <div key={i} className="flex justify-between items-center py-1.5"
                   style={{ borderBottom: i < arr.length - 1 ? '1px solid rgba(0,0,0,0.05)' : 'none' }}>
                   <span className="text-xs" style={{ color: 'rgba(0,0,0,0.4)' }}>{row.label}</span>
-                  <span className="text-xs font-semibold" style={{ color: brand.primaryColor }}>{row.value}</span>
+                  <span className="text-xs font-semibold" style={{ color: brand.primaryColor }}>
+                    {row.value}
+                  </span>
                 </div>
               ))}
             </div>
@@ -484,17 +542,22 @@ export default function Pay({ customer }) {
           </>
         )}
 
-        {/* ── STEP 4: Success ── */}
-        {step === 4 && (
+        {/* ── SUCCESS STEP ── */}
+        {step === successStep && (
           <>
             <div className="rounded-2xl p-4" style={{ background: '#fff' }}>
-              <div className="text-xs font-bold mb-3" style={{ color: 'rgba(0,0,0,0.35)' }}>TRANSACTION DETAILS</div>
+              <div className="text-xs font-bold mb-3" style={{ color: 'rgba(0,0,0,0.35)' }}>
+                TRANSACTION DETAILS
+              </div>
               {[
-                { label: 'Campaign', value: campaign?.name || 'Term 3 Fees 2026' },
-                { label: 'Student', value: studentName },
-                { label: 'Student ID', value: studentId },
+                { label: 'Reference', value: txnReference },
+                { label: isEducation ? 'Campaign' : 'Product', value: campaign?.name || '—' },
+                ...(isEducation ? [
+                  { label: 'Student', value: studentName },
+                  { label: 'Student ID', value: studentId },
+                ] : []),
                 { label: 'Amount paid', value: formatUGX(parsedAmount) },
-                { label: 'Remaining fees', value: formatUGX(Math.max(remaining - parsedAmount, 0)) },
+                { label: isEducation ? 'Remaining fees' : 'Remaining to pay', value: formatUGX(Math.max(remaining - parsedAmount, 0)) },
                 { label: 'Status', value: '✓ Completed' },
                 { label: 'Date & time', value: nowDisplay() },
               ].map((row, i, arr) => (
@@ -502,11 +565,21 @@ export default function Pay({ customer }) {
                   style={{ borderBottom: i < arr.length - 1 ? '1px solid rgba(0,0,0,0.05)' : 'none' }}>
                   <span className="text-xs" style={{ color: 'rgba(0,0,0,0.4)' }}>{row.label}</span>
                   <span className="text-xs font-semibold"
-                    style={{ color: row.label === 'Status' ? '#16A34A' : brand.primaryColor }}>
+                    style={{
+                      color: row.label === 'Status' ? '#16A34A'
+                        : row.label === 'Reference' ? brand.secondaryColor
+                        : brand.primaryColor,
+                      fontFamily: row.label === 'Reference' ? 'monospace' : 'inherit',
+                    }}>
                     {row.value}
                   </span>
                 </div>
               ))}
+            </div>
+
+            <div className="px-4 py-3 rounded-xl text-xs text-center"
+              style={{ background: 'rgba(27,79,114,0.06)', color: 'rgba(0,0,0,0.5)' }}>
+              📧 A receipt has been sent to {customer?.email}
             </div>
 
             <button onClick={() => navigate('/portal/home')}

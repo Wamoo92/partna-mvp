@@ -6,6 +6,7 @@ const defaultBrand = {
   logoUrl: '/stcatherines-logo.svg',
   businessName: "St. Catherine's College",
   portalUrl: '',
+  sector: 'Education',
 }
 
 export const BrandContext = createContext(defaultBrand)
@@ -22,5 +23,6 @@ export function buildBrand(business) {
     logoUrl: business.logo_url || defaultBrand.logoUrl,
     businessName: business.name || defaultBrand.businessName,
     portalUrl: business.portal_url || defaultBrand.portalUrl,
+    sector: business.sector || 'Education',
   }
 }

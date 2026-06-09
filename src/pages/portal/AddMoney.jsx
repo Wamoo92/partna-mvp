@@ -3,6 +3,15 @@ import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../supabase'
 import { useBrand } from '../../lib/BrandContext'
 
+function generateReference() {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+  let ref = 'TXN-'
+  for (let i = 0; i < 6; i++) {
+    ref += chars[Math.floor(Math.random() * chars.length)]
+  }
+  return ref
+}
+
 export default function AddMoney({ customer }) {
   const brand = useBrand()
   const navigate = useNavigate()
@@ -12,6 +21,7 @@ export default function AddMoney({ customer }) {
   const [momoPhone, setMomoPhone] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [txnReference, setTxnReference] = useState('')
 
   const parsedAmount = parseInt(amount.replace(/,/g, ''), 10)
   const validAmount = !isNaN(parsedAmount) && parsedAmount >= 1000
@@ -52,6 +62,10 @@ export default function AddMoney({ customer }) {
       const wallet = wallets[0]
       const newBalance = Number(wallet.balance) + parsedAmount
 
+      // Generate unique reference
+      const reference = generateReference()
+      setTxnReference(reference)
+
       const { error: txnError } = await supabase
         .from('transactions')
         .insert({
@@ -61,6 +75,7 @@ export default function AddMoney({ customer }) {
           amount: parsedAmount,
           status: 'completed',
           network: network,
+          reference,
         })
 
       if (txnError) {
@@ -132,7 +147,15 @@ export default function AddMoney({ customer }) {
         <div className="px-5 pt-8 pb-10 text-center" style={{ background: brand.primaryColor }}>
           <div className="text-4xl mb-3">✅</div>
           <div className="text-white text-xl font-bold mb-1">Payment Received</div>
-          <div className="text-xs" style={{ color: 'rgba(255,255,255,0.65)' }}>Your balance has been updated</div>
+          <div className="text-xs" style={{ color: 'rgba(255,255,255,0.65)' }}>
+            Your balance has been updated
+          </div>
+          {txnReference && (
+            <div className="mt-2 text-xs font-mono font-bold"
+              style={{ color: brand.secondaryColor }}>
+              {txnReference}
+            </div>
+          )}
         </div>
       )}
 
@@ -193,7 +216,9 @@ export default function AddMoney({ customer }) {
             </div>
 
             <div className="flex flex-col gap-1">
-              <label className="text-xs font-semibold" style={{ color: brand.primaryColor }}>Mobile money number</label>
+              <label className="text-xs font-semibold" style={{ color: brand.primaryColor }}>
+                Mobile money number
+              </label>
               <input type="tel" placeholder="+256 7XX XXX XXX" value={momoPhone}
                 onChange={e => setMomoPhone(e.target.value)}
                 className="w-full px-4 py-3 rounded-xl text-sm outline-none"
@@ -231,8 +256,11 @@ export default function AddMoney({ customer }) {
         {step === 3 && (
           <>
             <div className="rounded-2xl p-4" style={{ background: '#fff' }}>
-              <div className="text-xs font-bold mb-3" style={{ color: 'rgba(0,0,0,0.35)' }}>TRANSACTION DETAILS</div>
+              <div className="text-xs font-bold mb-3" style={{ color: 'rgba(0,0,0,0.35)' }}>
+                TRANSACTION DETAILS
+              </div>
               {[
+                { label: 'Reference', value: txnReference },
                 { label: 'Amount deposited', value: formatUGX(parsedAmount) },
                 { label: 'Network', value: network === 'mtn' ? 'MTN MoMo' : 'Airtel Money' },
                 { label: 'Number', value: momoPhone },
@@ -243,11 +271,21 @@ export default function AddMoney({ customer }) {
                   style={{ borderBottom: i < arr.length - 1 ? '1px solid rgba(0,0,0,0.05)' : 'none' }}>
                   <span className="text-xs" style={{ color: 'rgba(0,0,0,0.4)' }}>{row.label}</span>
                   <span className="text-xs font-semibold"
-                    style={{ color: row.label === 'Status' ? '#16A34A' : brand.primaryColor }}>
+                    style={{
+                      color: row.label === 'Status' ? '#16A34A'
+                        : row.label === 'Reference' ? brand.secondaryColor
+                        : brand.primaryColor,
+                      fontFamily: row.label === 'Reference' ? 'monospace' : 'inherit',
+                    }}>
                     {row.value}
                   </span>
                 </div>
               ))}
+            </div>
+
+            <div className="px-4 py-3 rounded-xl text-xs text-center"
+              style={{ background: 'rgba(27,79,114,0.06)', color: 'rgba(0,0,0,0.5)' }}>
+              📧 A receipt has been sent to {customer?.email}
             </div>
 
             <button onClick={() => navigate('/portal/home')}

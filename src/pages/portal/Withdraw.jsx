@@ -3,6 +3,15 @@ import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../supabase'
 import { useBrand } from '../../lib/BrandContext'
 
+function generateReference() {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+  let ref = 'TXN-'
+  for (let i = 0; i < 6; i++) {
+    ref += chars[Math.floor(Math.random() * chars.length)]
+  }
+  return ref
+}
+
 export default function Withdraw({ customer }) {
   const brand = useBrand()
   const navigate = useNavigate()
@@ -13,6 +22,7 @@ export default function Withdraw({ customer }) {
   const [wallet, setWallet] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [txnReference, setTxnReference] = useState('')
 
   const parsedAmount = parseInt(amount.replace(/,/g, ''), 10)
   const balance = wallet ? Number(wallet.balance) : 0
@@ -82,20 +92,26 @@ export default function Withdraw({ customer }) {
         return
       }
 
-      const wallet = wallets[0]
-      const newBalance = Number(wallet.balance) - parsedAmount
+      const w = wallets[0]
+      const newBalance = Number(w.balance) - parsedAmount
 
       if (newBalance < 0) { setError('Insufficient balance.'); setLoading(false); return }
+
+      // Generate reference before insert so it shows on success screen
+      const reference = generateReference()
+      setTxnReference(reference)
 
       const { data: txnData, error: txnError } = await supabase
         .from('transactions')
         .insert({
           customer_id: customer.id,
-          wallet_id: wallet.id,
+          wallet_id: w.id,
+          campaign_id: customer.campaign_id || null,
           type: 'withdrawal',
           amount: parsedAmount,
-          status: 'completed',
+          status: 'pending',   // withdrawals are pending until processed by Partna
           network: network,
+          reference,
         })
         .select()
 
@@ -108,7 +124,7 @@ export default function Withdraw({ customer }) {
 
       const txnId = txnData?.[0]?.id
       if (txnId) {
-        const { error: feeError } = await supabase.from('transaction_fees').insert({
+        await supabase.from('transaction_fees').insert({
           transaction_id: txnId,
           customer_id: customer.id,
           network: network,
@@ -120,11 +136,11 @@ export default function Withdraw({ customer }) {
           total_fees: fees.totalFees,
           net_amount: fees.netAmount,
         })
-        if (feeError) console.error('Fee record error:', feeError)
       }
 
+      // Zero balance immediately — funds are being withdrawn
       const { error: balanceError } = await supabase
-        .from('wallets').update({ balance: newBalance }).eq('id', wallet.id)
+        .from('wallets').update({ balance: newBalance }).eq('id', w.id)
 
       if (balanceError) {
         console.error('Balance error:', balanceError)
@@ -145,7 +161,9 @@ export default function Withdraw({ customer }) {
     <div className="min-h-screen flex flex-col" style={{ background: '#f0f2f5' }}>
 
       <header className="flex items-center px-4 py-3 gap-3" style={{ background: brand.primaryColor }}>
-        <button onClick={() => step === 1 ? navigate('/portal/home') : setStep(step - 1)} className="text-white text-xl">
+        <button
+          onClick={() => step === 1 ? navigate('/portal/home') : setStep(step - 1)}
+          className="text-white text-xl">
           &#8592;
         </button>
         <div className="flex items-center gap-2">
@@ -162,7 +180,9 @@ export default function Withdraw({ customer }) {
                 style={{
                   width: s === step ? '24px' : '8px',
                   height: '8px',
-                  background: s === step ? brand.secondaryColor : s < step ? 'rgba(212,175,55,0.5)' : 'rgba(255,255,255,0.25)',
+                  background: s === step
+                    ? brand.secondaryColor
+                    : s < step ? 'rgba(212,175,55,0.5)' : 'rgba(255,255,255,0.25)',
                 }} />
             ))}
           </div>
@@ -179,17 +199,42 @@ export default function Withdraw({ customer }) {
 
       {step === 3 && (
         <div className="px-5 pt-8 pb-10 text-center" style={{ background: brand.primaryColor }}>
-          <div className="text-4xl mb-3">✅</div>
+          <div className="text-4xl mb-3">⏳</div>
           <div className="text-white text-xl font-bold mb-1">Withdrawal Requested</div>
-          <div className="text-xs" style={{ color: 'rgba(255,255,255,0.65)' }}>Your request has been submitted</div>
+          <div className="text-xs" style={{ color: 'rgba(255,255,255,0.65)' }}>
+            Your request is being processed
+          </div>
+          {txnReference && (
+            <div className="mt-2 text-xs font-mono font-bold" style={{ color: brand.secondaryColor }}>
+              {txnReference}
+            </div>
+          )}
         </div>
       )}
 
       <div className="rounded-t-3xl flex-1 flex flex-col px-5 py-6 gap-4"
         style={{ background: '#f0f2f5', marginTop: '-16px' }}>
 
+        {/* ── STEP 1: Amount ── */}
         {step === 1 && (
           <>
+            <div className="rounded-2xl p-4" style={{ background: '#fff' }}>
+              <div className="flex justify-between items-center">
+                <div>
+                  <div className="text-xs mb-0.5" style={{ color: 'rgba(0,0,0,0.4)' }}>Available balance</div>
+                  <div className="text-base font-bold" style={{ color: brand.primaryColor }}>
+                    {formatUGX(balance)}
+                  </div>
+                </div>
+                <button
+                  onClick={() => setAmount(formatAmountInput(String(balance)))}
+                  className="text-xs font-semibold px-3 py-1.5 rounded-lg"
+                  style={{ background: brand.secondaryColor, color: brand.primaryColor }}>
+                  Withdraw all
+                </button>
+              </div>
+            </div>
+
             <div className="flex flex-col gap-1">
               <label className="text-xs font-semibold" style={{ color: brand.primaryColor }}>Amount (UGX)</label>
               <div className="relative">
@@ -200,24 +245,24 @@ export default function Withdraw({ customer }) {
                   className="w-full pl-14 pr-4 py-4 rounded-xl text-xl font-bold outline-none"
                   style={{ background: '#fff', border: '1.5px solid rgba(27,79,114,0.15)', color: brand.primaryColor }} />
               </div>
-              <div className="text-xs mt-1" style={{ color: 'rgba(0,0,0,0.4)' }}>Minimum withdrawal: UGX 5,000</div>
+              <div className="text-xs mt-1" style={{ color: 'rgba(0,0,0,0.4)' }}>
+                Minimum withdrawal: UGX 5,000
+              </div>
             </div>
 
             {validAmount && (
               <div className="rounded-2xl p-4" style={{ background: '#fff' }}>
                 <div className="text-xs font-bold mb-3" style={{ color: 'rgba(0,0,0,0.35)' }}>FEE PREVIEW</div>
                 {[
-                  { label: 'Withdrawal amount', value: formatUGX(parsedAmount) },
-                  { label: 'Partna service fee (3%)', value: '− ' + formatUGX(fees.partnaFee) },
-                  { label: 'Mobile money carrier fee', value: '− ' + formatUGX(fees.carrierFee) },
-                  { label: 'Tax (0.5%)', value: '− ' + formatUGX(fees.tax) },
+                  { label: 'Withdrawal amount', value: formatUGX(parsedAmount), color: brand.primaryColor },
+                  { label: 'Partna service fee (3%)', value: '− ' + formatUGX(fees.partnaFee), color: '#DC2626' },
+                  { label: 'Mobile money carrier fee', value: '− ' + formatUGX(fees.carrierFee), color: '#DC2626' },
+                  { label: 'Tax (0.5%)', value: '− ' + formatUGX(fees.tax), color: '#DC2626' },
                 ].map((row, i) => (
                   <div key={i} className="flex justify-between items-center py-1.5"
                     style={{ borderBottom: '1px solid rgba(0,0,0,0.05)' }}>
                     <span className="text-xs" style={{ color: 'rgba(0,0,0,0.4)' }}>{row.label}</span>
-                    <span className="text-xs font-semibold" style={{ color: i === 0 ? brand.primaryColor : '#DC2626' }}>
-                      {row.value}
-                    </span>
+                    <span className="text-xs font-semibold" style={{ color: row.color }}>{row.value}</span>
                   </div>
                 ))}
                 <div className="flex justify-between items-center pt-2">
@@ -227,13 +272,19 @@ export default function Withdraw({ customer }) {
               </div>
             )}
 
-            {error && <div className="text-xs px-4 py-3 rounded-xl" style={{ background: '#FEE2E2', color: '#991B1B' }}>{error}</div>}
+            {error && (
+              <div className="text-xs px-4 py-3 rounded-xl" style={{ background: '#FEE2E2', color: '#991B1B' }}>
+                {error}
+              </div>
+            )}
 
             <button
               onClick={() => {
                 if (!validAmount) {
-                  if (isNaN(parsedAmount) || parsedAmount < 5000) setError('Minimum withdrawal is UGX 5,000.')
-                  else if (parsedAmount > balance) setError('Amount exceeds your available balance of ' + formatUGX(balance) + '.')
+                  if (isNaN(parsedAmount) || parsedAmount < 5000)
+                    setError('Minimum withdrawal is UGX 5,000.')
+                  else if (parsedAmount > balance)
+                    setError('Amount exceeds your available balance of ' + formatUGX(balance) + '.')
                   return
                 }
                 setError('')
@@ -246,6 +297,7 @@ export default function Withdraw({ customer }) {
           </>
         )}
 
+        {/* ── STEP 2: Mobile money details ── */}
         {step === 2 && (
           <>
             <div>
@@ -259,16 +311,25 @@ export default function Withdraw({ customer }) {
                 ].map(net => (
                   <button key={net.id} onClick={() => setNetwork(net.id)}
                     className="flex-1 rounded-2xl p-3 flex flex-col items-center gap-2"
-                    style={{ background: '#fff', border: network === net.id ? `2px solid ${brand.secondaryColor}` : '2px solid rgba(0,0,0,0.06)' }}>
+                    style={{
+                      background: '#fff',
+                      border: network === net.id
+                        ? `2px solid ${brand.secondaryColor}`
+                        : '2px solid rgba(0,0,0,0.06)',
+                    }}>
                     <img src={net.logo} alt={net.label} className="w-12 h-12 object-contain rounded-xl" />
-                    <span className="text-xs font-semibold" style={{ color: brand.primaryColor }}>{net.label}</span>
+                    <span className="text-xs font-semibold" style={{ color: brand.primaryColor }}>
+                      {net.label}
+                    </span>
                   </button>
                 ))}
               </div>
             </div>
 
             <div className="flex flex-col gap-1">
-              <label className="text-xs font-semibold" style={{ color: brand.primaryColor }}>Mobile money number</label>
+              <label className="text-xs font-semibold" style={{ color: brand.primaryColor }}>
+                Mobile money number
+              </label>
               <input type="tel" placeholder="+256 7XX XXX XXX" value={momoPhone}
                 onChange={e => setMomoPhone(e.target.value)}
                 className="w-full px-4 py-3 rounded-xl text-sm outline-none"
@@ -276,7 +337,7 @@ export default function Withdraw({ customer }) {
             </div>
 
             <div className="rounded-2xl p-4" style={{ background: '#fff' }}>
-              <div className="text-xs font-bold mb-3" style={{ color: 'rgba(0,0,0,0.35)' }}>PAYMENT SUMMARY</div>
+              <div className="text-xs font-bold mb-3" style={{ color: 'rgba(0,0,0,0.35)' }}>WITHDRAWAL SUMMARY</div>
               {[
                 { label: 'Withdrawal amount', value: formatUGX(parsedAmount), color: brand.primaryColor },
                 { label: 'Partna service fee (3%)', value: '− ' + formatUGX(fees.partnaFee), color: '#DC2626' },
@@ -299,7 +360,11 @@ export default function Withdraw({ customer }) {
               </div>
             </div>
 
-            {error && <div className="text-xs px-4 py-3 rounded-xl" style={{ background: '#FEE2E2', color: '#991B1B' }}>{error}</div>}
+            {error && (
+              <div className="text-xs px-4 py-3 rounded-xl" style={{ background: '#FEE2E2', color: '#991B1B' }}>
+                {error}
+              </div>
+            )}
 
             <button onClick={handleWithdraw} disabled={loading}
               className="w-full py-3 rounded-xl text-sm font-bold"
@@ -309,19 +374,26 @@ export default function Withdraw({ customer }) {
           </>
         )}
 
+        {/* ── STEP 3: Success / pending ── */}
         {step === 3 && (
           <>
             <div className="rounded-2xl px-4 py-3"
               style={{ background: 'rgba(27,79,114,0.06)', border: '1px solid rgba(27,79,114,0.15)' }}>
-              <div className="text-xs font-semibold mb-1" style={{ color: brand.primaryColor }}>⏱ Processing time</div>
+              <div className="text-xs font-semibold mb-1" style={{ color: brand.primaryColor }}>
+                ⏱ Processing time
+              </div>
               <div className="text-xs leading-relaxed" style={{ color: 'rgba(0,0,0,0.5)' }}>
-                Withdrawals typically take <strong>1–2 business days</strong> to process. You will receive a notification on your phone once your withdrawal has been successfully processed.
+                Withdrawals typically take <strong>1–2 business days</strong> to process.
+                You will receive a notification once your withdrawal has been successfully processed.
               </div>
             </div>
 
             <div className="rounded-2xl p-4" style={{ background: '#fff' }}>
-              <div className="text-xs font-bold mb-3" style={{ color: 'rgba(0,0,0,0.35)' }}>TRANSACTION DETAILS</div>
+              <div className="text-xs font-bold mb-3" style={{ color: 'rgba(0,0,0,0.35)' }}>
+                TRANSACTION DETAILS
+              </div>
               {[
+                { label: 'Reference', value: txnReference, color: brand.secondaryColor, mono: true },
                 { label: 'Amount withdrawn', value: formatUGX(parsedAmount), color: brand.primaryColor },
                 { label: 'Partna service fee', value: '− ' + formatUGX(fees.partnaFee), color: '#DC2626' },
                 { label: 'Carrier fee', value: '− ' + formatUGX(fees.carrierFee), color: '#DC2626' },
@@ -329,15 +401,26 @@ export default function Withdraw({ customer }) {
                 { label: 'You receive', value: formatUGX(fees.netAmount), color: '#16A34A' },
                 { label: 'Network', value: network === 'mtn' ? 'MTN MoMo' : 'Airtel Money', color: brand.primaryColor },
                 { label: 'Number', value: momoPhone, color: brand.primaryColor },
-                { label: 'Status', value: '⏳ Processing', color: '#D97706' },
+                { label: 'Status', value: '⏳ Pending', color: '#D97706' },
                 { label: 'Date & time', value: nowDisplay(), color: brand.primaryColor },
               ].map((row, i, arr) => (
                 <div key={i} className="flex justify-between items-center py-1.5"
                   style={{ borderBottom: i < arr.length - 1 ? '1px solid rgba(0,0,0,0.05)' : 'none' }}>
                   <span className="text-xs" style={{ color: 'rgba(0,0,0,0.4)' }}>{row.label}</span>
-                  <span className="text-xs font-semibold" style={{ color: row.color }}>{row.value}</span>
+                  <span className="text-xs font-semibold"
+                    style={{
+                      color: row.color,
+                      fontFamily: row.mono ? 'monospace' : 'inherit',
+                    }}>
+                    {row.value}
+                  </span>
                 </div>
               ))}
+            </div>
+
+            <div className="px-4 py-3 rounded-xl text-xs text-center"
+              style={{ background: 'rgba(27,79,114,0.06)', color: 'rgba(0,0,0,0.5)' }}>
+              📧 A receipt has been sent to {customer?.email}
             </div>
 
             <button onClick={() => navigate('/portal/home')}
