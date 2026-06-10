@@ -62,17 +62,22 @@ const KYB_DOCS = {
   ],
 }
 
-function FileUploadField({ label }) {
+// KYB file upload field — exposes file via onChange callback
+function FileUploadField({ label, onChange }) {
   const [file, setFile] = useState(null)
 
   function handleChange(e) {
     const f = e.target.files[0]
-    if (f) setFile(f)
+    if (f) {
+      setFile(f)
+      onChange && onChange(f)
+    }
   }
 
   function handleRemove(e) {
     e.preventDefault()
     setFile(null)
+    onChange && onChange(null)
   }
 
   return (
@@ -160,19 +165,27 @@ export default function DashboardRegister() {
   const [primaryColor, setPrimaryColor] = useState('#1B4F72')
   const [secondaryColor, setSecondaryColor] = useState('#D4AF37')
   const [logoPreview, setLogoPreview] = useState(null)
+  const [logoFile, setLogoFile] = useState(null)
 
   // Step 4
   const [regType, setRegType] = useState('')
   const [legalName, setLegalName] = useState('')
   const [regNumber, setRegNumber] = useState('')
   const [tin, setTin] = useState('')
+  // KYB document files — keyed by document label
+  const [kybFiles, setKybFiles] = useState({})
 
   function handleLogoSelect(e) {
     const file = e.target.files[0]
     if (!file) return
+    setLogoFile(file)
     const reader = new FileReader()
     reader.onload = ev => setLogoPreview(ev.target.result)
     reader.readAsDataURL(file)
+  }
+
+  function handleKybFileChange(label, file) {
+    setKybFiles(prev => ({ ...prev, [label]: file }))
   }
 
   function formatCardNumber(val) {
@@ -221,7 +234,6 @@ export default function DashboardRegister() {
   }
 
   const pkg = PACKAGES.find(p => p.id === selectedPackage)
-
   const subPrice = billingCycle === 'monthly' ? (pkg?.monthly || 0) : (pkg?.annual || 0)
   const setupFee = 299
   const trialDiscount = subPrice + setupFee
@@ -259,6 +271,26 @@ export default function DashboardRegister() {
       const newBusinessId = generateBusinessId()
       const fullAddress = [addrLine1, addrLine2, addrCity, addrPostal, addrPOBox].filter(Boolean).join(', ')
 
+      // ── Upload logo to Supabase Storage ──
+      let logoUrl = '/partna-icon.svg'
+      if (logoFile) {
+        const fileExt = logoFile.name.split('.').pop()
+        const filePath = `${newBusinessId}/logo.${fileExt}`
+        const { error: uploadError } = await supabase.storage
+          .from('business-logos')
+          .upload(filePath, logoFile, { upsert: true })
+        if (!uploadError) {
+          const { data: urlData } = supabase.storage
+            .from('business-logos')
+            .getPublicUrl(filePath)
+          logoUrl = urlData.publicUrl
+        } else {
+          console.error('Logo upload error:', uploadError)
+          // Fall back to base64 preview if storage upload fails
+          logoUrl = logoPreview || '/partna-icon.svg'
+        }
+      }
+
       const { error: bizError } = await supabase.from('businesses').insert({
         id: newBusinessId,
         name: businessName,
@@ -269,7 +301,7 @@ export default function DashboardRegister() {
         website: website || null,
         primary_color: primaryColor,
         secondary_color: secondaryColor,
-        logo_url: logoPreview || '/partna-icon.svg',
+        logo_url: logoUrl,
         kyb_status: skip ? 'skipped' : 'pending',
         registration_type: regType || null,
         legal_name: legalName || null,
@@ -285,7 +317,21 @@ export default function DashboardRegister() {
         return
       }
 
-      // Include job_title in admin record
+      // ── Upload KYB documents to Supabase Storage ──
+      if (!skip && Object.keys(kybFiles).length > 0) {
+        const uploadPromises = Object.entries(kybFiles).map(async ([label, file]) => {
+          if (!file) return
+          const fileExt = file.name.split('.').pop()
+          const safeLabel = label.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase()
+          const filePath = `${newBusinessId}/${safeLabel}.${fileExt}`
+          const { error: docError } = await supabase.storage
+            .from('kyb-documents')
+            .upload(filePath, file, { upsert: true })
+          if (docError) console.error(`KYB upload error for ${label}:`, docError)
+        })
+        await Promise.all(uploadPromises)
+      }
+
       const { error: adminError } = await supabase.from('business_admins').insert({
         business_id: newBusinessId,
         full_name: fullName,
@@ -788,6 +834,9 @@ export default function DashboardRegister() {
                       )}
                       <input type="file" accept="image/*" className="hidden" onChange={handleLogoSelect} />
                     </label>
+                    <div className="text-xs text-center" style={{ color: 'rgba(0,0,0,0.35)' }}>
+                      PNG, JPEG or SVG
+                    </div>
                   </div>
                   <div className="flex flex-col gap-1">
                     <label className="text-xs font-semibold" style={{ color: PARTNA_PRIMARY }}>Primary colour</label>
@@ -888,7 +937,11 @@ export default function DashboardRegister() {
                     Accepted: PDF, JPEG, PNG. Max 10MB per file.
                   </div>
                   {KYB_DOCS[regType].map((doc, i) => (
-                    <FileUploadField key={i} label={doc} />
+                    <FileUploadField
+                      key={i}
+                      label={doc}
+                      onChange={file => handleKybFileChange(doc, file)}
+                    />
                   ))}
                 </div>
               )}

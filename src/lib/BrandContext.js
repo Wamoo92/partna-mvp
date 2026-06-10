@@ -3,8 +3,8 @@ import { createContext, useContext } from 'react'
 const defaultBrand = {
   primaryColor: '#1B4F72',
   secondaryColor: '#D4AF37',
-  logoUrl: '/stcatherines-logo.svg',
-  businessName: "St. Catherine's College",
+  logoUrl: '/partna-icon.svg',
+  businessName: 'Partna',
   portalUrl: '',
   sector: 'Education',
 }

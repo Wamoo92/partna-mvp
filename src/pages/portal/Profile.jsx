@@ -3,8 +3,6 @@ import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../supabase'
 import { useBrand } from '../../lib/BrandContext'
 
-const CAMPAIGN_ID = 'b1b2c3d4-0000-0000-0000-000000000001'
-
 export default function Profile({ customer, signOut }) {
   const brand = useBrand()
   const navigate = useNavigate()
@@ -26,8 +24,12 @@ export default function Profile({ customer, signOut }) {
   async function loadData() {
     setLoading(true)
     try {
-      const r1 = await supabase.from('campaigns').select('*').eq('id', CAMPAIGN_ID)
-      if (r1.data && r1.data.length > 0) setCampaign(r1.data[0])
+      // Use customer's actual campaign_id — no hardcoded fallback
+      const campaignId = customer.campaign_id
+      if (campaignId) {
+        const r1 = await supabase.from('campaigns').select('*').eq('id', campaignId)
+        if (r1.data && r1.data.length > 0) setCampaign(r1.data[0])
+      }
 
       const r2 = await supabase.from('wallets').select('*').eq('customer_id', customer.id)
       if (r2.data && r2.data.length > 0) setWallet(r2.data[0])
@@ -87,9 +89,9 @@ export default function Profile({ customer, signOut }) {
   }
 
   const balance = wallet ? Number(wallet.balance) : 0
-  const target = campaign ? Number(campaign.target_amount) : 1500000
+  const target = campaign ? Number(campaign.target_amount) : 0
   const remaining = Math.max(target - balance, 0)
-  const pct = Math.min((balance / target) * 100, 100)
+  const pct = target > 0 ? Math.min((balance / target) * 100, 100) : 0
   const kycVerified = customer?.kyc_status === 'verified'
   const hasPaymentSource = !!(customer?.payment_network && customer?.payment_number)
 
@@ -123,8 +125,6 @@ export default function Profile({ customer, signOut }) {
         </div>
         <div className="text-xs mt-1" style={{ color: 'rgba(255,255,255,0.6)' }}>{customer?.phone}</div>
         <div className="text-xs mt-0.5" style={{ color: 'rgba(255,255,255,0.5)' }}>{customer?.email}</div>
-
-        {/* Draw code badge */}
         {customer?.draw_code && (
           <div className="mt-3 px-4 py-1.5 rounded-full text-xs font-bold"
             style={{ background: 'rgba(255,255,255,0.15)', color: brand.secondaryColor, letterSpacing: '0.05em' }}>
@@ -211,15 +211,13 @@ export default function Profile({ customer, signOut }) {
           )}
         </div>
 
-        {/* Savings summary — uses balance vs target consistently */}
+        {/* Savings summary */}
         <div className="rounded-2xl overflow-hidden" style={{ background: '#fff' }}>
           <div className="px-4 py-3 border-b" style={{ borderColor: 'rgba(0,0,0,0.06)' }}>
             <div className="text-xs font-bold uppercase tracking-wide" style={{ color: 'rgba(0,0,0,0.35)' }}>
               Savings Summary
             </div>
           </div>
-
-          {/* Progress bar */}
           <div className="px-4 pt-4 pb-2">
             <div className="flex justify-between text-xs mb-1.5" style={{ color: 'rgba(0,0,0,0.4)' }}>
               <span>{pct.toFixed(1)}% saved</span>
@@ -233,9 +231,8 @@ export default function Profile({ customer, signOut }) {
                 }} />
             </div>
           </div>
-
           {[
-            { label: 'Campaign', value: campaign?.name || 'Term 3 Fees 2026' },
+            { label: 'Campaign', value: campaign?.name || '—' },
             { label: 'Target amount', value: formatUGX(target) },
             { label: 'Current balance', value: formatUGX(balance) },
             { label: 'Remaining to save', value: formatUGX(remaining), highlight: remaining > 0 },

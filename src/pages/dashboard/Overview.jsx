@@ -79,7 +79,7 @@ export default function Overview({ admin, business }) {
 
       setStats({
         totalSavings,
-        activeCustomers: customers?.filter(c => c.registration_status === 'complete').length || 0,
+        activeCustomers: customers?.length || 0,
         totalPayments,
       })
     } catch (e) {

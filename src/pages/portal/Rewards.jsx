@@ -3,8 +3,6 @@ import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../supabase'
 import { useBrand } from '../../lib/BrandContext'
 
-const CAMPAIGN_ID = 'b1b2c3d4-0000-0000-0000-000000000001'
-
 function getMerchantLogo(name) {
   if (!name) return null
   const n = name.toLowerCase()
@@ -84,10 +82,15 @@ export default function Rewards({ customer }) {
   async function loadAll() {
     setLoading(true)
 
+    // Use customer's actual campaign_id — no hardcoded fallback
+    const campaignId = customer.campaign_id
+
     // Campaign
     try {
-      const r1 = await supabase.from('campaigns').select('*').eq('id', CAMPAIGN_ID)
-      if (r1.data && r1.data.length > 0) setCampaign(r1.data[0])
+      if (campaignId) {
+        const r1 = await supabase.from('campaigns').select('*').eq('id', campaignId)
+        if (r1.data && r1.data.length > 0) setCampaign(r1.data[0])
+      }
     } catch(e) {}
 
     // Wallet
@@ -96,31 +99,33 @@ export default function Rewards({ customer }) {
       if (r2.data && r2.data.length > 0) setWallet(r2.data[0])
     } catch(e) {}
 
-    // Vouchers — fetch via campaign_vouchers junction table, then hydrate with voucher + merchant data
-    try {
-      const { data: cvData } = await supabase
-        .from('campaign_vouchers')
-        .select('voucher_id')
-        .eq('campaign_id', CAMPAIGN_ID)
+    // Vouchers — fetch via campaign_vouchers junction table
+    if (campaignId) {
+      try {
+        const { data: cvData } = await supabase
+          .from('campaign_vouchers')
+          .select('voucher_id')
+          .eq('campaign_id', campaignId)
 
-      if (cvData && cvData.length > 0) {
-        const voucherIds = cvData.map(cv => cv.voucher_id)
-        const { data: vData } = await supabase
-          .from('vouchers')
-          .select('*, merchants(id, name)')
-          .in('id', voucherIds)
-          .eq('is_active', true)
-        setVouchers(vData || [])
-      } else {
-        // Fallback: direct campaign_id on vouchers (legacy)
-        const { data: vData } = await supabase
-          .from('vouchers')
-          .select('*, merchants(id, name)')
-          .eq('campaign_id', CAMPAIGN_ID)
-          .eq('is_active', true)
-        setVouchers(vData || [])
-      }
-    } catch(e) { console.error('Vouchers load error:', e) }
+        if (cvData && cvData.length > 0) {
+          const voucherIds = cvData.map(cv => cv.voucher_id)
+          const { data: vData } = await supabase
+            .from('vouchers')
+            .select('*, merchants(id, name)')
+            .in('id', voucherIds)
+            .eq('is_active', true)
+          setVouchers(vData || [])
+        } else {
+          // Fallback: direct campaign_id on vouchers (legacy)
+          const { data: vData } = await supabase
+            .from('vouchers')
+            .select('*, merchants(id, name)')
+            .eq('campaign_id', campaignId)
+            .eq('is_active', true)
+          setVouchers(vData || [])
+        }
+      } catch(e) { console.error('Vouchers load error:', e) }
+    }
 
     // Voucher claims for this customer
     try {
@@ -132,33 +137,36 @@ export default function Rewards({ customer }) {
     } catch(e) {}
 
     // Prizes for this campaign
-    try {
-      const { data: prizeData } = await supabase
-        .from('prizes')
-        .select('*')
-        .eq('campaign_id', CAMPAIGN_ID)
-        .eq('is_active', true)
-      if (prizeData) setPrizes(prizeData)
-    } catch(e) {}
+    if (campaignId) {
+      try {
+        const { data: prizeData } = await supabase
+          .from('prizes')
+          .select('*')
+          .eq('campaign_id', campaignId)
+          .eq('is_active', true)
+        if (prizeData) setPrizes(prizeData)
+      } catch(e) {}
+    }
 
-    // Prize draws — fetch all draws, join prizes separately
-    try {
-      const { data: drawData } = await supabase
-        .from('prize_draws')
-        .select('*, prizes(id, title, campaign_id)')
-        .order('drawn_at', { ascending: false })
-      // Filter to only draws for this campaign's prizes
-      if (drawData) {
-        setPrizeDraws(drawData.filter(d => d.prizes?.campaign_id === CAMPAIGN_ID))
-      }
-    } catch(e) {}
+    // Prize draws — fetch all, filter to this campaign's prizes
+    if (campaignId) {
+      try {
+        const { data: drawData } = await supabase
+          .from('prize_draws')
+          .select('*, prizes(id, title, campaign_id)')
+          .order('drawn_at', { ascending: false })
+        if (drawData) {
+          setPrizeDraws(drawData.filter(d => d.prizes?.campaign_id === campaignId))
+        }
+      } catch(e) {}
+    }
 
     setLoading(false)
   }
 
   const balance = wallet ? Number(wallet.balance) : 0
-  const target = campaign ? Number(campaign.target_amount) : 1500000
-  const pct = Math.min((balance / target) * 100, 100)
+  const target = campaign ? Number(campaign.target_amount) : 0
+  const pct = target > 0 ? Math.min((balance / target) * 100, 100) : 0
 
   function fmt(n) {
     return 'UGX ' + Number(n).toLocaleString('en-UG', { maximumFractionDigits: 0 })
@@ -172,7 +180,6 @@ export default function Rewards({ customer }) {
     return Date.now() > expiry
   }
 
-  // Unlock logic: wallet balance >= minimum threshold for this voucher
   function isUnlocked(v) {
     const minBal = target * (Number(v.min_balance_percentage) / 100)
     return balance >= minBal && !isExpiredByFraction(v.expiry_offset_fraction)
@@ -184,7 +191,6 @@ export default function Rewards({ customer }) {
     return fmt(target * Number(v.min_balance_percentage) / 100)
   }
 
-  // Prize qualification: wallet balance >= prize minimum threshold
   function prizeQualifies(prize) {
     const minBal = target * (Number(prize.min_balance_percentage) / 100)
     return balance >= minBal
@@ -449,14 +455,12 @@ export default function Rewards({ customer }) {
                         </div>
                       </div>
                     </div>
-
                     {prize.description && (
                       <div className="text-xs mb-3 leading-relaxed"
                         style={{ color: qualifies ? 'rgba(0,0,0,0.5)' : 'rgba(0,0,0,0.3)' }}>
                         {prize.description}
                       </div>
                     )}
-
                     <div className="flex justify-between items-center mb-3">
                       <div>
                         <div className="text-xs mb-0.5" style={{ color: 'rgba(0,0,0,0.35)' }}>Winners</div>
@@ -485,7 +489,6 @@ export default function Rewards({ customer }) {
                         </div>
                       </div>
                     </div>
-
                     <div className="mb-1">
                       <div className="flex justify-between text-xs mb-1" style={{ color: 'rgba(0,0,0,0.35)' }}>
                         <span>Qualification progress</span>
@@ -499,7 +502,6 @@ export default function Rewards({ customer }) {
                           }} />
                       </div>
                     </div>
-
                     {qualifies ? (
                       <div className="text-xs font-semibold mt-2 text-center" style={{ color: '#16A34A' }}>
                         ✓ You qualify for this prize draw
@@ -576,12 +578,10 @@ export default function Rewards({ customer }) {
                       </div>
                     </div>
                   </div>
-
                   <div className="text-xs mb-4 leading-relaxed"
                     style={{ color: unlocked ? 'rgba(0,0,0,0.5)' : 'rgba(0,0,0,0.25)' }}>
                     {v.description}
                   </div>
-
                   <div className="flex items-end justify-between mb-4">
                     <div>
                       <div className="text-xs mb-0.5" style={{ color: 'rgba(0,0,0,0.35)' }}>Minimum balance</div>
@@ -604,7 +604,6 @@ export default function Rewards({ customer }) {
                       </div>
                     </div>
                   </div>
-
                   {claimed ? (
                     <div className="w-full py-3 rounded-xl text-sm font-bold text-center"
                       style={{ background: 'rgba(22,163,74,0.1)', color: '#16A34A' }}>
