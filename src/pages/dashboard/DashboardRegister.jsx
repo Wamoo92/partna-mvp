@@ -62,7 +62,6 @@ const KYB_DOCS = {
   ],
 }
 
-// KYB file upload field — exposes file via onChange callback
 function FileUploadField({ label, onChange }) {
   const [file, setFile] = useState(null)
 
@@ -166,21 +165,60 @@ export default function DashboardRegister() {
   const [secondaryColor, setSecondaryColor] = useState('#D4AF37')
   const [logoPreview, setLogoPreview] = useState(null)
   const [logoFile, setLogoFile] = useState(null)
+  const [logoError, setLogoError] = useState('')
 
   // Step 4
   const [regType, setRegType] = useState('')
   const [legalName, setLegalName] = useState('')
   const [regNumber, setRegNumber] = useState('')
   const [tin, setTin] = useState('')
-  // KYB document files — keyed by document label
   const [kybFiles, setKybFiles] = useState({})
 
+  // ── Logo validation and selection ──
   function handleLogoSelect(e) {
     const file = e.target.files[0]
     if (!file) return
-    setLogoFile(file)
+    setLogoError('')
+
+    // File type check
+    const allowedTypes = ['image/png', 'image/jpeg', 'image/svg+xml']
+    if (!allowedTypes.includes(file.type)) {
+      setLogoError('Logo must be a PNG, JPEG or SVG file.')
+      e.target.value = ''
+      return
+    }
+
+    // File size check — max 2MB
+    if (file.size > 2 * 1024 * 1024) {
+      setLogoError('Logo file must be smaller than 2MB.')
+      e.target.value = ''
+      return
+    }
+
+    // SVG files skip dimension check (vector, scales to any size)
+    if (file.type === 'image/svg+xml') {
+      setLogoFile(file)
+      const reader = new FileReader()
+      reader.onload = ev => setLogoPreview(ev.target.result)
+      reader.readAsDataURL(file)
+      return
+    }
+
+    // Dimension check for raster images (PNG, JPEG) — min 100x100px
     const reader = new FileReader()
-    reader.onload = ev => setLogoPreview(ev.target.result)
+    reader.onload = ev => {
+      const img = new Image()
+      img.onload = () => {
+        if (img.width < 100 || img.height < 100) {
+          setLogoError(`Image is too small (${img.width}×${img.height}px). Minimum size is 100×100px.`)
+          e.target.value = ''
+          return
+        }
+        setLogoFile(file)
+        setLogoPreview(ev.target.result)
+      }
+      img.src = ev.target.result
+    }
     reader.readAsDataURL(file)
   }
 
@@ -220,6 +258,9 @@ export default function DashboardRegister() {
     setError('')
     if (!sector || !addrLine1 || !addrCity || !bizPhone) {
       setError('Please fill in all required fields.'); return false
+    }
+    if (logoError) {
+      setError('Please fix the logo upload error before continuing.'); return false
     }
     return true
   }
@@ -286,7 +327,6 @@ export default function DashboardRegister() {
           logoUrl = urlData.publicUrl
         } else {
           console.error('Logo upload error:', uploadError)
-          // Fall back to base64 preview if storage upload fails
           logoUrl = logoPreview || '/partna-icon.svg'
         }
       }
@@ -823,7 +863,10 @@ export default function DashboardRegister() {
                   <div className="flex flex-col gap-1">
                     <label className="text-xs font-semibold" style={{ color: PARTNA_PRIMARY }}>Logo</label>
                     <label className="cursor-pointer flex flex-col items-center justify-center rounded-xl py-4 gap-2"
-                      style={{ border: '2px dashed rgba(27,79,114,0.2)', background: '#f8f9fa' }}>
+                      style={{
+                        border: logoError ? '2px dashed #DC2626' : '2px dashed rgba(27,79,114,0.2)',
+                        background: '#f8f9fa',
+                      }}>
                       {logoPreview ? (
                         <img src={logoPreview} alt="Logo" className="w-12 h-12 object-contain" />
                       ) : (
@@ -832,11 +875,15 @@ export default function DashboardRegister() {
                           <span className="text-xs text-center" style={{ color: 'rgba(0,0,0,0.4)' }}>Upload logo</span>
                         </>
                       )}
-                      <input type="file" accept="image/*" className="hidden" onChange={handleLogoSelect} />
+                      <input type="file" accept=".png,.jpg,.jpeg,.svg" className="hidden" onChange={handleLogoSelect} />
                     </label>
-                    <div className="text-xs text-center" style={{ color: 'rgba(0,0,0,0.35)' }}>
-                      PNG, JPEG or SVG
-                    </div>
+                    {logoError ? (
+                      <div className="text-xs text-center" style={{ color: '#DC2626' }}>{logoError}</div>
+                    ) : (
+                      <div className="text-xs text-center" style={{ color: 'rgba(0,0,0,0.35)' }}>
+                        PNG, JPEG or SVG · Max 2MB · Min 100×100px
+                      </div>
+                    )}
                   </div>
                   <div className="flex flex-col gap-1">
                     <label className="text-xs font-semibold" style={{ color: PARTNA_PRIMARY }}>Primary colour</label>
