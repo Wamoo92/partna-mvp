@@ -3,6 +3,7 @@ import { useBusinessAuth } from '../../hooks/useBusinessAuth'
 
 import DashboardLogin from './DashboardLogin'
 import DashboardRegister from './DashboardRegister'
+import ResetPassword from './ResetPassword'
 import DashboardLayout from './DashboardLayout'
 import Overview from './Overview'
 import Customers from './Customers'
@@ -29,6 +30,7 @@ export default function DashboardApp() {
     <Routes>
       <Route path="/login" element={<DashboardLogin />} />
       <Route path="/register" element={<DashboardRegister />} />
+      <Route path="/reset-password" element={<ResetPassword />} />
 
       <Route path="/*" element={
         <DashboardGuard admin={admin} loading={loading}>
@@ -40,7 +42,6 @@ export default function DashboardApp() {
               <Route path="/payments" element={<Payments admin={admin} business={business} />} />
               <Route path="/vouchers" element={<VouchersPrizes admin={admin} business={business} />} />
               <Route path="/settings" element={<Settings admin={admin} business={business} />} />
-              {/* Products page — retail businesses only */}
               <Route path="/products" element={<Products admin={admin} business={business} />} />
               <Route path="/" element={<Navigate to="/dashboard/overview" replace />} />
             </Routes>

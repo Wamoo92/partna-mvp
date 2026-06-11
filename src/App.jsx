@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { useAuth } from './hooks/useAuth'
 import { BrandContext, buildBrand } from './lib/BrandContext'
 import { getEffectiveStatus } from './lib/campaignUtils'
@@ -6,6 +6,7 @@ import { getEffectiveStatus } from './lib/campaignUtils'
 import Landing from './pages/portal/Landing'
 import Register from './pages/portal/Register'
 import Login from './pages/portal/Login'
+import ResetPin from './pages/portal/ResetPin'
 import Home from './pages/portal/Home'
 import CardDetail from './pages/portal/CardDetail'
 import Rewards from './pages/portal/Rewards'
@@ -58,6 +59,7 @@ function PortalAndDashboard() {
         <Route path="/portal" element={<Landing />} />
         <Route path="/portal/register" element={<Register />} />
         <Route path="/portal/login" element={<Login />} />
+        <Route path="/portal/reset-pin" element={<ResetPin />} />
 
         <Route path="/portal/kyc" element={
           <PortalGuard customer={customer} loading={loading}>
