@@ -12,6 +12,7 @@ import Payments from './Payments'
 import VouchersPrizes from './VouchersPrizes'
 import Settings from './Settings'
 import Products from './Products'
+import Sales from './Sales'
 
 function DashboardGuard({ admin, loading, children }) {
   if (loading) return (
@@ -43,6 +44,7 @@ export default function DashboardApp() {
               <Route path="/vouchers" element={<VouchersPrizes admin={admin} business={business} />} />
               <Route path="/settings" element={<Settings admin={admin} business={business} />} />
               <Route path="/products" element={<Products admin={admin} business={business} />} />
+              <Route path="/sales" element={<Sales admin={admin} business={business} />} />
               <Route path="/" element={<Navigate to="/dashboard/overview" replace />} />
             </Routes>
           </DashboardLayout>

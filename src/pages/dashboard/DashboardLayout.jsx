@@ -5,13 +5,15 @@ const PARTNA_PRIMARY = '#1B4F72'
 const PARTNA_GOLD = '#D4AF37'
 
 const BASE_NAV_ITEMS = [
-  { path: '/dashboard/overview', label: 'Overview', icon: '▦', sectors: null },
-  { path: '/dashboard/customers', label: 'Customers', icon: '👥', sectors: null },
-  { path: '/dashboard/products', label: 'Products', icon: '🛍️', sectors: ['Retail'] },
-  { path: '/dashboard/campaigns', label: 'Campaigns', icon: '🎯', sectors: null },
-  { path: '/dashboard/payments', label: 'Payments', icon: '💳', sectors: null },
-  { path: '/dashboard/vouchers', label: 'Vouchers & Prizes', icon: '🎁', sectors: null },
-  { path: '/dashboard/settings', label: 'Settings', icon: '⚙️', sectors: null },
+  { path: '/dashboard/overview',  label: 'Overview',         icon: '▦',  sectors: null },
+  { path: '/dashboard/customers', label: 'Customers',        icon: '👥', sectors: null },
+  { path: '/dashboard/products',  label: 'Products',         icon: '🛍️', sectors: ['Retail'] },
+  { path: '/dashboard/campaigns', label: 'Campaigns',        icon: '🎯', sectors: null },
+  { path: '/dashboard/payments',  label: 'Payments',         icon: '💳', sectors: null },
+  { path: '/dashboard/sales',     label: 'Sales',            icon: '🧾', sectors: ['Retail'] },
+  { path: '/dashboard/sales',     label: 'Fee Payments',     icon: '🧾', sectors: ['Education'] },
+  { path: '/dashboard/vouchers',  label: 'Vouchers & Prizes',icon: '🎁', sectors: null },
+  { path: '/dashboard/settings',  label: 'Settings',         icon: '⚙️', sectors: null },
 ]
 
 export default function DashboardLayout({ admin, business, signOut, children }) {
@@ -22,13 +24,11 @@ export default function DashboardLayout({ admin, business, signOut, children }) 
   const kybPending = business?.kyb_status !== 'verified'
   const sector = business?.sector || ''
 
-  // Filter nav items by sector — null means shown for all sectors
   const NAV_ITEMS = BASE_NAV_ITEMS.filter(item =>
     item.sectors === null || item.sectors.includes(sector)
   )
 
-  // Active page label — check both base and filtered list
-  const activeItem = BASE_NAV_ITEMS.find(n =>
+  const activeItem = NAV_ITEMS.find(n =>
     location.pathname === n.path ||
     (n.path !== '/dashboard/overview' && location.pathname.startsWith(n.path))
   )
@@ -41,11 +41,9 @@ export default function DashboardLayout({ admin, business, signOut, children }) 
   return (
     <div className="min-h-screen flex" style={{ background: '#f0f2f5' }}>
 
-      {/* Sidebar */}
       <aside className="flex flex-col flex-shrink-0 transition-all"
         style={{ width: sidebarOpen ? '240px' : '64px', background: PARTNA_PRIMARY, minHeight: '100vh' }}>
 
-        {/* Logo + toggle */}
         <div className="flex items-center justify-between px-4 py-5"
           style={{ borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
           {sidebarOpen && (
@@ -67,7 +65,6 @@ export default function DashboardLayout({ admin, business, signOut, children }) 
           </button>
         </div>
 
-        {/* Business info */}
         {sidebarOpen && business && (
           <div className="px-4 py-3 mx-3 mt-3 rounded-xl"
             style={{ background: 'rgba(255,255,255,0.08)' }}>
@@ -92,7 +89,6 @@ export default function DashboardLayout({ admin, business, signOut, children }) 
           </div>
         )}
 
-        {/* KYB warning */}
         {sidebarOpen && kybPending && (
           <div className="mx-3 mt-2 px-3 py-2 rounded-lg"
             style={{ background: 'rgba(217,119,6,0.2)', border: '1px solid rgba(217,119,6,0.4)' }}>
@@ -101,13 +97,12 @@ export default function DashboardLayout({ admin, business, signOut, children }) 
           </div>
         )}
 
-        {/* Nav items — filtered by sector */}
         <nav className="flex-1 px-3 py-4 flex flex-col gap-1">
           {NAV_ITEMS.map(item => {
             const active = location.pathname === item.path ||
               (item.path !== '/dashboard/overview' && location.pathname.startsWith(item.path))
             return (
-              <button key={item.path} onClick={() => navigate(item.path)}
+              <button key={item.label} onClick={() => navigate(item.path)}
                 className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition-all"
                 style={{
                   background: active ? 'rgba(255,255,255,0.15)' : 'transparent',
@@ -125,7 +120,6 @@ export default function DashboardLayout({ admin, business, signOut, children }) 
           })}
         </nav>
 
-        {/* Admin info + logout */}
         <div className="px-3 py-4" style={{ borderTop: '1px solid rgba(255,255,255,0.1)' }}>
           {sidebarOpen ? (
             <div className="flex items-center gap-2 mb-3">
@@ -155,10 +149,7 @@ export default function DashboardLayout({ admin, business, signOut, children }) 
         </div>
       </aside>
 
-      {/* Main content */}
       <div className="flex-1 flex flex-col min-w-0">
-
-        {/* Top bar */}
         <header className="flex items-center justify-between px-6 py-4 border-b"
           style={{ background: '#fff', borderColor: 'rgba(0,0,0,0.08)' }}>
           <div>
@@ -184,7 +175,6 @@ export default function DashboardLayout({ admin, business, signOut, children }) 
           </div>
         </header>
 
-        {/* Page content */}
         <main className="flex-1 p-6 overflow-auto">
           {kybPending && (
             <div className="mb-4 px-4 py-3 rounded-xl flex items-center gap-3"
@@ -205,7 +195,6 @@ export default function DashboardLayout({ admin, business, signOut, children }) 
           )}
           {children}
         </main>
-
       </div>
     </div>
   )

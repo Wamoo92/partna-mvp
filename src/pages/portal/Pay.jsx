@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../supabase'
 import { useBrand } from '../../lib/BrandContext'
 
+const PARTNA_GOLD = '#D4AF37'
+
 function generateReference() {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
   let ref = 'TXN-'
@@ -35,9 +37,10 @@ export default function Pay({ customer }) {
   const [error, setError] = useState('')
   const [alreadyPaid, setAlreadyPaid] = useState(0)
   const [txnReference, setTxnReference] = useState('')
+  const [isFullPayment, setIsFullPayment] = useState(false)
 
   // Discount prize state
-  const [discount, setDiscount] = useState(null) // { id, discount_percentage }
+  const [discount, setDiscount] = useState(null)
 
   const totalSteps = isEducation ? 3 : 2
   const stepLabels = isEducation
@@ -83,7 +86,6 @@ export default function Pay({ customer }) {
         setAlreadyPaid(paidData.reduce((sum, t) => sum + Number(t.amount), 0))
       }
 
-      // Check for unused discount prize for this customer + campaign
       if (campaignId) {
         const { data: discountData } = await supabase
           .from('customer_discounts')
@@ -94,7 +96,6 @@ export default function Pay({ customer }) {
           .maybeSingle()
         if (discountData) setDiscount(discountData)
       }
-
     } catch (e) {
       console.error(e)
     }
@@ -121,7 +122,6 @@ export default function Pay({ customer }) {
   const target = campaign ? Number(campaign.target_amount) : 0
   const rawRemaining = Math.max(target - alreadyPaid, 0)
 
-  // Apply discount prize if available — reduces what the customer owes at payment
   const discountPct = discount ? Number(discount.discount_percentage) : 0
   const discountAmount = discountPct > 0 ? Math.round(rawRemaining * (discountPct / 100)) : 0
   const remaining = Math.max(rawRemaining - discountAmount, 0)
@@ -139,7 +139,6 @@ export default function Pay({ customer }) {
     parsedAmount >= effectiveMinimum &&
     parsedAmount <= maxPayable
 
-  // ── Education only: student ID lookup ──
   async function handleStudentIdChange(val) {
     const upper = val.toUpperCase()
     setStudentId(upper)
@@ -156,8 +155,7 @@ export default function Pay({ customer }) {
         .ilike('student_id', upper)
         .maybeSingle()
       if (data) {
-        const fullName = [data.first_name, data.other_names, data.last_name]
-          .filter(Boolean).join(' ')
+        const fullName = [data.first_name, data.other_names, data.last_name].filter(Boolean).join(' ')
         setStudentName(fullName)
         setStudentIdValid(true)
       } else {
@@ -195,6 +193,10 @@ export default function Pay({ customer }) {
       const reference = generateReference()
       setTxnReference(reference)
 
+      // Determine if this is a full payment
+      const fullPayment = parsedAmount >= remaining
+
+      // Record the transaction
       const { data: txnData, error: txnError } = await supabase
         .from('transactions')
         .insert({
@@ -221,6 +223,8 @@ export default function Pay({ customer }) {
       }
 
       const txnId = txnData?.[0]?.id
+
+      // Record fee
       if (txnId) {
         const partnaFee = Math.round(parsedAmount * 0.01)
         await supabase.from('transaction_fees').insert({
@@ -236,9 +240,84 @@ export default function Pay({ customer }) {
         })
       }
 
+      // Deduct from customer wallet
       await supabase.from('wallets').update({ balance: newBalance }).eq('id', w.id)
 
-      // Mark discount as used so it can't be applied again
+      // ── EDUCATION: funds go directly to business wallet ──
+      if (isEducation) {
+        const { data: bizWallet } = await supabase
+          .from('business_wallets')
+          .select('*')
+          .eq('business_id', customer.business_id)
+          .maybeSingle()
+
+        if (bizWallet) {
+          await supabase
+            .from('business_wallets')
+            .update({ balance: Number(bizWallet.balance) + parsedAmount })
+            .eq('id', bizWallet.id)
+        } else {
+          // Create wallet if somehow missing
+          await supabase.from('business_wallets').insert({
+            business_id: customer.business_id,
+            balance: parsedAmount,
+          })
+        }
+
+        // Record business transaction
+        await supabase.from('business_transactions').insert({
+          business_id: customer.business_id,
+          type: 'fee_payment',
+          amount: parsedAmount,
+          status: 'completed',
+          reference,
+          notes: `Fee payment from ${customer.first_name} ${customer.last_name}` +
+            (studentName ? ` — Student: ${studentName} (${studentId})` : ''),
+        })
+      }
+
+      // ── RETAIL + FULL PAYMENT: funds go to escrow, create sales record ──
+      if (!isEducation && fullPayment) {
+        const { data: escrowWallet } = await supabase
+          .from('escrow_wallets')
+          .select('*')
+          .eq('business_id', customer.business_id)
+          .maybeSingle()
+
+        if (escrowWallet) {
+          await supabase
+            .from('escrow_wallets')
+            .update({ balance: Number(escrowWallet.balance) + parsedAmount })
+            .eq('id', escrowWallet.id)
+        } else {
+          await supabase.from('escrow_wallets').insert({
+            business_id: customer.business_id,
+            balance: parsedAmount,
+          })
+        }
+
+        // Create sales record — business will mark this complete
+        await supabase.from('sales').insert({
+          business_id: customer.business_id,
+          customer_id: customer.id,
+          campaign_id: customer.campaign_id,
+          transaction_id: txnId,
+          amount: parsedAmount,
+          type: 'retail',
+          status: 'pending',
+          is_prize: false,
+          notes: discount
+            ? `Discount prize applied: ${discountPct}% off`
+            : null,
+        })
+
+        setIsFullPayment(true)
+      }
+
+      // ── RETAIL + PARTIAL PAYMENT: stays in customer wallet effectively
+      // (already deducted above, partial payments tracked via transactions) ──
+
+      // Mark discount as used
       if (discount) {
         await supabase
           .from('customer_discounts')
@@ -264,7 +343,6 @@ export default function Pay({ customer }) {
   return (
     <div className="min-h-screen flex flex-col" style={{ background: '#f0f2f5' }}>
 
-      {/* Header */}
       <header className="flex items-center px-4 py-3 gap-3" style={{ background: brand.primaryColor }}>
         <button
           onClick={() => step === 1 ? navigate('/portal/home') : setStep(step - 1)}
@@ -279,7 +357,6 @@ export default function Pay({ customer }) {
         </div>
       </header>
 
-      {/* Step indicator */}
       {step < successStep && (
         <div className="px-5 pt-5 pb-8 text-center" style={{ background: brand.primaryColor }}>
           <div className="flex items-center justify-center gap-2 mb-3">
@@ -294,22 +371,21 @@ export default function Pay({ customer }) {
                 }} />
             ))}
           </div>
-          <div className="text-white text-lg font-bold mb-1">
-            {stepLabels[step - 1]}
-          </div>
-          <div className="text-xs" style={{ color: 'rgba(255,255,255,0.65)' }}>
-            {stepSubs[step - 1]}
-          </div>
+          <div className="text-white text-lg font-bold mb-1">{stepLabels[step - 1]}</div>
+          <div className="text-xs" style={{ color: 'rgba(255,255,255,0.65)' }}>{stepSubs[step - 1]}</div>
         </div>
       )}
 
-      {/* Success header */}
       {step === successStep && (
         <div className="px-5 pt-8 pb-10 text-center" style={{ background: brand.primaryColor }}>
           <div className="text-4xl mb-3">✅</div>
           <div className="text-white text-xl font-bold mb-1">Payment Successful</div>
           <div className="text-xs" style={{ color: 'rgba(255,255,255,0.65)' }}>
-            {isEducation ? 'Fees have been paid successfully' : 'Your payment has been processed'}
+            {isEducation
+              ? 'Fees have been paid successfully'
+              : isFullPayment
+              ? 'Full payment received — awaiting delivery confirmation'
+              : 'Your partial payment has been recorded'}
           </div>
           {txnReference && (
             <div className="mt-2 text-xs font-mono font-bold" style={{ color: brand.secondaryColor }}>
@@ -331,19 +407,16 @@ export default function Pay({ customer }) {
                 { label: 'Campaign', value: campaign?.name || '—' },
                 { label: 'Target amount', value: formatUGX(target) },
                 { label: 'Already paid', value: formatUGX(alreadyPaid) },
-                { label: 'Remaining', value: formatUGX(remaining) },
+                { label: 'Remaining', value: formatUGX(remaining), color: '#DC2626' },
               ].map((row, i, arr) => (
                 <div key={i} className="flex justify-between items-center py-1.5"
                   style={{ borderBottom: i < arr.length - 1 ? '1px solid rgba(0,0,0,0.05)' : 'none' }}>
                   <span className="text-xs" style={{ color: 'rgba(0,0,0,0.4)' }}>{row.label}</span>
-                  <span className="text-xs font-semibold"
-                    style={{ color: row.label === 'Remaining' ? '#DC2626' : brand.primaryColor }}>
+                  <span className="text-xs font-semibold" style={{ color: row.color || brand.primaryColor }}>
                     {row.value}
                   </span>
                 </div>
               ))}
-
-              {/* Discount prize banner */}
               {discount && (
                 <div className="mt-3 px-3 py-2.5 rounded-xl"
                   style={{ background: 'rgba(212,175,55,0.1)', border: '1px solid rgba(212,175,55,0.3)' }}>
@@ -356,7 +429,6 @@ export default function Pay({ customer }) {
                   </div>
                 </div>
               )}
-
               {isFixedSchedule && (
                 <div className="mt-3 pt-3" style={{ borderTop: '1px solid rgba(0,0,0,0.06)' }}>
                   <div className="px-3 py-2 rounded-lg text-xs"
@@ -450,7 +522,6 @@ export default function Pay({ customer }) {
               </div>
             </div>
 
-            {/* Discount prize banner */}
             {discount && (
               <div className="px-4 py-3 rounded-xl"
                 style={{ background: 'rgba(212,175,55,0.1)', border: '1px solid rgba(212,175,55,0.3)' }}>
@@ -458,8 +529,8 @@ export default function Pay({ customer }) {
                   🏆 Prize draw discount: {discountPct}% off!
                 </div>
                 <div className="text-xs" style={{ color: '#92400e' }}>
-                  You're saving {formatUGX(discountAmount)} on this payment.
-                  Original balance: {formatUGX(rawRemaining)} → Now: {formatUGX(remaining)}
+                  You're saving {formatUGX(discountAmount)}.
+                  Original: {formatUGX(rawRemaining)} → Now: {formatUGX(remaining)}
                 </div>
               </div>
             )}
@@ -471,16 +542,13 @@ export default function Pay({ customer }) {
                   { label: 'Product', value: campaign?.name || '—' },
                   { label: 'Total price', value: formatUGX(target) },
                   { label: 'Already paid', value: formatUGX(alreadyPaid) },
-                  ...(discount ? [
-                    { label: `Prize discount (${discountPct}%)`, value: `− ${formatUGX(discountAmount)}`, color: PARTNA_GOLD },
-                  ] : []),
+                  ...(discount ? [{ label: `Prize discount (${discountPct}%)`, value: `− ${formatUGX(discountAmount)}`, color: PARTNA_GOLD }] : []),
                   { label: 'Remaining', value: formatUGX(remaining), color: '#DC2626' },
                 ].map((row, i, arr) => (
                   <div key={i} className="flex justify-between items-center py-1.5"
                     style={{ borderBottom: i < arr.length - 1 ? '1px solid rgba(0,0,0,0.05)' : 'none' }}>
                     <span className="text-xs" style={{ color: 'rgba(0,0,0,0.4)' }}>{row.label}</span>
-                    <span className="text-xs font-semibold"
-                      style={{ color: row.color || brand.primaryColor }}>
+                    <span className="text-xs font-semibold" style={{ color: row.color || brand.primaryColor }}>
                       {row.value}
                     </span>
                   </div>
@@ -494,6 +562,13 @@ export default function Pay({ customer }) {
                     </div>
                   </div>
                 )}
+              </div>
+            )}
+
+            {!isEducation && (
+              <div className="px-4 py-3 rounded-xl text-xs"
+                style={{ background: 'rgba(27,79,114,0.05)', border: '1px solid rgba(27,79,114,0.1)', color: brand.primaryColor }}>
+                ℹ️ When you complete full payment, your order will appear in the business's Sales queue awaiting delivery confirmation.
               </div>
             )}
 
@@ -571,9 +646,7 @@ export default function Pay({ customer }) {
                   { label: 'Student', value: studentName },
                   { label: 'Student ID', value: studentId },
                 ] : []),
-                ...(discount ? [
-                  { label: `Prize discount (${discountPct}%)`, value: `− ${formatUGX(discountAmount)}`, color: '#D97706' },
-                ] : []),
+                ...(discount ? [{ label: `Prize discount (${discountPct}%)`, value: `− ${formatUGX(discountAmount)}`, color: '#D97706' }] : []),
                 { label: 'Amount paying', value: formatUGX(parsedAmount) },
                 { label: 'Balance after payment', value: formatUGX(balance - parsedAmount) },
                 { label: isEducation ? 'Remaining fees after' : 'Remaining to pay after', value: formatUGX(Math.max(remaining - parsedAmount, 0)) },
@@ -588,6 +661,14 @@ export default function Pay({ customer }) {
                 </div>
               ))}
             </div>
+
+            {/* Retail full payment notice */}
+            {!isEducation && parsedAmount >= remaining && (
+              <div className="px-4 py-3 rounded-xl text-xs"
+                style={{ background: 'rgba(22,163,74,0.06)', border: '1px solid rgba(22,163,74,0.2)', color: '#166534' }}>
+                ✓ This is your final payment. Your order will be placed in the delivery queue and released to the business once they confirm delivery.
+              </div>
+            )}
 
             {discount && (
               <div className="px-4 py-3 rounded-xl text-xs"
@@ -624,12 +705,10 @@ export default function Pay({ customer }) {
                   { label: 'Student', value: studentName },
                   { label: 'Student ID', value: studentId },
                 ] : []),
-                ...(discount ? [
-                  { label: `Prize discount applied`, value: `${discountPct}% (saved ${formatUGX(discountAmount)})`, color: '#D97706' },
-                ] : []),
+                ...(discount ? [{ label: 'Prize discount applied', value: `${discountPct}% (saved ${formatUGX(discountAmount)})`, color: '#D97706' }] : []),
                 { label: 'Amount paid', value: formatUGX(parsedAmount) },
                 { label: isEducation ? 'Remaining fees' : 'Remaining to pay', value: formatUGX(Math.max(remaining - parsedAmount, 0)) },
-                { label: 'Status', value: '✓ Completed' },
+                { label: 'Status', value: isEducation ? '✓ Completed' : isFullPayment ? '⏳ Awaiting delivery' : '✓ Partial payment recorded' },
                 { label: 'Date & time', value: nowDisplay() },
               ].map((row, i, arr) => (
                 <div key={i} className="flex justify-between items-center py-1.5"
@@ -637,7 +716,8 @@ export default function Pay({ customer }) {
                   <span className="text-xs" style={{ color: 'rgba(0,0,0,0.4)' }}>{row.label}</span>
                   <span className="text-xs font-semibold"
                     style={{
-                      color: row.color || (row.label === 'Status' ? '#16A34A'
+                      color: row.color || (row.label === 'Status'
+                        ? (isEducation || !isFullPayment ? '#16A34A' : '#D97706')
                         : row.label === 'Reference' ? brand.secondaryColor
                         : brand.primaryColor),
                       fontFamily: row.label === 'Reference' ? 'monospace' : 'inherit',
