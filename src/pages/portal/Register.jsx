@@ -3,8 +3,8 @@ import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../supabase'
 import { useBrand } from '../../lib/BrandContext'
 
-const BUSINESS_ID = 'a1b2c3d4-0000-0000-0000-000000000001'
-const CAMPAIGN_ID = 'b1b2c3d4-0000-0000-0000-000000000001'
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY
 
 function generateDrawCode() {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
@@ -35,6 +35,7 @@ export default function Register() {
   const [confirmPin, setConfirmPin] = useState('')
 
   const [customerId, setCustomerId] = useState(null)
+  const [businessId, setBusinessId] = useState(null)
 
   async function handleStep1() {
     setError('')
@@ -56,6 +57,7 @@ export default function Register() {
       const cleanPhone = phone.replace(/\s+/g, '')
       const cleanEmail = email.toLowerCase().trim()
 
+      // Check for existing phone
       const { data: existingPhone } = await supabase
         .from('customers').select('id').eq('phone', cleanPhone).maybeSingle()
       if (existingPhone) {
@@ -64,6 +66,7 @@ export default function Register() {
         return
       }
 
+      // Check for existing email
       const { data: existingEmail } = await supabase
         .from('customers').select('id').eq('email', cleanEmail).maybeSingle()
       if (existingEmail) {
@@ -72,13 +75,27 @@ export default function Register() {
         return
       }
 
+      // Detect which business portal this customer is registering under
+      // by looking up the business from the current hostname or a stored business ID
+      // For now we fetch the first active business — this will be replaced
+      // once the portal URL routing per business is implemented
+      const { data: bizData } = await supabase
+        .from('businesses')
+        .select('id')
+        .eq('kyb_status', 'verified')
+        .limit(1)
+        .maybeSingle()
+
+      const resolvedBusinessId = bizData?.id || null
+      setBusinessId(resolvedBusinessId)
+
       const drawCode = generateDrawCode()
 
       const { data: customer, error: customerError } = await supabase
         .from('customers')
         .insert({
-          business_id: BUSINESS_ID,
-          campaign_id: CAMPAIGN_ID,
+          business_id: resolvedBusinessId,
+          campaign_id: null, // set during SelectCampaign step
           full_name: `${firstName} ${lastName}`,
           first_name: firstName,
           last_name: lastName,
@@ -101,6 +118,7 @@ export default function Register() {
 
       setCustomerId(customer.id)
 
+      // Generate OTP
       const otpCode = Math.floor(10000 + Math.random() * 90000).toString()
       const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString()
 
@@ -123,9 +141,25 @@ export default function Register() {
       }
 
       setOtpId(otpRecord.id)
-      // Demo: show OTP in alert
-      // Production: send via Twilio SMS + Twilio SendGrid email
-      alert(`Demo mode — your OTP is: ${otpCode}`)
+
+      // Send OTP via Africa's Talking Edge Function
+      const smsRes = await fetch(`${SUPABASE_URL}/functions/v1/send-otp-sms`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+        },
+        body: JSON.stringify({ phone: cleanPhone, otp: otpCode }),
+      })
+
+      if (!smsRes.ok) {
+        console.error('SMS send failed:', await smsRes.text())
+        // Don't block registration if SMS fails — show a warning instead
+        setError('OTP SMS could not be sent. Please check your phone number and try again.')
+        setLoading(false)
+        return
+      }
+
       setStep(2)
 
     } catch (err) {
@@ -331,7 +365,7 @@ export default function Register() {
             <button onClick={handleStep1} disabled={loading}
               className="w-full py-3 rounded-xl text-sm font-bold mt-1"
               style={{ background: loading ? 'rgba(27,79,114,0.4)' : brand.primaryColor, color: '#fff', border: 'none' }}>
-              {loading ? 'Please wait...' : 'Continue'}
+              {loading ? 'Sending OTP...' : 'Continue'}
             </button>
 
             <div className="text-center">
@@ -348,8 +382,7 @@ export default function Register() {
           <>
             <div className="px-4 py-3 rounded-xl text-xs"
               style={{ background: '#EFF6FF', color: '#1E40AF', border: '1px solid #BFDBFE' }}>
-              A 5-digit OTP has been sent to <strong>{phone}</strong> and <strong>{email}</strong>.
-              Enter it below to verify your phone number.
+              A 5-digit OTP has been sent via SMS to <strong>{phone}</strong>. Enter it below to verify your phone number.
             </div>
 
             <div className="flex flex-col gap-1">
@@ -359,6 +392,14 @@ export default function Register() {
                 onChange={e => setOtp(e.target.value.replace(/\D/g, '').slice(0, 5))}
                 className="w-full px-4 py-3 rounded-xl text-sm outline-none text-center tracking-widest font-mono"
                 style={{ background: '#fff', border: '1.5px solid rgba(27,79,114,0.15)', color: '#333', fontSize: '20px' }} />
+            </div>
+
+            <div className="text-center">
+              <span className="text-xs" style={{ color: 'rgba(0,0,0,0.4)' }}>Didn't receive it? </span>
+              <button onClick={() => { setStep(1); setOtp('') }}
+                className="text-xs font-semibold" style={{ color: brand.primaryColor }}>
+                Go back and resend
+              </button>
             </div>
 
             {error && (
