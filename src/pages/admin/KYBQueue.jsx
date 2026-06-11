@@ -12,6 +12,21 @@ const KYB_COLORS = {
   skipped: { bg: 'rgba(0,0,0,0.06)', color: 'rgba(0,0,0,0.4)', label: 'Skipped' },
 }
 
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL
+
+async function sendAdminEmail({ to, subject, html }) {
+  const { data: { session } } = await supabase.auth.getSession()
+  const token = session?.access_token
+  await fetch(`${SUPABASE_URL}/functions/v1/send-admin-email`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`,
+    },
+    body: JSON.stringify({ to, subject, html }),
+  })
+}
+
 export default function KYBQueue() {
   const navigate = useNavigate()
   const [businesses, setBusinesses] = useState([])
@@ -21,19 +36,13 @@ export default function KYBQueue() {
   const [loadingDocs, setLoadingDocs] = useState(false)
   const [filterStatus, setFilterStatus] = useState('pending')
 
-  // Action states
   const [kybAction, setKybAction] = useState(null)
   const [rejectReason, setRejectReason] = useState('')
   const [saving, setSaving] = useState(false)
   const [successMsg, setSuccessMsg] = useState('')
 
-  useEffect(() => {
-    loadBusinesses()
-  }, [])
-
-  useEffect(() => {
-    if (selected) loadDocs(selected.id)
-  }, [selected])
+  useEffect(() => { loadBusinesses() }, [])
+  useEffect(() => { if (selected) loadDocs(selected.id) }, [selected])
 
   async function loadBusinesses() {
     setLoading(true)
@@ -54,9 +63,7 @@ export default function KYBQueue() {
     setLoadingDocs(true)
     setKybDocs([])
     try {
-      const { data } = await supabase.storage
-        .from('kyb-documents')
-        .list(bizId)
+      const { data } = await supabase.storage.from('kyb-documents').list(bizId)
       setKybDocs(data || [])
     } catch (e) {
       console.error('KYB docs load error:', e)
@@ -77,39 +84,24 @@ export default function KYBQueue() {
     setSaving(true)
     try {
       const newStatus = kybAction === 'approve' ? 'verified' : 'rejected'
+      await supabase.from('businesses').update({ kyb_status: newStatus }).eq('id', selected.id)
 
-      await supabase
-        .from('businesses')
-        .update({ kyb_status: newStatus })
-        .eq('id', selected.id)
-
-      // Email notification via Resend
+      // Send via Edge Function — no API key in browser
       const adminEmail = selected.admin_email
       const adminName = selected.business_admins?.[0]?.full_name || 'there'
       const emailBody = kybAction === 'approve'
         ? `Your KYB verification for <strong>${selected.name}</strong> has been approved. You now have full access to the Partna platform.`
         : `Your KYB verification for <strong>${selected.name}</strong> was not approved.<br><br><strong>Reason:</strong> ${rejectReason}<br><br>Please resubmit with the correct documents from your Settings page.`
 
-      await fetch('https://api.resend.com/emails', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${import.meta.env.VITE_RESEND_API_KEY}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          from: 'Partna <receipts@partna.io>',
-          to: [adminEmail],
-          subject: kybAction === 'approve'
-            ? `KYB Approved — ${selected.name} is verified`
-            : `KYB Update — Action required for ${selected.name}`,
-          html: `<p>Hi ${adminName},</p><p>${emailBody}</p><p>— The Partna Team</p>`,
-        }),
+      await sendAdminEmail({
+        to: adminEmail,
+        subject: kybAction === 'approve'
+          ? `KYB Approved — ${selected.name} is verified`
+          : `KYB Update — Action required for ${selected.name}`,
+        html: `<p>Hi ${adminName},</p><p>${emailBody}</p><p>— The Partna Team</p>`,
       })
 
-      // Update local state
-      setBusinesses(prev =>
-        prev.map(b => b.id === selected.id ? { ...b, kyb_status: newStatus } : b)
-      )
+      setBusinesses(prev => prev.map(b => b.id === selected.id ? { ...b, kyb_status: newStatus } : b))
       setSelected(prev => ({ ...prev, kyb_status: newStatus }))
       setSuccessMsg(kybAction === 'approve'
         ? `✓ ${selected.name} KYB approved. Email sent to ${adminEmail}.`
@@ -125,7 +117,6 @@ export default function KYBQueue() {
   }
 
   async function handleDefer() {
-    // Move to bottom of queue by updating a deferred_at timestamp
     setBusinesses(prev => {
       const idx = prev.findIndex(b => b.id === selected.id)
       if (idx === -1) return prev
@@ -147,11 +138,7 @@ export default function KYBQueue() {
     return Math.floor((Date.now() - new Date(d).getTime()) / 86400000)
   }
 
-  const filtered = businesses.filter(b => {
-    if (filterStatus && b.kyb_status !== filterStatus) return false
-    return true
-  })
-
+  const filtered = businesses.filter(b => !filterStatus || b.kyb_status === filterStatus)
   const pendingCount = businesses.filter(b => b.kyb_status === 'pending').length
 
   if (loading) return (
@@ -164,7 +151,6 @@ export default function KYBQueue() {
   return (
     <div className="flex flex-col gap-5">
 
-      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <div className="text-lg font-bold" style={{ color: ADMIN_PRIMARY }}>KYB Review Queue</div>
@@ -207,7 +193,6 @@ export default function KYBQueue() {
       ) : (
         <div className="grid grid-cols-5 gap-5" style={{ alignItems: 'start' }}>
 
-          {/* Queue list */}
           <div className="col-span-2 flex flex-col gap-2">
             {filtered.map(biz => {
               const kyb = KYB_COLORS[biz.kyb_status] || KYB_COLORS.skipped
@@ -267,7 +252,6 @@ export default function KYBQueue() {
             })}
           </div>
 
-          {/* Review panel */}
           <div className="col-span-3">
             {!selected ? (
               <div className="rounded-2xl p-12 text-center" style={{ background: '#fff' }}>
@@ -279,19 +263,15 @@ export default function KYBQueue() {
             ) : (
               <div className="flex flex-col gap-4">
 
-                {/* Business summary */}
                 <div className="rounded-2xl p-5" style={{ background: '#fff' }}>
                   <div className="flex items-start justify-between mb-4">
                     <div>
                       <div className="text-base font-bold mb-1" style={{ color: ADMIN_PRIMARY }}>
                         {selected.name}
                       </div>
-                      <div className="text-xs" style={{ color: 'rgba(0,0,0,0.4)' }}>
-                        {selected.admin_email}
-                      </div>
+                      <div className="text-xs" style={{ color: 'rgba(0,0,0,0.4)' }}>{selected.admin_email}</div>
                     </div>
-                    <button
-                      onClick={() => navigate(`/admin/businesses/${selected.id}`)}
+                    <button onClick={() => navigate(`/admin/businesses/${selected.id}`)}
                       className="text-xs font-semibold px-3 py-1.5 rounded-lg flex-shrink-0"
                       style={{ background: 'rgba(27,79,114,0.08)', color: ADMIN_PRIMARY }}>
                       Full profile →
@@ -319,7 +299,6 @@ export default function KYBQueue() {
                   </div>
                 </div>
 
-                {/* Documents */}
                 <div className="rounded-2xl p-5" style={{ background: '#fff' }}>
                   <div className="text-xs font-bold uppercase tracking-wide mb-3"
                     style={{ color: 'rgba(0,0,0,0.4)' }}>
@@ -328,9 +307,7 @@ export default function KYBQueue() {
                   {loadingDocs ? (
                     <div className="text-xs py-2" style={{ color: 'rgba(0,0,0,0.3)' }}>Loading documents...</div>
                   ) : kybDocs.length === 0 ? (
-                    <div className="text-xs py-2" style={{ color: 'rgba(0,0,0,0.3)' }}>
-                      No documents uploaded
-                    </div>
+                    <div className="text-xs py-2" style={{ color: 'rgba(0,0,0,0.3)' }}>No documents uploaded</div>
                   ) : (
                     <div className="flex flex-col gap-1">
                       {kybDocs.map(doc => (
@@ -353,7 +330,6 @@ export default function KYBQueue() {
                   )}
                 </div>
 
-                {/* Actions */}
                 <div className="rounded-2xl p-5" style={{ background: '#fff' }}>
                   <div className="text-xs font-bold uppercase tracking-wide mb-4"
                     style={{ color: 'rgba(0,0,0,0.4)' }}>
@@ -423,14 +399,10 @@ export default function KYBQueue() {
                         <label className="text-xs font-semibold" style={{ color: ADMIN_PRIMARY }}>
                           Rejection reason *
                         </label>
-                        <textarea
-                          value={rejectReason}
-                          onChange={e => setRejectReason(e.target.value)}
+                        <textarea value={rejectReason} onChange={e => setRejectReason(e.target.value)}
                           placeholder="Explain clearly why the submission is being rejected and what the business needs to resubmit..."
-                          rows={3}
-                          className="w-full px-4 py-3 rounded-xl text-xs outline-none resize-none"
-                          style={{ background: '#f0f2f5', border: 'none', color: '#333' }}
-                        />
+                          rows={3} className="w-full px-4 py-3 rounded-xl text-xs outline-none resize-none"
+                          style={{ background: '#f0f2f5', border: 'none', color: '#333' }} />
                       </div>
                       <div className="text-xs px-3 py-2.5 rounded-xl"
                         style={{ background: 'rgba(220,38,38,0.06)', border: '1px solid rgba(220,38,38,0.15)', color: '#DC2626' }}>
@@ -442,9 +414,7 @@ export default function KYBQueue() {
                           style={{ background: '#f0f2f5', color: 'rgba(0,0,0,0.5)' }}>
                           Cancel
                         </button>
-                        <button
-                          onClick={handleAction}
-                          disabled={saving || !rejectReason.trim()}
+                        <button onClick={handleAction} disabled={saving || !rejectReason.trim()}
                           className="flex-1 py-2.5 rounded-xl text-xs font-bold"
                           style={{
                             background: '#DC2626', color: '#fff',
@@ -456,7 +426,6 @@ export default function KYBQueue() {
                     </div>
                   )}
                 </div>
-
               </div>
             )}
           </div>
