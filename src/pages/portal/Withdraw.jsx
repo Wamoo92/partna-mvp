@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { supabase } from '../../supabase'
 import { useBrand } from '../../lib/BrandContext'
 
@@ -15,26 +15,58 @@ function generateReference() {
 export default function Withdraw({ customer }) {
   const brand = useBrand()
   const navigate = useNavigate()
+  const location = useLocation()
+
+  const enrollmentId = location.state?.enrollmentId || null
+
   const [step, setStep] = useState(1)
   const [amount, setAmount] = useState('')
   const [network, setNetwork] = useState('mtn')
   const [momoPhone, setMomoPhone] = useState('')
-  const [wallet, setWallet] = useState(null)
   const [loading, setLoading] = useState(false)
+  const [loadingEnrollment, setLoadingEnrollment] = useState(true)
   const [error, setError] = useState('')
   const [txnReference, setTxnReference] = useState('')
+
+  // Enrollment data
+  const [enrollment, setEnrollment] = useState(null)
+  const [wallet, setWallet] = useState(null)
+  const [campaign, setCampaign] = useState(null)
 
   const parsedAmount = parseInt(amount.replace(/,/g, ''), 10)
   const balance = wallet ? Number(wallet.balance) : 0
   const validAmount = !isNaN(parsedAmount) && parsedAmount >= 5000 && parsedAmount <= balance
 
   useEffect(() => {
-    if (customer) loadWallet()
-  }, [customer])
+    if (customer) loadEnrollment()
+  }, [customer, enrollmentId])
 
-  async function loadWallet() {
-    const { data } = await supabase.from('wallets').select('*').eq('customer_id', customer.id)
-    if (data && data.length > 0) setWallet(data[0])
+  async function loadEnrollment() {
+    setLoadingEnrollment(true)
+    try {
+      let query = supabase
+        .from('customer_campaigns')
+        .select('*, campaigns(*), wallets(*)')
+        .eq('customer_id', customer.id)
+        .eq('status', 'active')
+
+      if (enrollmentId) {
+        query = query.eq('id', enrollmentId)
+      } else {
+        query = query.order('enrolled_at', { ascending: true }).limit(1)
+      }
+
+      const { data } = await query.maybeSingle()
+
+      if (data) {
+        setEnrollment(data)
+        setCampaign(data.campaigns)
+        setWallet(data.wallets)
+      }
+    } catch (e) {
+      console.error('Load enrollment error:', e)
+    }
+    setLoadingEnrollment(false)
   }
 
   function formatUGX(n) {
@@ -49,7 +81,7 @@ export default function Withdraw({ customer }) {
   function nowDisplay() {
     return new Date().toLocaleString('en-UG', {
       day: 'numeric', month: 'long', year: 'numeric',
-      hour: '2-digit', minute: '2-digit', hour12: true
+      hour: '2-digit', minute: '2-digit', hour12: true,
     })
   }
 
@@ -81,23 +113,16 @@ export default function Withdraw({ customer }) {
       setError('Please enter a valid phone number.')
       return
     }
+    if (!wallet) {
+      setError('Could not find wallet. Please go back and try again.')
+      return
+    }
+
     setLoading(true)
     try {
-      const { data: wallets, error: walletError } = await supabase
-        .from('wallets').select('*').eq('customer_id', customer.id)
-
-      if (walletError || !wallets || wallets.length === 0) {
-        setError('Could not find wallet. Please try again.')
-        setLoading(false)
-        return
-      }
-
-      const w = wallets[0]
-      const newBalance = Number(w.balance) - parsedAmount
-
+      const newBalance = Number(wallet.balance) - parsedAmount
       if (newBalance < 0) { setError('Insufficient balance.'); setLoading(false); return }
 
-      // Generate reference before insert so it shows on success screen
       const reference = generateReference()
       setTxnReference(reference)
 
@@ -105,12 +130,12 @@ export default function Withdraw({ customer }) {
         .from('transactions')
         .insert({
           customer_id: customer.id,
-          wallet_id: w.id,
-          campaign_id: customer.campaign_id || null,
+          wallet_id: wallet.id,
+          campaign_id: enrollment?.campaign_id || null,
           type: 'withdrawal',
           amount: parsedAmount,
-          status: 'pending',   // withdrawals are pending until processed by Partna
-          network: network,
+          status: 'pending',
+          network,
           reference,
         })
         .select()
@@ -127,7 +152,7 @@ export default function Withdraw({ customer }) {
         await supabase.from('transaction_fees').insert({
           transaction_id: txnId,
           customer_id: customer.id,
-          network: network,
+          network,
           fee_type: 'withdrawal',
           charged_to: 'user',
           partna_fee: fees.partnaFee,
@@ -138,9 +163,11 @@ export default function Withdraw({ customer }) {
         })
       }
 
-      // Zero balance immediately — funds are being withdrawn
+      // Deduct from the campaign-specific wallet
       const { error: balanceError } = await supabase
-        .from('wallets').update({ balance: newBalance }).eq('id', w.id)
+        .from('wallets')
+        .update({ balance: newBalance })
+        .eq('id', wallet.id)
 
       if (balanceError) {
         console.error('Balance error:', balanceError)
@@ -157,6 +184,13 @@ export default function Withdraw({ customer }) {
     setLoading(false)
   }
 
+  if (loadingEnrollment) return (
+    <div className="min-h-screen flex items-center justify-center" style={{ background: '#f0f2f5' }}>
+      <div className="w-8 h-8 border-4 rounded-full animate-spin"
+        style={{ borderColor: brand.primaryColor, borderTopColor: 'transparent' }} />
+    </div>
+  )
+
   return (
     <div className="min-h-screen flex flex-col" style={{ background: '#f0f2f5' }}>
 
@@ -167,8 +201,16 @@ export default function Withdraw({ customer }) {
           &#8592;
         </button>
         <div className="flex items-center gap-2">
-          <img src={brand.logoUrl} alt="" className="w-8 h-8 object-contain" style={{ mixBlendMode: 'screen' }} />
-          <div className="text-white text-xs font-semibold">Withdraw</div>
+          <img src={brand.logoUrl} alt="" className="w-8 h-8 object-contain"
+            style={{ mixBlendMode: 'screen' }} />
+          <div>
+            <div className="text-white text-xs font-semibold">Withdraw</div>
+            {campaign && (
+              <div className="text-xs" style={{ color: 'rgba(255,255,255,0.55)' }}>
+                {campaign.name}
+              </div>
+            )}
+          </div>
         </div>
       </header>
 
@@ -187,12 +229,12 @@ export default function Withdraw({ customer }) {
             ))}
           </div>
           <div className="text-white text-lg font-bold mb-1">
-            {step === 1 && 'Enter Amount'}
-            {step === 2 && 'Withdrawal Details'}
+            {step === 1 ? 'Enter Amount' : 'Withdrawal Details'}
           </div>
           <div className="text-xs" style={{ color: 'rgba(255,255,255,0.65)' }}>
-            {step === 1 && 'Step 1 of 2 — How much would you like to withdraw?'}
-            {step === 2 && 'Step 2 of 2 — Enter your mobile money details'}
+            {step === 1
+              ? 'Step 1 of 2 — How much would you like to withdraw?'
+              : 'Step 2 of 2 — Enter your mobile money details'}
           </div>
         </div>
       )}
@@ -219,13 +261,20 @@ export default function Withdraw({ customer }) {
         {step === 1 && (
           <>
             <div className="rounded-2xl p-4" style={{ background: '#fff' }}>
-              <div className="flex justify-between items-center">
-                <div>
-                  <div className="text-xs mb-0.5" style={{ color: 'rgba(0,0,0,0.4)' }}>Available balance</div>
-                  <div className="text-base font-bold" style={{ color: brand.primaryColor }}>
-                    {formatUGX(balance)}
-                  </div>
+              <div className="text-xs font-bold mb-3" style={{ color: 'rgba(0,0,0,0.35)' }}>
+                WITHDRAWING FROM
+              </div>
+              {[
+                { label: 'Campaign', value: campaign?.name || '—' },
+                { label: 'Available balance', value: formatUGX(balance) },
+              ].map((row, i, arr) => (
+                <div key={i} className="flex justify-between items-center py-1.5"
+                  style={{ borderBottom: i < arr.length - 1 ? '1px solid rgba(0,0,0,0.05)' : 'none' }}>
+                  <span className="text-xs" style={{ color: 'rgba(0,0,0,0.4)' }}>{row.label}</span>
+                  <span className="text-xs font-semibold" style={{ color: brand.primaryColor }}>{row.value}</span>
                 </div>
+              ))}
+              <div className="flex justify-end mt-3">
                 <button
                   onClick={() => setAmount(formatAmountInput(String(balance)))}
                   className="text-xs font-semibold px-3 py-1.5 rounded-lg"
@@ -236,7 +285,9 @@ export default function Withdraw({ customer }) {
             </div>
 
             <div className="flex flex-col gap-1">
-              <label className="text-xs font-semibold" style={{ color: brand.primaryColor }}>Amount (UGX)</label>
+              <label className="text-xs font-semibold" style={{ color: brand.primaryColor }}>
+                Amount (UGX)
+              </label>
               <div className="relative">
                 <span className="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-semibold"
                   style={{ color: 'rgba(0,0,0,0.35)' }}>UGX</span>
@@ -267,13 +318,16 @@ export default function Withdraw({ customer }) {
                 ))}
                 <div className="flex justify-between items-center pt-2">
                   <span className="text-xs font-bold" style={{ color: brand.primaryColor }}>You receive</span>
-                  <span className="text-sm font-bold" style={{ color: '#16A34A' }}>{formatUGX(fees.netAmount)}</span>
+                  <span className="text-sm font-bold" style={{ color: '#16A34A' }}>
+                    {formatUGX(fees.netAmount)}
+                  </span>
                 </div>
               </div>
             )}
 
             {error && (
-              <div className="text-xs px-4 py-3 rounded-xl" style={{ background: '#FEE2E2', color: '#991B1B' }}>
+              <div className="text-xs px-4 py-3 rounded-xl"
+                style={{ background: '#FEE2E2', color: '#991B1B' }}>
                 {error}
               </div>
             )}
@@ -337,8 +391,11 @@ export default function Withdraw({ customer }) {
             </div>
 
             <div className="rounded-2xl p-4" style={{ background: '#fff' }}>
-              <div className="text-xs font-bold mb-3" style={{ color: 'rgba(0,0,0,0.35)' }}>WITHDRAWAL SUMMARY</div>
+              <div className="text-xs font-bold mb-3" style={{ color: 'rgba(0,0,0,0.35)' }}>
+                WITHDRAWAL SUMMARY
+              </div>
               {[
+                { label: 'Campaign', value: campaign?.name || '—', color: brand.primaryColor },
                 { label: 'Withdrawal amount', value: formatUGX(parsedAmount), color: brand.primaryColor },
                 { label: 'Partna service fee (3%)', value: '− ' + formatUGX(fees.partnaFee), color: '#DC2626' },
                 { label: 'Mobile money carrier fee', value: '− ' + formatUGX(fees.carrierFee), color: '#DC2626' },
@@ -356,12 +413,15 @@ export default function Withdraw({ customer }) {
               <div className="flex justify-between items-center pt-3 mt-1"
                 style={{ borderTop: `2px solid ${brand.secondaryColor}` }}>
                 <span className="text-xs font-bold" style={{ color: brand.primaryColor }}>You receive</span>
-                <span className="text-sm font-bold" style={{ color: '#16A34A' }}>{formatUGX(fees.netAmount)}</span>
+                <span className="text-sm font-bold" style={{ color: '#16A34A' }}>
+                  {formatUGX(fees.netAmount)}
+                </span>
               </div>
             </div>
 
             {error && (
-              <div className="text-xs px-4 py-3 rounded-xl" style={{ background: '#FEE2E2', color: '#991B1B' }}>
+              <div className="text-xs px-4 py-3 rounded-xl"
+                style={{ background: '#FEE2E2', color: '#991B1B' }}>
                 {error}
               </div>
             )}
@@ -394,6 +454,7 @@ export default function Withdraw({ customer }) {
               </div>
               {[
                 { label: 'Reference', value: txnReference, color: brand.secondaryColor, mono: true },
+                { label: 'Campaign', value: campaign?.name || '—', color: brand.primaryColor },
                 { label: 'Amount withdrawn', value: formatUGX(parsedAmount), color: brand.primaryColor },
                 { label: 'Partna service fee', value: '− ' + formatUGX(fees.partnaFee), color: '#DC2626' },
                 { label: 'Carrier fee', value: '− ' + formatUGX(fees.carrierFee), color: '#DC2626' },
@@ -408,10 +469,7 @@ export default function Withdraw({ customer }) {
                   style={{ borderBottom: i < arr.length - 1 ? '1px solid rgba(0,0,0,0.05)' : 'none' }}>
                   <span className="text-xs" style={{ color: 'rgba(0,0,0,0.4)' }}>{row.label}</span>
                   <span className="text-xs font-semibold"
-                    style={{
-                      color: row.color,
-                      fontFamily: row.mono ? 'monospace' : 'inherit',
-                    }}>
+                    style={{ color: row.color, fontFamily: row.mono ? 'monospace' : 'inherit' }}>
                     {row.value}
                   </span>
                 </div>
@@ -429,7 +487,7 @@ export default function Withdraw({ customer }) {
               Back to Home
             </button>
 
-            <button onClick={() => navigate('/portal/transactions')}
+            <button onClick={() => navigate('/portal/transactions', { state: { enrollmentId } })}
               className="w-full py-3 rounded-xl text-sm font-semibold"
               style={{ background: 'transparent', color: brand.primaryColor, border: '1.5px solid rgba(27,79,114,0.2)' }}>
               View transactions
