@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { supabase } from '../../supabase'
 import { useBrand } from '../../lib/BrandContext'
 
@@ -17,7 +17,10 @@ function generateReference() {
 export default function Pay({ customer }) {
   const brand = useBrand()
   const navigate = useNavigate()
+  const location = useLocation()
   const isEducation = brand.sector === 'Education'
+
+  const enrollmentId = location.state?.enrollmentId || null
 
   const [step, setStep] = useState(1)
 
@@ -32,7 +35,8 @@ export default function Pay({ customer }) {
   const [amount, setAmount] = useState('')
   const [wallet, setWallet] = useState(null)
   const [campaign, setCampaign] = useState(null)
-  const [loading, setLoading] = useState(true)
+  const [enrollment, setEnrollment] = useState(null)
+  const [loadingEnrollment, setLoadingEnrollment] = useState(true)
   const [paying, setPaying] = useState(false)
   const [error, setError] = useState('')
   const [alreadyPaid, setAlreadyPaid] = useState(0)
@@ -62,44 +66,57 @@ export default function Pay({ customer }) {
   const confirmStep = isEducation ? 3 : 2
 
   useEffect(() => {
-    if (customer) loadData()
-  }, [customer])
+    if (customer) loadEnrollment()
+  }, [customer, enrollmentId])
 
-  async function loadData() {
-    setLoading(true)
+  async function loadEnrollment() {
+    setLoadingEnrollment(true)
     try {
-      const r1 = await supabase.from('wallets').select('*').eq('customer_id', customer.id)
-      if (r1.data && r1.data.length > 0) setWallet(r1.data[0])
-
-      const campaignId = customer.campaign_id
-      if (campaignId) {
-        const r2 = await supabase.from('campaigns').select('*').eq('id', campaignId)
-        if (r2.data && r2.data.length > 0) setCampaign(r2.data[0])
-      }
-
-      const { data: paidData } = await supabase
-        .from('transactions')
-        .select('amount')
+      // Load the specific enrollment (or first active if none passed)
+      let query = supabase
+        .from('customer_campaigns')
+        .select('*, campaigns(*), wallets(*)')
         .eq('customer_id', customer.id)
-        .eq('type', 'payment')
-      if (paidData) {
-        setAlreadyPaid(paidData.reduce((sum, t) => sum + Number(t.amount), 0))
+        .eq('status', 'active')
+
+      if (enrollmentId) {
+        query = query.eq('id', enrollmentId)
+      } else {
+        query = query.order('enrolled_at', { ascending: true }).limit(1)
       }
 
-      if (campaignId) {
+      const { data: enrollData } = await query.maybeSingle()
+
+      if (enrollData) {
+        setEnrollment(enrollData)
+        setCampaign(enrollData.campaigns)
+        setWallet(enrollData.wallets)
+
+        // Already paid for this specific campaign
+        const { data: paidData } = await supabase
+          .from('transactions')
+          .select('amount')
+          .eq('customer_id', customer.id)
+          .eq('campaign_id', enrollData.campaign_id)
+          .eq('type', 'payment')
+        if (paidData) {
+          setAlreadyPaid(paidData.reduce((sum, t) => sum + Number(t.amount), 0))
+        }
+
+        // Unused discount for this specific campaign
         const { data: discountData } = await supabase
           .from('customer_discounts')
           .select('*')
           .eq('customer_id', customer.id)
-          .eq('campaign_id', campaignId)
+          .eq('campaign_id', enrollData.campaign_id)
           .eq('is_used', false)
           .maybeSingle()
         if (discountData) setDiscount(discountData)
       }
     } catch (e) {
-      console.error(e)
+      console.error('Load enrollment error:', e)
     }
-    setLoading(false)
+    setLoadingEnrollment(false)
   }
 
   function formatUGX(n) {
@@ -114,7 +131,7 @@ export default function Pay({ customer }) {
   function nowDisplay() {
     return new Date().toLocaleString('en-UG', {
       day: 'numeric', month: 'long', year: 'numeric',
-      hour: '2-digit', minute: '2-digit', hour12: true
+      hour: '2-digit', minute: '2-digit', hour12: true,
     })
   }
 
@@ -177,32 +194,27 @@ export default function Pay({ customer }) {
     setError('')
     setPaying(true)
     try {
-      const { data: wallets, error: walletError } = await supabase
-        .from('wallets').select('*').eq('customer_id', customer.id)
-
-      if (walletError || !wallets || wallets.length === 0) {
-        setError('Could not find wallet. Please try again.')
+      if (!wallet) {
+        setError('Could not find wallet. Please go back and try again.')
         setPaying(false)
         return
       }
 
-      const w = wallets[0]
-      const newBalance = Number(w.balance) - parsedAmount
+      const newBalance = Number(wallet.balance) - parsedAmount
       if (newBalance < 0) { setError('Insufficient balance.'); setPaying(false); return }
 
       const reference = generateReference()
       setTxnReference(reference)
 
-      // Determine if this is a full payment
       const fullPayment = parsedAmount >= remaining
 
-      // Record the transaction
+      // Record transaction — scoped to the correct campaign
       const { data: txnData, error: txnError } = await supabase
         .from('transactions')
         .insert({
           customer_id: customer.id,
-          wallet_id: w.id,
-          campaign_id: customer.campaign_id,
+          wallet_id: wallet.id,
+          campaign_id: enrollment?.campaign_id || null,
           type: 'payment',
           amount: parsedAmount,
           status: 'completed',
@@ -224,7 +236,7 @@ export default function Pay({ customer }) {
 
       const txnId = txnData?.[0]?.id
 
-      // Record fee
+      // Fee
       if (txnId) {
         const partnaFee = Math.round(parsedAmount * 0.01)
         await supabase.from('transaction_fees').insert({
@@ -240,10 +252,10 @@ export default function Pay({ customer }) {
         })
       }
 
-      // Deduct from customer wallet
-      await supabase.from('wallets').update({ balance: newBalance }).eq('id', w.id)
+      // Deduct from campaign-specific wallet
+      await supabase.from('wallets').update({ balance: newBalance }).eq('id', wallet.id)
 
-      // ── EDUCATION: funds go directly to business wallet ──
+      // ── EDUCATION: funds → business wallet directly ──
       if (isEducation) {
         const { data: bizWallet } = await supabase
           .from('business_wallets')
@@ -252,19 +264,16 @@ export default function Pay({ customer }) {
           .maybeSingle()
 
         if (bizWallet) {
-          await supabase
-            .from('business_wallets')
+          await supabase.from('business_wallets')
             .update({ balance: Number(bizWallet.balance) + parsedAmount })
             .eq('id', bizWallet.id)
         } else {
-          // Create wallet if somehow missing
           await supabase.from('business_wallets').insert({
             business_id: customer.business_id,
             balance: parsedAmount,
           })
         }
 
-        // Record business transaction
         await supabase.from('business_transactions').insert({
           business_id: customer.business_id,
           type: 'fee_payment',
@@ -276,7 +285,7 @@ export default function Pay({ customer }) {
         })
       }
 
-      // ── RETAIL + FULL PAYMENT: funds go to escrow, create sales record ──
+      // ── RETAIL + FULL PAYMENT: funds → escrow + create sales record ──
       if (!isEducation && fullPayment) {
         const { data: escrowWallet } = await supabase
           .from('escrow_wallets')
@@ -285,8 +294,7 @@ export default function Pay({ customer }) {
           .maybeSingle()
 
         if (escrowWallet) {
-          await supabase
-            .from('escrow_wallets')
+          await supabase.from('escrow_wallets')
             .update({ balance: Number(escrowWallet.balance) + parsedAmount })
             .eq('id', escrowWallet.id)
         } else {
@@ -296,31 +304,24 @@ export default function Pay({ customer }) {
           })
         }
 
-        // Create sales record — business will mark this complete
         await supabase.from('sales').insert({
           business_id: customer.business_id,
           customer_id: customer.id,
-          campaign_id: customer.campaign_id,
+          campaign_id: enrollment?.campaign_id || null,
           transaction_id: txnId,
           amount: parsedAmount,
           type: 'retail',
           status: 'pending',
           is_prize: false,
-          notes: discount
-            ? `Discount prize applied: ${discountPct}% off`
-            : null,
+          notes: discount ? `Discount prize applied: ${discountPct}% off` : null,
         })
 
         setIsFullPayment(true)
       }
 
-      // ── RETAIL + PARTIAL PAYMENT: stays in customer wallet effectively
-      // (already deducted above, partial payments tracked via transactions) ──
-
       // Mark discount as used
       if (discount) {
-        await supabase
-          .from('customer_discounts')
+        await supabase.from('customer_discounts')
           .update({ is_used: true })
           .eq('id', discount.id)
       }
@@ -333,7 +334,7 @@ export default function Pay({ customer }) {
     setPaying(false)
   }
 
-  if (loading) return (
+  if (loadingEnrollment) return (
     <div className="min-h-screen flex items-center justify-center" style={{ background: '#f0f2f5' }}>
       <div className="w-8 h-8 border-4 rounded-full animate-spin"
         style={{ borderColor: brand.primaryColor, borderTopColor: 'transparent' }} />
@@ -350,9 +351,17 @@ export default function Pay({ customer }) {
           &#8592;
         </button>
         <div className="flex items-center gap-2">
-          <img src={brand.logoUrl} alt="" className="w-8 h-8 object-contain" style={{ mixBlendMode: 'screen' }} />
-          <div className="text-white text-xs font-semibold">
-            {isEducation ? 'Pay Fees' : 'Make Payment'}
+          <img src={brand.logoUrl} alt="" className="w-8 h-8 object-contain"
+            style={{ mixBlendMode: 'screen' }} />
+          <div>
+            <div className="text-white text-xs font-semibold">
+              {isEducation ? 'Pay Fees' : 'Make Payment'}
+            </div>
+            {campaign && (
+              <div className="text-xs" style={{ color: 'rgba(255,255,255,0.55)' }}>
+                {campaign.name}
+              </div>
+            )}
           </div>
         </div>
       </header>
@@ -606,7 +615,8 @@ export default function Pay({ customer }) {
             </div>
 
             {error && (
-              <div className="text-xs px-4 py-3 rounded-xl" style={{ background: '#FEE2E2', color: '#991B1B' }}>
+              <div className="text-xs px-4 py-3 rounded-xl"
+                style={{ background: '#FEE2E2', color: '#991B1B' }}>
                 {error}
               </div>
             )}
@@ -662,7 +672,6 @@ export default function Pay({ customer }) {
               ))}
             </div>
 
-            {/* Retail full payment notice */}
             {!isEducation && parsedAmount >= remaining && (
               <div className="px-4 py-3 rounded-xl text-xs"
                 style={{ background: 'rgba(22,163,74,0.06)', border: '1px solid rgba(22,163,74,0.2)', color: '#166534' }}>
@@ -678,7 +687,8 @@ export default function Pay({ customer }) {
             )}
 
             {error && (
-              <div className="text-xs px-4 py-3 rounded-xl" style={{ background: '#FEE2E2', color: '#991B1B' }}>
+              <div className="text-xs px-4 py-3 rounded-xl"
+                style={{ background: '#FEE2E2', color: '#991B1B' }}>
                 {error}
               </div>
             )}
@@ -708,7 +718,10 @@ export default function Pay({ customer }) {
                 ...(discount ? [{ label: 'Prize discount applied', value: `${discountPct}% (saved ${formatUGX(discountAmount)})`, color: '#D97706' }] : []),
                 { label: 'Amount paid', value: formatUGX(parsedAmount) },
                 { label: isEducation ? 'Remaining fees' : 'Remaining to pay', value: formatUGX(Math.max(remaining - parsedAmount, 0)) },
-                { label: 'Status', value: isEducation ? '✓ Completed' : isFullPayment ? '⏳ Awaiting delivery' : '✓ Partial payment recorded' },
+                {
+                  label: 'Status',
+                  value: isEducation ? '✓ Completed' : isFullPayment ? '⏳ Awaiting delivery' : '✓ Partial payment recorded',
+                },
                 { label: 'Date & time', value: nowDisplay() },
               ].map((row, i, arr) => (
                 <div key={i} className="flex justify-between items-center py-1.5"
@@ -739,7 +752,7 @@ export default function Pay({ customer }) {
               Back to Home
             </button>
 
-            <button onClick={() => navigate('/portal/transactions')}
+            <button onClick={() => navigate('/portal/transactions', { state: { enrollmentId } })}
               className="w-full py-3 rounded-xl text-sm font-semibold"
               style={{ background: 'transparent', color: brand.primaryColor, border: '1.5px solid rgba(27,79,114,0.2)' }}>
               View transactions
