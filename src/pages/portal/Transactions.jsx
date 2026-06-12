@@ -1,17 +1,22 @@
 import { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { supabase } from '../../supabase'
 import { useBrand } from '../../lib/BrandContext'
 
-const CAMPAIGN_ID = 'b1b2c3d4-0000-0000-0000-000000000001'
 const PAGE_SIZE = 10
 
 export default function Transactions({ customer }) {
   const brand = useBrand()
   const navigate = useNavigate()
-  const [allTransactions, setAllTransactions] = useState([])
+  const location = useLocation()
+
+  const enrollmentId = location.state?.enrollmentId || null
+
+  const [enrollments, setEnrollments] = useState([])
+  const [activeEnrollment, setActiveEnrollment] = useState(null)
   const [wallet, setWallet] = useState(null)
   const [campaign, setCampaign] = useState(null)
+  const [allTransactions, setAllTransactions] = useState([])
   const [loading, setLoading] = useState(true)
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE)
 
@@ -22,39 +27,74 @@ export default function Transactions({ customer }) {
 
   useEffect(() => {
     if (customer) loadData()
-  }, [customer])
+  }, [customer, enrollmentId])
 
   async function loadData() {
     setLoading(true)
     try {
-      const r1 = await supabase.from('wallets').select('*').eq('customer_id', customer.id)
-      if (r1.data && r1.data.length > 0) setWallet(r1.data[0])
-
-      const r2 = await supabase.from('campaigns').select('*').eq('id', CAMPAIGN_ID)
-      if (r2.data && r2.data.length > 0) setCampaign(r2.data[0])
-
-      const r3 = await supabase
-        .from('transactions')
-        .select('*')
+      // Load all active enrollments for the campaign switcher
+      const { data: enrollData } = await supabase
+        .from('customer_campaigns')
+        .select('*, campaigns(*), wallets(*)')
         .eq('customer_id', customer.id)
-        .order('created_at', { ascending: false })
-      setAllTransactions(r3.data || [])
+        .eq('status', 'active')
+        .order('enrolled_at', { ascending: true })
+
+      setEnrollments(enrollData || [])
+
+      // Pick the active enrollment — prefer the one passed via state
+      let active = null
+      if (enrollmentId && enrollData) {
+        active = enrollData.find(e => e.id === enrollmentId) || enrollData[0]
+      } else {
+        active = enrollData?.[0] || null
+      }
+
+      setActiveEnrollment(active)
+      setCampaign(active?.campaigns || null)
+      setWallet(active?.wallets || null)
+
+      if (active) {
+        const { data: txnData } = await supabase
+          .from('transactions')
+          .select('*')
+          .eq('customer_id', customer.id)
+          .eq('campaign_id', active.campaign_id)
+          .order('created_at', { ascending: false })
+        setAllTransactions(txnData || [])
+      }
     } catch (e) {
-      console.error(e)
+      console.error('Transactions load error:', e)
     }
     setLoading(false)
+  }
+
+  async function switchEnrollment(enrollment) {
+    setActiveEnrollment(enrollment)
+    setCampaign(enrollment.campaigns)
+    setWallet(enrollment.wallets)
+    setVisibleCount(PAGE_SIZE)
+    setTypeFilter('all')
+    setDateFrom('')
+    setDateTo('')
+
+    const { data: txnData } = await supabase
+      .from('transactions')
+      .select('*')
+      .eq('customer_id', customer.id)
+      .eq('campaign_id', enrollment.campaign_id)
+      .order('created_at', { ascending: false })
+    setAllTransactions(txnData || [])
   }
 
   const filtered = allTransactions.filter(txn => {
     if (typeFilter !== 'all' && txn.type !== typeFilter) return false
     if (dateFrom) {
-      const from = new Date(dateFrom)
-      from.setHours(0, 0, 0, 0)
+      const from = new Date(dateFrom); from.setHours(0, 0, 0, 0)
       if (new Date(txn.created_at) < from) return false
     }
     if (dateTo) {
-      const to = new Date(dateTo)
-      to.setHours(23, 59, 59, 999)
+      const to = new Date(dateTo); to.setHours(23, 59, 59, 999)
       if (new Date(txn.created_at) > to) return false
     }
     return true
@@ -64,10 +104,7 @@ export default function Transactions({ customer }) {
   const hasMore = filtered.length > visibleCount
 
   function clearFilters() {
-    setTypeFilter('all')
-    setDateFrom('')
-    setDateTo('')
-    setVisibleCount(PAGE_SIZE)
+    setTypeFilter('all'); setDateFrom(''); setDateTo(''); setVisibleCount(PAGE_SIZE)
   }
 
   const filtersActive = typeFilter !== 'all' || dateFrom !== '' || dateTo !== ''
@@ -83,8 +120,7 @@ export default function Transactions({ customer }) {
   function formatGroupDate(dateStr) {
     const date = new Date(dateStr)
     const today = new Date()
-    const yesterday = new Date()
-    yesterday.setDate(today.getDate() - 1)
+    const yesterday = new Date(); yesterday.setDate(today.getDate() - 1)
     if (date.toDateString() === today.toDateString()) return 'Today'
     if (date.toDateString() === yesterday.toDateString()) return 'Yesterday'
     return date.toLocaleDateString('en-UG', { day: 'numeric', month: 'long', year: 'numeric' })
@@ -93,19 +129,14 @@ export default function Transactions({ customer }) {
   function txLabel(type) {
     switch (type) {
       case 'deposit': return 'Deposit'
-      case 'payment': return 'Fee Payment'
+      case 'payment': return 'Payment'
       case 'withdrawal': return 'Withdrawal'
       default: return type
     }
   }
 
   function txIcon(type) {
-    switch (type) {
-      case 'deposit': return '↓'
-      case 'payment': return '↑'
-      case 'withdrawal': return '↑'
-      default: return '·'
-    }
+    return type === 'deposit' ? '↓' : '↑'
   }
 
   function txColor(type) { return type === 'deposit' ? '#16A34A' : '#DC2626' }
@@ -118,7 +149,7 @@ export default function Transactions({ customer }) {
       if (!groups[key]) groups[key] = []
       groups[key].push(txn)
     })
-    return Object.entries(groups).map(([key, items]) => ({
+    return Object.entries(groups).map(([, items]) => ({
       label: formatGroupDate(items[0].created_at),
       items,
     }))
@@ -126,6 +157,7 @@ export default function Transactions({ customer }) {
 
   const groups = groupByDate(visible)
   const balance = wallet ? Number(wallet.balance) : 0
+  const hasMultiple = enrollments.length > 1
 
   if (loading) return (
     <div className="min-h-screen flex items-center justify-center" style={{ background: '#f0f2f5' }}>
@@ -140,8 +172,16 @@ export default function Transactions({ customer }) {
       <header className="flex items-center px-4 py-3 gap-3" style={{ background: brand.primaryColor }}>
         <button onClick={() => navigate('/portal/home')} className="text-white text-xl">&#8592;</button>
         <div className="flex items-center gap-2">
-          <img src={brand.logoUrl} alt="" className="w-8 h-8 object-contain" style={{ mixBlendMode: 'screen' }} />
-          <div className="text-white text-xs font-semibold">Transaction History</div>
+          <img src={brand.logoUrl} alt="" className="w-8 h-8 object-contain"
+            style={{ mixBlendMode: 'screen' }} />
+          <div>
+            <div className="text-white text-xs font-semibold">Transaction History</div>
+            {campaign && (
+              <div className="text-xs" style={{ color: 'rgba(255,255,255,0.55)' }}>
+                {campaign.name}
+              </div>
+            )}
+          </div>
         </div>
       </header>
 
@@ -149,13 +189,37 @@ export default function Transactions({ customer }) {
         <div className="text-xs mb-1" style={{ color: 'rgba(255,255,255,0.6)' }}>Current balance</div>
         <div className="text-white text-3xl font-bold mb-0.5">{formatUGX(balance)}</div>
         <div className="text-xs" style={{ color: 'rgba(255,255,255,0.6)' }}>
-          saved toward {campaign?.name || 'Term 3 Fees 2026'}
+          saved toward {campaign?.name || '—'}
         </div>
       </div>
 
       <div className="rounded-t-3xl flex-1 px-4 py-5 flex flex-col gap-4"
         style={{ background: '#f0f2f5', marginTop: '-16px' }}>
 
+        {/* ── Campaign switcher — only shown when enrolled in multiple ── */}
+        {hasMultiple && (
+          <div className="flex flex-col gap-2">
+            <div className="text-xs font-bold px-1" style={{ color: 'rgba(0,0,0,0.35)' }}>
+              CAMPAIGN
+            </div>
+            <div className="flex gap-2 overflow-x-auto pb-1">
+              {enrollments.map(e => (
+                <button key={e.id}
+                  onClick={() => switchEnrollment(e)}
+                  className="flex-shrink-0 px-4 py-2 rounded-xl text-xs font-semibold"
+                  style={{
+                    background: activeEnrollment?.id === e.id ? brand.primaryColor : '#fff',
+                    color: activeEnrollment?.id === e.id ? '#fff' : brand.primaryColor,
+                    border: `1.5px solid ${activeEnrollment?.id === e.id ? brand.primaryColor : 'rgba(27,79,114,0.2)'}`,
+                  }}>
+                  {e.campaigns?.name || '—'}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* ── Filters header ── */}
         <div className="flex items-center justify-between">
           <div className="text-sm font-bold" style={{ color: brand.primaryColor }}>
             Transactions
@@ -180,17 +244,20 @@ export default function Transactions({ customer }) {
               style={{
                 background: showFilters ? brand.primaryColor : '#fff',
                 color: showFilters ? '#fff' : brand.primaryColor,
-                border: `1.5px solid ${brand.primaryColor}`
+                border: `1.5px solid ${brand.primaryColor}`,
               }}>
               {showFilters ? 'Hide filters' : 'Filter'}
             </button>
           </div>
         </div>
 
+        {/* ── Filter panel ── */}
         {showFilters && (
           <div className="rounded-2xl p-4 flex flex-col gap-3" style={{ background: '#fff' }}>
             <div>
-              <div className="text-xs font-semibold mb-2" style={{ color: 'rgba(0,0,0,0.4)' }}>Transaction type</div>
+              <div className="text-xs font-semibold mb-2" style={{ color: 'rgba(0,0,0,0.4)' }}>
+                Transaction type
+              </div>
               <div className="flex gap-2 flex-wrap">
                 {[
                   { value: 'all', label: 'All' },
@@ -198,8 +265,7 @@ export default function Transactions({ customer }) {
                   { value: 'payment', label: 'Payments' },
                   { value: 'withdrawal', label: 'Withdrawals' },
                 ].map(opt => (
-                  <button
-                    key={opt.value}
+                  <button key={opt.value}
                     onClick={() => { setTypeFilter(opt.value); setVisibleCount(PAGE_SIZE) }}
                     className="text-xs font-semibold px-3 py-1.5 rounded-lg"
                     style={{
@@ -213,7 +279,9 @@ export default function Transactions({ customer }) {
             </div>
             <div style={{ height: '1px', background: 'rgba(0,0,0,0.06)' }} />
             <div>
-              <div className="text-xs font-semibold mb-2" style={{ color: 'rgba(0,0,0,0.4)' }}>Date range</div>
+              <div className="text-xs font-semibold mb-2" style={{ color: 'rgba(0,0,0,0.4)' }}>
+                Date range
+              </div>
               <div className="flex gap-2 items-center">
                 <div className="flex flex-col gap-1 flex-1">
                   <label className="text-xs" style={{ color: 'rgba(0,0,0,0.4)' }}>From</label>
@@ -235,6 +303,7 @@ export default function Transactions({ customer }) {
           </div>
         )}
 
+        {/* ── Transaction list ── */}
         {filtered.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16">
             <div className="text-3xl mb-3">📋</div>
@@ -242,7 +311,7 @@ export default function Transactions({ customer }) {
               No transactions found
             </div>
             <div className="text-xs text-center" style={{ color: 'rgba(0,0,0,0.4)' }}>
-              {filtersActive ? 'Try adjusting your filters' : 'Add money to get started'}
+              {filtersActive ? 'Try adjusting your filters' : 'Add money to this campaign to get started'}
             </div>
           </div>
         ) : (
@@ -265,13 +334,24 @@ export default function Transactions({ customer }) {
                           <div className="text-xs font-semibold" style={{ color: '#333' }}>
                             {txLabel(txn.type)}
                           </div>
+                          {txn.notes && (
+                            <div className="text-xs mt-0.5 truncate max-w-48"
+                              style={{ color: 'rgba(0,0,0,0.35)', fontSize: '10px' }}>
+                              {txn.notes}
+                            </div>
+                          )}
                           <div className="text-xs" style={{ color: 'rgba(0,0,0,0.35)' }}>
                             {formatTime(txn.created_at)}
                           </div>
                         </div>
                       </div>
-                      <div className="text-xs font-bold" style={{ color: txColor(txn.type) }}>
-                        {txSign(txn.type)}{formatUGX(txn.amount)}
+                      <div className="text-right">
+                        <div className="text-xs font-bold" style={{ color: txColor(txn.type) }}>
+                          {txSign(txn.type)}{formatUGX(txn.amount)}
+                        </div>
+                        {txn.status === 'pending' && (
+                          <div className="text-xs mt-0.5" style={{ color: '#D97706' }}>Pending</div>
+                        )}
                       </div>
                     </div>
                   ))}
@@ -280,10 +360,9 @@ export default function Transactions({ customer }) {
             ))}
 
             {hasMore && (
-              <button
-                onClick={() => setVisibleCount(v => v + PAGE_SIZE)}
+              <button onClick={() => setVisibleCount(v => v + PAGE_SIZE)}
                 className="w-full py-3 rounded-2xl text-xs font-semibold"
-                style={{ background: '#fff', color: brand.primaryColor, border: `1.5px solid rgba(27,79,114,0.15)` }}>
+                style={{ background: '#fff', color: brand.primaryColor, border: '1.5px solid rgba(27,79,114,0.15)' }}>
                 Load more ({filtered.length - visibleCount} remaining)
               </button>
             )}
@@ -293,7 +372,6 @@ export default function Transactions({ customer }) {
             </div>
           </div>
         )}
-
       </div>
 
       <nav className="flex items-center justify-around px-4 py-3 border-t"
@@ -310,13 +388,15 @@ export default function Transactions({ customer }) {
               {item.icon}
             </span>
             <span className="text-xs"
-              style={{ color: item.path === '/portal/transactions' ? brand.primaryColor : 'rgba(0,0,0,0.3)', fontWeight: item.path === '/portal/transactions' ? 600 : 400 }}>
+              style={{
+                color: item.path === '/portal/transactions' ? brand.primaryColor : 'rgba(0,0,0,0.3)',
+                fontWeight: item.path === '/portal/transactions' ? 600 : 400,
+              }}>
               {item.label}
             </span>
           </button>
         ))}
       </nav>
-
     </div>
   )
 }
