@@ -6,15 +6,6 @@ import { useBrand } from '../../lib/BrandContext'
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY
 
-function generateDrawCode() {
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
-  let code = 'SC-'
-  for (let i = 0; i < 6; i++) {
-    code += chars[Math.floor(Math.random() * chars.length)]
-  }
-  return code
-}
-
 export default function Register() {
   const brand = useBrand()
   const navigate = useNavigate()
@@ -35,7 +26,6 @@ export default function Register() {
   const [confirmPin, setConfirmPin] = useState('')
 
   const [customerId, setCustomerId] = useState(null)
-  const [businessId, setBusinessId] = useState(null)
 
   async function handleStep1() {
     setError('')
@@ -57,28 +47,7 @@ export default function Register() {
       const cleanPhone = phone.replace(/\s+/g, '')
       const cleanEmail = email.toLowerCase().trim()
 
-      // Check for existing phone
-      const { data: existingPhone } = await supabase
-        .from('customers').select('id').eq('phone', cleanPhone).maybeSingle()
-      if (existingPhone) {
-        setError('This phone number is already registered. Please log in.')
-        setLoading(false)
-        return
-      }
-
-      // Check for existing email
-      const { data: existingEmail } = await supabase
-        .from('customers').select('id').eq('email', cleanEmail).maybeSingle()
-      if (existingEmail) {
-        setError('This email address is already registered. Please log in.')
-        setLoading(false)
-        return
-      }
-
-      // Detect which business portal this customer is registering under
-      // by looking up the business from the current hostname or a stored business ID
-      // For now we fetch the first active business — this will be replaced
-      // once the portal URL routing per business is implemented
+      // Resolve business from portal context
       const { data: bizData } = await supabase
         .from('businesses')
         .select('id')
@@ -87,22 +56,73 @@ export default function Register() {
         .maybeSingle()
 
       const resolvedBusinessId = bizData?.id || null
-      setBusinessId(resolvedBusinessId)
 
-      const drawCode = generateDrawCode()
+      // Check phone is not already registered for this business
+      const { data: existingPhone } = await supabase
+        .from('customers')
+        .select('id')
+        .eq('phone', cleanPhone)
+        .eq('business_id', resolvedBusinessId)
+        .maybeSingle()
 
+      if (existingPhone) {
+        setError('This phone number is already registered. Please log in.')
+        setLoading(false)
+        return
+      }
+
+      // Check email is not already registered
+      const { data: existingEmail } = await supabase
+        .from('customers')
+        .select('id')
+        .eq('email', cleanEmail)
+        .maybeSingle()
+
+      if (existingEmail) {
+        setError('This email address is already registered. Please log in.')
+        setLoading(false)
+        return
+      }
+
+      // Check or create Partna identity (cross-business identity tracking)
+      let partnaIdentityId = null
+      const { data: existingIdentity } = await supabase
+        .from('partna_identities')
+        .select('id')
+        .eq('phone', cleanPhone)
+        .maybeSingle()
+
+      if (existingIdentity) {
+        partnaIdentityId = existingIdentity.id
+      } else {
+        const { data: newIdentity, error: identityError } = await supabase
+          .from('partna_identities')
+          .insert({
+            phone: cleanPhone,
+            first_name: firstName,
+            last_name: lastName,
+          })
+          .select()
+          .single()
+
+        if (!identityError && newIdentity) {
+          partnaIdentityId = newIdentity.id
+        }
+      }
+
+      // Create customer record — no campaign_id or draw_code here,
+      // those live on customer_campaigns now
       const { data: customer, error: customerError } = await supabase
         .from('customers')
         .insert({
           business_id: resolvedBusinessId,
-          campaign_id: null, // set during SelectCampaign step
+          partna_identity_id: partnaIdentityId,
           full_name: `${firstName} ${lastName}`,
           first_name: firstName,
           last_name: lastName,
           other_names: otherNames || null,
           phone: cleanPhone,
           email: cleanEmail,
-          draw_code: drawCode,
           kyc_status: 'pending',
           registration_status: 'phone_unverified',
         })
@@ -118,7 +138,7 @@ export default function Register() {
 
       setCustomerId(customer.id)
 
-      // Generate OTP
+      // Generate and send OTP
       const otpCode = Math.floor(10000 + Math.random() * 90000).toString()
       const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString()
 
@@ -142,7 +162,6 @@ export default function Register() {
 
       setOtpId(otpRecord.id)
 
-      // Send OTP via Africa's Talking Edge Function
       const smsRes = await fetch(`${SUPABASE_URL}/functions/v1/send-otp-sms`, {
         method: 'POST',
         headers: {
@@ -154,7 +173,6 @@ export default function Register() {
 
       if (!smsRes.ok) {
         console.error('SMS send failed:', await smsRes.text())
-        // Don't block registration if SMS fails — show a warning instead
         setError('OTP SMS could not be sent. Please check your phone number and try again.')
         setLoading(false)
         return
@@ -248,8 +266,9 @@ export default function Register() {
 
       await supabase.auth.signInWithPassword({ email: cleanEmail, password })
 
+      // Go to SelectCampaign — campaign enrollment creates the wallet
       setTimeout(() => {
-        navigate('/portal/kyc', { replace: true })
+        navigate('/portal/select-campaign', { replace: true })
       }, 500)
 
     } catch (err) {

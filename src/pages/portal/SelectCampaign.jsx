@@ -3,6 +3,15 @@ import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../supabase'
 import { useBrand } from '../../lib/BrandContext'
 
+function generateDrawCode() {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+  let code = 'SC-'
+  for (let i = 0; i < 6; i++) {
+    code += chars[Math.floor(Math.random() * chars.length)]
+  }
+  return code
+}
+
 export default function SelectCampaign({ customer, business }) {
   const brand = useBrand()
   const navigate = useNavigate()
@@ -25,29 +34,38 @@ export default function SelectCampaign({ customer, business }) {
   const [loading, setLoading] = useState(true)
   const [cardFlipped, setCardFlipped] = useState(false)
 
+  // Already-enrolled campaign IDs — to prevent duplicate enrollment
+  const [enrolledCampaignIds, setEnrolledCampaignIds] = useState([])
+
   useEffect(() => {
-    if (business?.id) loadData()
-  }, [business])
+    if (business?.id && customer?.id) loadData()
+  }, [business, customer])
 
   async function loadData() {
     setLoading(true)
+
+    // Fetch campaigns the customer is already enrolled in
+    const { data: existingEnrollments } = await supabase
+      .from('customer_campaigns')
+      .select('campaign_id')
+      .eq('customer_id', customer.id)
+      .eq('status', 'active')
+    setEnrolledCampaignIds((existingEnrollments || []).map(e => e.campaign_id))
+
     if (!isRetail) {
-      // Education: load all active campaigns for this business
       const { data } = await supabase
         .from('campaigns')
         .select('*')
         .eq('business_id', business.id)
         .eq('status', 'active')
         .order('created_at', { ascending: false })
-      const found = data || []
+      const found = (data || [])
       setCampaigns(found)
-      // If only one campaign, auto-select it
       if (found.length === 1) setSelectedCampaign(found[0])
     }
     setLoading(false)
   }
 
-  // Retail: search products + verify they have an active campaign
   async function handleProductSearch(val) {
     setProductQuery(val)
     setRetailCampaign(null)
@@ -74,7 +92,6 @@ export default function SelectCampaign({ customer, business }) {
       return
     }
 
-    // Only show products that have an active launched campaign
     const { data: camps } = await supabase
       .from('campaigns')
       .select('product_code')
@@ -112,13 +129,66 @@ export default function SelectCampaign({ customer, business }) {
   async function handleConfirm() {
     const campaign = isRetail ? retailCampaign : selectedCampaign
     if (!campaign || !agreed) return
+
+    // Prevent duplicate enrollment
+    if (enrolledCampaignIds.includes(campaign.id)) {
+      navigate('/portal/home', { replace: true })
+      return
+    }
+
     setSaving(true)
     try {
+      const drawCode = generateDrawCode()
+
+      // 1. Create customer_campaigns enrollment
+      const { data: enrollment, error: enrollError } = await supabase
+        .from('customer_campaigns')
+        .insert({
+          customer_id: customer.id,
+          campaign_id: campaign.id,
+          business_id: business.id,
+          draw_code: drawCode,
+          status: 'active',
+        })
+        .select()
+        .single()
+
+      if (enrollError) {
+        console.error('Enrollment error:', enrollError)
+        setSaving(false)
+        return
+      }
+
+      // 2. Create a wallet for this enrollment
+      const { data: wallet, error: walletError } = await supabase
+        .from('wallets')
+        .insert({
+          customer_id: customer.id,
+          customer_campaign_id: enrollment.id,
+          balance: 0,
+        })
+        .select()
+        .single()
+
+      if (walletError) {
+        console.error('Wallet creation error:', walletError)
+        setSaving(false)
+        return
+      }
+
+      // 3. Link wallet back to enrollment
       await supabase
-        .from('customers')
-        .update({ campaign_id: campaign.id })
-        .eq('id', customer.id)
-      navigate('/portal/home', { replace: true })
+        .from('customer_campaigns')
+        .update({ wallet_id: wallet.id })
+        .eq('id', enrollment.id)
+
+      // 4. Navigate — first enrollment goes to KYC, subsequent go to home
+      if (enrolledCampaignIds.length === 0) {
+        navigate('/portal/kyc', { replace: true })
+      } else {
+        navigate('/portal/home', { replace: true })
+      }
+
     } catch (e) {
       console.error('Campaign selection error:', e)
     }
@@ -130,9 +200,7 @@ export default function SelectCampaign({ customer, business }) {
   }
 
   function formatDate(d) {
-    return new Date(d).toLocaleDateString('en-UG', {
-      day: 'numeric', month: 'long', year: 'numeric'
-    })
+    return new Date(d).toLocaleDateString('en-UG', { day: 'numeric', month: 'long', year: 'numeric' })
   }
 
   const CARD_W = 280
@@ -140,8 +208,7 @@ export default function SelectCampaign({ customer, business }) {
 
   function FlippableCard() {
     return (
-      <div
-        className="cursor-pointer mx-auto"
+      <div className="cursor-pointer mx-auto"
         style={{ perspective: '800px', width: `${CARD_W}px`, height: `${CARD_H}px` }}
         onClick={() => setCardFlipped(!cardFlipped)}>
         <div style={{
@@ -224,17 +291,15 @@ export default function SelectCampaign({ customer, business }) {
   }
 
   function CampaignDetailCard({ campaign }) {
+    const alreadyEnrolled = enrolledCampaignIds.includes(campaign.id)
     return (
       <div className="rounded-2xl overflow-hidden" style={{ background: '#fff' }}>
-        {/* Card preview */}
         <div className="pt-5 pb-4 px-4" style={{ background: brand.primaryColor }}>
           <FlippableCard />
           <p className="text-center mt-2 text-xs" style={{ color: 'rgba(255,255,255,0.4)' }}>
             Your savings card preview · Tap to flip
           </p>
         </div>
-
-        {/* Campaign details */}
         <div className="p-4">
           <div className="text-sm font-bold mb-1" style={{ color: brand.primaryColor }}>
             {campaign.name}
@@ -244,13 +309,17 @@ export default function SelectCampaign({ customer, business }) {
               {campaign.description}
             </div>
           )}
+          {alreadyEnrolled && (
+            <div className="px-3 py-2 rounded-xl text-xs font-semibold mb-3"
+              style={{ background: 'rgba(22,163,74,0.1)', color: '#16A34A' }}>
+              ✓ You are already enrolled in this campaign
+            </div>
+          )}
           {[
             { label: 'Target amount', value: formatUGX(campaign.target_amount) },
             { label: 'Deadline', value: formatDate(campaign.target_date) },
             { label: 'Minimum deposit', value: campaign.minimum_deposit > 0 ? formatUGX(campaign.minimum_deposit) : 'None' },
             { label: 'Payment installments', value: campaign.allow_partial_payments ? 'Yes' : 'No' },
-            { label: 'Vouchers', value: 'Yes' },
-            { label: 'Prize draw', value: 'Yes' },
           ].map((row, i, arr) => (
             <div key={i} className="flex justify-between items-center py-1.5"
               style={{ borderBottom: i < arr.length - 1 ? '1px solid rgba(0,0,0,0.05)' : 'none' }}>
@@ -260,29 +329,30 @@ export default function SelectCampaign({ customer, business }) {
           ))}
         </div>
 
-        {/* T&C + confirm */}
-        <div className="px-4 pb-5 flex flex-col gap-3"
-          style={{ borderTop: '1px solid rgba(0,0,0,0.06)' }}>
-          <label className="flex items-start gap-3 cursor-pointer pt-3">
-            <input type="checkbox" checked={agreed}
-              onChange={e => setAgreed(e.target.checked)}
-              className="mt-0.5 w-4 h-4 flex-shrink-0 accent-current" />
-            <span className="text-xs leading-relaxed" style={{ color: 'rgba(0,0,0,0.6)' }}>
-              I agree to the savings campaign terms and conditions. I understand the target amount,
-              deadline, and payment requirements for this campaign.
-            </span>
-          </label>
-          <button
-            onClick={handleConfirm}
-            disabled={!agreed || saving}
-            className="w-full py-3 rounded-xl text-sm font-bold"
-            style={{
-              background: agreed && !saving ? brand.primaryColor : 'rgba(27,79,114,0.25)',
-              color: '#fff',
-            }}>
-            {saving ? 'Enrolling...' : 'Join this campaign →'}
-          </button>
-        </div>
+        {!alreadyEnrolled && (
+          <div className="px-4 pb-5 flex flex-col gap-3"
+            style={{ borderTop: '1px solid rgba(0,0,0,0.06)' }}>
+            <label className="flex items-start gap-3 cursor-pointer pt-3">
+              <input type="checkbox" checked={agreed}
+                onChange={e => setAgreed(e.target.checked)}
+                className="mt-0.5 w-4 h-4 flex-shrink-0 accent-current" />
+              <span className="text-xs leading-relaxed" style={{ color: 'rgba(0,0,0,0.6)' }}>
+                I agree to the savings campaign terms and conditions. I understand the target amount,
+                deadline, and payment requirements for this campaign.
+              </span>
+            </label>
+            <button
+              onClick={handleConfirm}
+              disabled={!agreed || saving}
+              className="w-full py-3 rounded-xl text-sm font-bold"
+              style={{
+                background: agreed && !saving ? brand.primaryColor : 'rgba(27,79,114,0.25)',
+                color: '#fff',
+              }}>
+              {saving ? 'Enrolling...' : 'Join this campaign →'}
+            </button>
+          </div>
+        )}
       </div>
     )
   }
@@ -294,12 +364,19 @@ export default function SelectCampaign({ customer, business }) {
     </div>
   )
 
+  // Filter out already-enrolled campaigns from the selectable list
+  const availableCampaigns = campaigns.filter(c => !enrolledCampaignIds.includes(c.id))
+  const hasEnrollments = enrolledCampaignIds.length > 0
+
   return (
     <div className="min-h-screen flex flex-col" style={{ background: '#f0f2f5' }}>
 
-      {/* Header */}
       <header className="flex items-center gap-2 px-4 py-3"
         style={{ background: brand.primaryColor }}>
+        {hasEnrollments && (
+          <button onClick={() => navigate('/portal/home')}
+            className="text-white text-xl mr-1">←</button>
+        )}
         <img src={brand.logoUrl} alt={brand.businessName}
           className="w-8 h-8 object-contain" style={{ mixBlendMode: 'screen' }} />
         <div>
@@ -308,20 +385,23 @@ export default function SelectCampaign({ customer, business }) {
         </div>
       </header>
 
-      {/* Hero */}
       <div className="px-5 pt-6 pb-8 text-center" style={{ background: brand.primaryColor }}>
-        <div className="text-white text-xl font-bold mb-1">Choose your campaign</div>
+        <div className="text-white text-xl font-bold mb-1">
+          {hasEnrollments ? 'Add another campaign' : 'Choose your campaign'}
+        </div>
         <div className="text-xs" style={{ color: 'rgba(255,255,255,0.65)' }}>
           {isRetail
             ? 'Enter a product code or name to find your savings campaign'
-            : campaigns.length === 1
-              ? 'Review the campaign details and agree to the terms to continue'
-              : 'Select the campaign you want to save toward'}
+            : availableCampaigns.length === 1
+            ? 'Review the campaign details and agree to the terms to continue'
+            : 'Select the campaign you want to save toward'}
         </div>
-        <div className="mt-3 px-4 py-2 rounded-xl inline-flex items-center gap-2 text-xs"
-          style={{ background: 'rgba(0,0,0,0.2)', color: 'rgba(255,255,255,0.8)' }}>
-          🔒 You must select a campaign before accessing your account
-        </div>
+        {!hasEnrollments && (
+          <div className="mt-3 px-4 py-2 rounded-xl inline-flex items-center gap-2 text-xs"
+            style={{ background: 'rgba(0,0,0,0.2)', color: 'rgba(255,255,255,0.8)' }}>
+            🔒 You must select at least one campaign to continue
+          </div>
+        )}
       </div>
 
       <div className="rounded-t-3xl flex-1 px-5 py-5 flex flex-col gap-4"
@@ -342,14 +422,8 @@ export default function SelectCampaign({ customer, business }) {
                 onFocus={() => productResults.length > 0 && setShowDropdown(true)}
                 onBlur={() => setTimeout(() => setShowDropdown(false), 150)}
                 className="w-full px-4 py-3 rounded-xl text-sm outline-none"
-                style={{
-                  background: '#fff',
-                  border: `1.5px solid rgba(27,79,114,0.15)`,
-                  color: '#333',
-                }}
+                style={{ background: '#fff', border: '1.5px solid rgba(27,79,114,0.15)', color: '#333' }}
               />
-
-              {/* Dropdown results */}
               {showDropdown && (
                 <div className="absolute top-full left-0 right-0 mt-1 rounded-xl overflow-hidden z-20"
                   style={{ background: '#fff', boxShadow: '0 4px 20px rgba(0,0,0,0.12)', border: '1px solid rgba(0,0,0,0.08)' }}>
@@ -359,29 +433,22 @@ export default function SelectCampaign({ customer, business }) {
                     </div>
                   ) : (
                     productResults.map(p => (
-                      <button
-                        key={p.id}
-                        onMouseDown={() => handleSelectProduct(p)}
+                      <button key={p.id} onMouseDown={() => handleSelectProduct(p)}
                         className="w-full flex items-center justify-between px-4 py-3 text-left"
                         style={{ borderBottom: '1px solid rgba(0,0,0,0.05)' }}>
                         <div>
-                          <div className="text-xs font-semibold" style={{ color: brand.primaryColor }}>
-                            {p.name}
-                          </div>
+                          <div className="text-xs font-semibold" style={{ color: brand.primaryColor }}>{p.name}</div>
                           {p.description && (
-                            <div className="text-xs truncate max-w-xs mt-0.5"
-                              style={{ color: 'rgba(0,0,0,0.4)' }}>
+                            <div className="text-xs truncate max-w-xs mt-0.5" style={{ color: 'rgba(0,0,0,0.4)' }}>
                               {p.description}
                             </div>
                           )}
                         </div>
                         <div className="text-right flex-shrink-0 ml-4">
-                          <div className="text-xs font-mono font-bold"
-                            style={{ color: brand.secondaryColor }}>
+                          <div className="text-xs font-mono font-bold" style={{ color: brand.secondaryColor }}>
                             {p.product_code}
                           </div>
-                          <div className="text-xs font-semibold mt-0.5"
-                            style={{ color: brand.primaryColor }}>
+                          <div className="text-xs font-semibold mt-0.5" style={{ color: brand.primaryColor }}>
                             {formatUGX(p.price)}
                           </div>
                         </div>
@@ -393,22 +460,19 @@ export default function SelectCampaign({ customer, business }) {
             </div>
 
             {productError && (
-              <div className="text-xs px-4 py-3 rounded-xl"
-                style={{ background: '#FEE2E2', color: '#991B1B' }}>
+              <div className="text-xs px-4 py-3 rounded-xl" style={{ background: '#FEE2E2', color: '#991B1B' }}>
                 {productError}
               </div>
             )}
 
-            {retailCampaign && (
-              <CampaignDetailCard campaign={retailCampaign} />
-            )}
+            {retailCampaign && <CampaignDetailCard campaign={retailCampaign} />}
           </>
         )}
 
         {/* ── EDUCATION FLOW ── */}
         {!isRetail && (
           <>
-            {campaigns.length === 0 ? (
+            {availableCampaigns.length === 0 && !hasEnrollments ? (
               <div className="rounded-2xl p-8 text-center" style={{ background: '#fff' }}>
                 <div className="text-3xl mb-3">🎯</div>
                 <div className="text-sm font-bold mb-1" style={{ color: brand.primaryColor }}>
@@ -419,29 +483,36 @@ export default function SelectCampaign({ customer, business }) {
                   Please check back later or contact your institution.
                 </div>
               </div>
-            ) : campaigns.length === 1 ? (
-              // Single campaign — show directly
-              <CampaignDetailCard campaign={campaigns[0]} />
+            ) : availableCampaigns.length === 0 && hasEnrollments ? (
+              <div className="rounded-2xl p-8 text-center" style={{ background: '#fff' }}>
+                <div className="text-3xl mb-3">✓</div>
+                <div className="text-sm font-bold mb-1" style={{ color: brand.primaryColor }}>
+                  You're enrolled in all available campaigns
+                </div>
+                <div className="text-xs mb-4" style={{ color: 'rgba(0,0,0,0.4)' }}>
+                  There are no additional campaigns to join right now.
+                </div>
+                <button onClick={() => navigate('/portal/home')}
+                  className="px-6 py-2.5 rounded-xl text-sm font-bold"
+                  style={{ background: brand.primaryColor, color: '#fff' }}>
+                  Back to home
+                </button>
+              </div>
+            ) : availableCampaigns.length === 1 ? (
+              <CampaignDetailCard campaign={availableCampaigns[0]} />
             ) : (
-              // Multiple campaigns — show selector then detail
               <>
                 <div className="flex flex-col gap-2">
-                  {campaigns.map(c => (
-                    <button
-                      key={c.id}
+                  {availableCampaigns.map(c => (
+                    <button key={c.id}
                       onClick={() => { setSelectedCampaign(c); setAgreed(false); setCardFlipped(false) }}
                       className="w-full flex items-center justify-between px-4 py-3 rounded-xl text-left"
                       style={{
-                        background: selectedCampaign?.id === c.id
-                          ? `rgba(27,79,114,0.06)` : '#fff',
-                        border: selectedCampaign?.id === c.id
-                          ? `2px solid ${brand.primaryColor}`
-                          : '2px solid rgba(0,0,0,0.06)',
+                        background: selectedCampaign?.id === c.id ? 'rgba(27,79,114,0.06)' : '#fff',
+                        border: selectedCampaign?.id === c.id ? `2px solid ${brand.primaryColor}` : '2px solid rgba(0,0,0,0.06)',
                       }}>
                       <div>
-                        <div className="text-sm font-bold" style={{ color: brand.primaryColor }}>
-                          {c.name}
-                        </div>
+                        <div className="text-sm font-bold" style={{ color: brand.primaryColor }}>{c.name}</div>
                         <div className="text-xs mt-0.5" style={{ color: 'rgba(0,0,0,0.4)' }}>
                           {formatUGX(c.target_amount)} · Due {formatDate(c.target_date)}
                         </div>
@@ -449,17 +520,13 @@ export default function SelectCampaign({ customer, business }) {
                       <div className="w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 ml-4"
                         style={{ borderColor: brand.primaryColor }}>
                         {selectedCampaign?.id === c.id && (
-                          <div className="w-2.5 h-2.5 rounded-full"
-                            style={{ background: brand.primaryColor }} />
+                          <div className="w-2.5 h-2.5 rounded-full" style={{ background: brand.primaryColor }} />
                         )}
                       </div>
                     </button>
                   ))}
                 </div>
-
-                {selectedCampaign && (
-                  <CampaignDetailCard campaign={selectedCampaign} />
-                )}
+                {selectedCampaign && <CampaignDetailCard campaign={selectedCampaign} />}
               </>
             )}
           </>
