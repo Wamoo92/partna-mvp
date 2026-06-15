@@ -6,79 +6,297 @@ export default function Landing() {
   const navigate = useNavigate()
 
   return (
-    <div className="min-h-screen flex flex-col" style={{ background: '#f0f2f5' }}>
+    <div style={{ minHeight: '100vh', background: 'var(--color-bg)', display: 'flex', flexDirection: 'column' }}>
 
-      <header className="flex items-center justify-between px-4 py-3" style={{ background: brand.primaryColor }}>
-        <div className="flex items-center gap-2">
-          <img src={brand.logoUrl} alt={brand.businessName}
-            className="w-16 h-16 rounded-md object-contain"
-            style={{ mixBlendMode: 'screen' }} />
+      {/* ── Header ── */}
+      <header style={{
+        background: 'var(--color-black)',
+        borderBottom: 'var(--border)',
+        padding: 'var(--space-4) var(--space-5)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
+          {brand.logoUrl && (
+            <div style={{
+              width: 40,
+              height: 40,
+              border: '2px solid var(--color-primary)',
+              background: 'var(--color-primary)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0,
+            }}>
+              <img
+                src={brand.logoUrl}
+                alt={brand.businessName}
+                style={{ width: 28, height: 28, objectFit: 'contain' }}
+              />
+            </div>
+          )}
           <div>
-            <div className="text-white text-xs font-semibold tracking-wide">{brand.businessName}</div>
-            <div className="text-xs" style={{ color: 'rgba(255,255,255,0.5)' }}>Powered by Partna</div>
+            <div style={{
+              color: 'var(--color-white)',
+              fontWeight: 'var(--weight-black)',
+              fontSize: 'var(--text-base)',
+              letterSpacing: 'var(--tracking-tight)',
+              fontVariationSettings: "'wdth' 105, 'opsz' 16",
+            }}>
+              {brand.businessName}
+            </div>
+            <div style={{
+              color: 'var(--color-primary)',
+              fontSize: 'var(--text-xs)',
+              fontWeight: 'var(--weight-bold)',
+              letterSpacing: 'var(--tracking-widest)',
+              textTransform: 'uppercase',
+            }}>
+              Powered by Partna
+            </div>
           </div>
         </div>
       </header>
 
-      <div className="flex flex-col items-center px-5 pb-7" style={{ background: brand.primaryColor }}>
-        <div className="pt-5 text-center">
-          <div className="text-xs uppercase tracking-widest mb-1" style={{ color: 'rgba(255,255,255,0.6)' }}>
-            {brand.businessName}
-          </div>
-          <h1 className="text-white text-lg font-bold leading-tight mb-1">Savings Program</h1>
-          <p className="text-xs leading-relaxed mb-5" style={{ color: 'rgba(255,255,255,0.75)' }}>
-            {brand.tagline}
+      {/* ── Hero section ── */}
+      <div style={{
+        background: 'var(--color-black)',
+        padding: 'var(--space-8) var(--space-5) var(--space-10)',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        gap: 'var(--space-6)',
+        borderBottom: '3px solid var(--color-primary)',
+      }}>
+
+        {/* Eyebrow */}
+        <div style={{
+          background: 'var(--color-primary)',
+          border: 'var(--border)',
+          padding: '4px var(--space-4)',
+          fontSize: 'var(--text-xs)',
+          fontWeight: 'var(--weight-black)',
+          letterSpacing: 'var(--tracking-widest)',
+          textTransform: 'uppercase',
+          color: 'var(--color-black)',
+          alignSelf: 'center',
+        }}>
+          Savings Program
+        </div>
+
+        {/* Headline */}
+        <div style={{ textAlign: 'center' }}>
+          <h1 style={{
+            color: 'var(--color-white)',
+            fontSize: 'var(--text-3xl)',
+            fontWeight: 'var(--weight-black)',
+            lineHeight: 'var(--leading-tight)',
+            letterSpacing: 'var(--tracking-tight)',
+            fontVariationSettings: "'wdth' 110, 'opsz' 36",
+            marginBottom: 'var(--space-3)',
+          }}>
+            Save smarter.<br />Earn rewards.
+          </h1>
+          <p style={{
+            color: 'rgba(255,255,255,0.65)',
+            fontSize: 'var(--text-sm)',
+            lineHeight: 'var(--leading-normal)',
+            maxWidth: 280,
+            margin: '0 auto',
+          }}>
+            {brand.tagline || 'Join the savings program and start earning rewards on every purchase.'}
           </p>
         </div>
 
-        {/* Card visual */}
-        <div className="w-60 h-36 rounded-2xl relative overflow-hidden mb-5"
-          style={{ background: brand.primaryColor, border: `1.5px solid ${brand.secondaryColor}` }}>
-          <div className="absolute inset-0"
-            style={{ background: 'linear-gradient(135deg, rgba(212,175,55,0.15) 0%, transparent 60%)' }} />
-          <div className="absolute top-3 left-3">
-            <div className="w-6 h-6 rounded flex items-center justify-center"
-              style={{ background: brand.secondaryColor }}>
-              <img src={brand.logoUrl} alt="" className="w-4 h-4 object-contain" style={{ mixBlendMode: 'screen' }} />
+        {/* Card visual — neobrutalism style */}
+        <div style={{
+          width: '100%',
+          maxWidth: 320,
+          background: 'var(--color-primary)',
+          border: '3px solid var(--color-white)',
+          boxShadow: '8px 8px 0px 0px rgba(255,255,255,0.2)',
+          padding: 'var(--space-5)',
+          position: 'relative',
+          overflow: 'hidden',
+        }}>
+          {/* Card noise texture strip */}
+          <div style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            height: 4,
+            background: 'var(--color-black)',
+          }} />
+
+          {/* Top row — logo + chip */}
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            marginBottom: 'var(--space-6)',
+            marginTop: 'var(--space-2)',
+          }}>
+            <div style={{
+              fontWeight: 'var(--weight-black)',
+              fontSize: 'var(--text-sm)',
+              color: 'var(--color-black)',
+              letterSpacing: 'var(--tracking-tight)',
+              fontVariationSettings: "'wdth' 105, 'opsz' 14",
+            }}>
+              {brand.businessName}
             </div>
+            {/* Chip */}
+            <div style={{
+              width: 32,
+              height: 24,
+              background: 'linear-gradient(135deg, #EDE5A6, #CFA255)',
+              border: '1.5px solid rgba(0,0,0,0.3)',
+            }} />
           </div>
-          <div className="absolute w-7 h-5 rounded top-12 left-3"
-            style={{ background: 'linear-gradient(135deg,#EDE5A6,#CFA255)' }} />
-          <div className="absolute bottom-0 left-0 right-0 px-3 pb-2 flex justify-between items-end">
+
+          {/* Card number */}
+          <div style={{
+            fontFamily: 'monospace',
+            fontSize: 'var(--text-base)',
+            fontWeight: 'var(--weight-bold)',
+            color: 'var(--color-black)',
+            letterSpacing: '0.15em',
+            marginBottom: 'var(--space-5)',
+          }}>
+            •••• •••• •••• ••••
+          </div>
+
+          {/* Bottom row */}
+          <div style={{
+            display: 'flex',
+            alignItems: 'flex-end',
+            justifyContent: 'space-between',
+          }}>
             <div>
-              <div className="text-xs font-semibold uppercase tracking-widest"
-                style={{ color: 'rgba(255,255,255,0.65)' }}>Your name here</div>
-              <div className="text-xs font-mono" style={{ color: 'rgba(255,255,255,0.5)' }}>
-                •••• •••• •••• ••••
+              <div style={{
+                fontSize: 'var(--text-xs)',
+                fontWeight: 'var(--weight-bold)',
+                letterSpacing: 'var(--tracking-widest)',
+                textTransform: 'uppercase',
+                color: 'rgba(0,0,0,0.5)',
+                marginBottom: 2,
+              }}>
+                Cardholder
+              </div>
+              <div style={{
+                fontWeight: 'var(--weight-black)',
+                fontSize: 'var(--text-sm)',
+                color: 'var(--color-black)',
+                fontVariationSettings: "'wdth' 100, 'opsz' 14",
+              }}>
+                YOUR NAME
               </div>
             </div>
-            <div className="flex">
-              <div className="w-4 h-4 rounded-full opacity-90" style={{ background: '#EB001B' }} />
-              <div className="w-4 h-4 rounded-full opacity-90 -ml-1.5" style={{ background: '#F79E1B' }} />
+            {/* Mastercard circles */}
+            <div style={{ display: 'flex' }}>
+              <div style={{
+                width: 28, height: 28, borderRadius: '50%',
+                background: '#EB001B', border: '2px solid var(--color-black)',
+              }} />
+              <div style={{
+                width: 28, height: 28, borderRadius: '50%',
+                background: '#F79E1B', border: '2px solid var(--color-black)',
+                marginLeft: -10,
+              }} />
             </div>
           </div>
         </div>
       </div>
 
-      <div className="rounded-t-3xl flex-1 flex flex-col px-5 py-5 gap-3"
-        style={{ background: '#f0f2f5', marginTop: '-12px' }}>
-        <button onClick={() => navigate('/portal/register')}
-          className="w-full py-3 rounded-xl text-sm font-bold"
-          style={{ background: brand.secondaryColor, color: brand.primaryColor, border: 'none' }}>
-          Register
+      {/* ── Action section ── */}
+      <div style={{
+        flex: 1,
+        padding: 'var(--space-6) var(--space-5)',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 'var(--space-3)',
+      }}>
+
+        {/* Value props */}
+        <div style={{
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 'var(--space-3)',
+          marginBottom: 'var(--space-4)',
+        }}>
+          {[
+            { icon: 'savings',      label: 'Save automatically with every purchase' },
+            { icon: 'card_giftcard', label: 'Earn rewards and cashback' },
+            { icon: 'security',     label: 'Protected and secure payments' },
+          ].map(({ icon, label }) => (
+            <div key={icon} style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 'var(--space-3)',
+              padding: 'var(--space-3) var(--space-4)',
+              background: 'var(--color-white)',
+              border: 'var(--border)',
+              boxShadow: 'var(--shadow-sm)',
+            }}>
+              <span className="icon-outlined" style={{
+                fontSize: 20,
+                color: 'var(--color-primary)',
+                background: 'var(--color-black)',
+                padding: 4,
+                flexShrink: 0,
+              }}>
+                {icon}
+              </span>
+              <span style={{
+                fontSize: 'var(--text-sm)',
+                fontWeight: 'var(--weight-semibold)',
+                color: 'var(--color-black)',
+              }}>
+                {label}
+              </span>
+            </div>
+          ))}
+        </div>
+
+        {/* CTA buttons */}
+        <button
+          onClick={() => navigate('/portal/register')}
+          className="btn btn-primary btn-full btn-lg"
+        >
+          <span className="icon-outlined icon-sm">person_add</span>
+          Create account
         </button>
-        <button onClick={() => navigate('/portal/login')}
-          className="w-full py-3 rounded-xl text-sm font-semibold"
-          style={{ background: 'transparent', color: brand.primaryColor, border: '1.5px solid rgba(27,79,114,0.3)' }}>
-          I already have an account — Log in
+
+        <button
+          onClick={() => navigate('/portal/login')}
+          className="btn btn-secondary btn-full btn-lg"
+        >
+          <span className="icon-outlined icon-sm">login</span>
+          Log in
         </button>
       </div>
 
-      <footer className="text-center py-4 px-5" style={{ background: '#f0f2f5' }}>
-        <div className="flex items-center justify-center gap-1.5">
-          <img src="/partna-icon.svg" alt="Partna" className="w-6 h-6" />
-          <span className="text-xs" style={{ color: 'rgba(0,0,0,0.3)' }}>Powered by Partna</span>
-        </div>
+      {/* ── Footer ── */}
+      <footer style={{
+        padding: 'var(--space-4) var(--space-5)',
+        borderTop: '1.5px solid var(--color-grey-light)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 'var(--space-2)',
+      }}>
+        <img src="/partna-icon.svg" alt="Partna" style={{ width: 18, height: 18, opacity: 0.4 }} />
+        <span style={{
+          fontSize: 'var(--text-xs)',
+          fontWeight: 'var(--weight-bold)',
+          letterSpacing: 'var(--tracking-wider)',
+          textTransform: 'uppercase',
+          color: 'var(--color-grey)',
+        }}>
+          Powered by Partna
+        </span>
       </footer>
 
     </div>

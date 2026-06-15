@@ -1,54 +1,72 @@
 import { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../supabase'
 
-const PARTNA_PRIMARY = '#1B4F72'
-const PARTNA_GOLD = '#D4AF37'
+// ── Helpers ────────────────────────────────────────────────────────────────
+
+function formatUGX(n) {
+  return 'UGX ' + Number(n).toLocaleString('en-UG', { maximumFractionDigits: 0 })
+}
+
+function formatDate(dateStr) {
+  return new Date(dateStr).toLocaleDateString('en-UG', {
+    day: 'numeric', month: 'short', year: 'numeric',
+  })
+}
+
+function txAccent(type) {
+  switch (type) {
+    case 'deposit':    return 'var(--color-green)'
+    case 'withdrawal': return 'var(--color-yellow)'
+    case 'payment':    return 'var(--color-primary)'
+    default:           return 'var(--color-grey-light)'
+  }
+}
+
+function txIcon(type) {
+  switch (type) {
+    case 'deposit':    return 'south'
+    case 'withdrawal': return 'north'
+    case 'payment':    return 'north'
+    default:           return 'swap_vert'
+  }
+}
+
+function txAmountColor(type) {
+  return type === 'deposit' ? '#2D8B45' : '#C0392B'
+}
 
 export default function Customers({ admin, business }) {
-  const navigate = useNavigate()
-  const [customers, setCustomers] = useState([])
-  const [wallets, setWallets] = useState({})
-  const [campaigns, setCampaigns] = useState({})
-  const [loading, setLoading] = useState(true)
-  const [search, setSearch] = useState('')
-  const [kycFilter, setKycFilter] = useState('all')
-  const [riskFilter, setRiskFilter] = useState('all')
-  const [selected, setSelected] = useState(null)
+  const [customers, setCustomers]     = useState([])
+  const [wallets, setWallets]         = useState({})
+  const [campaigns, setCampaigns]     = useState({})
+  const [loading, setLoading]         = useState(true)
+  const [search, setSearch]           = useState('')
+  const [kycFilter, setKycFilter]     = useState('all')
+  const [riskFilter, setRiskFilter]   = useState('all')
+  const [selected, setSelected]       = useState(null)
   const [customerTxns, setCustomerTxns] = useState([])
-  const [txnLoading, setTxnLoading] = useState(false)
+  const [txnLoading, setTxnLoading]   = useState(false)
 
-  useEffect(() => {
-    if (business) loadData()
-  }, [business])
+  useEffect(() => { if (business) loadData() }, [business])
 
   async function loadData() {
     setLoading(true)
     try {
       const { data: customerData } = await supabase
-        .from('customers')
-        .select('*')
+        .from('customers').select('*')
         .eq('business_id', business.id)
         .order('created_at', { ascending: false })
 
-      if (!customerData || customerData.length === 0) {
-        setCustomers([])
-        setLoading(false)
-        return
-      }
-
+      if (!customerData?.length) { setCustomers([]); setLoading(false); return }
       setCustomers(customerData)
 
       const ids = customerData.map(c => c.id)
 
-      // Wallets
-      const { data: walletData } = await supabase
-        .from('wallets').select('*').in('customer_id', ids)
+      const { data: walletData } = await supabase.from('wallets').select('*').in('customer_id', ids)
       const walletMap = {}
       walletData?.forEach(w => { walletMap[w.customer_id] = w })
       setWallets(walletMap)
 
-      // Campaigns
       const campaignIds = [...new Set(customerData.map(c => c.campaign_id).filter(Boolean))]
       if (campaignIds.length > 0) {
         const { data: campaignData } = await supabase
@@ -66,315 +84,367 @@ export default function Customers({ admin, business }) {
   async function loadCustomerTxns(customerId) {
     setTxnLoading(true)
     const { data } = await supabase
-      .from('transactions')
-      .select('*')
+      .from('transactions').select('*')
       .eq('customer_id', customerId)
-      .order('created_at', { ascending: false })
-      .limit(20)
+      .order('created_at', { ascending: false }).limit(20)
     setCustomerTxns(data || [])
     setTxnLoading(false)
   }
 
   function isAtRisk(customer) {
-    // At risk: no deposit in 30+ days and has registered
     if (customer.registration_status !== 'complete') return false
     const wallet = wallets[customer.id]
     if (!wallet) return true
-    // Check last deposit date — simplified: flag if balance is 0
     return Number(wallet.balance) === 0
   }
 
   function pct(customer) {
-    const wallet = wallets[customer.id]
+    const wallet   = wallets[customer.id]
     const campaign = campaigns[customer.campaign_id]
     if (!wallet || !campaign) return 0
     return Math.min((Number(wallet.balance) / Number(campaign.target_amount)) * 100, 100)
   }
 
-  function formatUGX(n) {
-    return 'UGX ' + Number(n).toLocaleString('en-UG', { maximumFractionDigits: 0 })
-  }
-
-  function formatDate(dateStr) {
-    return new Date(dateStr).toLocaleDateString('en-UG', {
-      day: 'numeric', month: 'short', year: 'numeric'
-    })
-  }
-
-  function txIcon(type) {
-    return type === 'deposit' ? '↓' : '↑'
-  }
-
-  function txColor(type) {
-    return type === 'deposit' ? '#16A34A' : '#DC2626'
-  }
-
-  // Filtered customers
   const filtered = customers.filter(c => {
     const name = `${c.first_name} ${c.last_name} ${c.phone} ${c.email}`.toLowerCase()
     if (search && !name.includes(search.toLowerCase())) return false
     if (kycFilter !== 'all' && c.kyc_status !== kycFilter) return false
-    if (riskFilter === 'at_risk' && !isAtRisk(c)) return false
-    if (riskFilter === 'not_at_risk' && isAtRisk(c)) return false
+    if (riskFilter === 'at_risk'     && !isAtRisk(c)) return false
+    if (riskFilter === 'not_at_risk' &&  isAtRisk(c)) return false
     return true
   })
 
   return (
-    <div className="flex gap-6 h-full">
+    <div style={{ display: 'flex', gap: 'var(--space-5)', height: '100%', alignItems: 'flex-start' }}>
 
-      {/* Customer list */}
-      <div className="flex-1 flex flex-col gap-4 min-w-0">
+      {/* ── Customer list ── */}
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 'var(--space-4)', minWidth: 0 }}>
 
-        {/* Filters */}
-        <div className="rounded-2xl p-4 flex items-center gap-3" style={{ background: '#fff' }}>
-          <input
-            type="text"
-            placeholder="Search by name, phone or email..."
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            className="flex-1 px-4 py-2 rounded-xl text-sm outline-none"
-            style={{ background: '#f0f2f5', border: 'none', color: '#333' }}
-          />
-          <select value={kycFilter} onChange={e => setKycFilter(e.target.value)}
-            className="px-3 py-2 rounded-xl text-xs outline-none font-semibold"
-            style={{ background: '#f0f2f5', border: 'none', color: PARTNA_PRIMARY }}>
+        {/* Filter bar */}
+        <div style={{
+          background: 'var(--color-white)',
+          border: 'var(--border)',
+          boxShadow: 'var(--shadow-sm)',
+          padding: 'var(--space-4)',
+          display: 'flex', alignItems: 'center', gap: 'var(--space-3)', flexWrap: 'wrap',
+        }}>
+          <div className="search-wrapper" style={{ flex: 1, minWidth: 180 }}>
+            <span className="icon-outlined search-icon">search</span>
+            <input
+              type="text"
+              className="input search-input"
+              placeholder="Search by name, phone or email…"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+            />
+            {search && (
+              <button className="search-clear" onClick={() => setSearch('')}>
+                <span className="icon-outlined" style={{ fontSize: 16 }}>close</span>
+              </button>
+            )}
+          </div>
+
+          <select className="input" value={kycFilter} onChange={e => setKycFilter(e.target.value)} style={{ width: 'auto', minWidth: 120 }}>
             <option value="all">All KYC</option>
             <option value="verified">Verified</option>
             <option value="pending">Pending</option>
           </select>
-          <select value={riskFilter} onChange={e => setRiskFilter(e.target.value)}
-            className="px-3 py-2 rounded-xl text-xs outline-none font-semibold"
-            style={{ background: '#f0f2f5', border: 'none', color: PARTNA_PRIMARY }}>
+
+          <select className="input" value={riskFilter} onChange={e => setRiskFilter(e.target.value)} style={{ width: 'auto', minWidth: 140 }}>
             <option value="all">All customers</option>
             <option value="at_risk">At risk</option>
             <option value="not_at_risk">Not at risk</option>
           </select>
-          <div className="text-xs font-semibold px-3 py-2 rounded-xl"
-            style={{ background: 'rgba(27,79,114,0.08)', color: PARTNA_PRIMARY }}>
+
+          <span style={{
+            padding: '6px var(--space-3)',
+            background: 'var(--color-bg)',
+            border: 'var(--border)',
+            fontSize: 'var(--text-xs)',
+            fontWeight: 'var(--weight-black)',
+            letterSpacing: 'var(--tracking-wide)',
+            color: 'var(--color-grey)',
+            whiteSpace: 'nowrap',
+          }}>
             {filtered.length} customer{filtered.length !== 1 ? 's' : ''}
-          </div>
+          </span>
         </div>
 
         {/* Table */}
-        <div className="rounded-2xl overflow-hidden" style={{ background: '#fff' }}>
-          {/* Header */}
-          <div className="grid px-4 py-3 text-xs font-bold"
-            style={{
-              gridTemplateColumns: '2fr 1.5fr 1fr 1fr 1fr 0.5fr',
-              color: 'rgba(0,0,0,0.35)',
-              borderBottom: '1px solid rgba(0,0,0,0.06)'
-            }}>
-            <span>Customer</span>
-            <span>Contact</span>
-            <span>KYC</span>
-            <span>Balance</span>
-            <span>Progress</span>
-            <span></span>
+        {loading ? (
+          <div style={{ display: 'flex', justifyContent: 'center', padding: 'var(--space-16)' }}>
+            <div className="spinner spinner-lg spinner-purple" />
           </div>
-
-          {loading ? (
-            <div className="flex items-center justify-center py-16">
-              <div className="w-6 h-6 border-4 rounded-full animate-spin"
-                style={{ borderColor: PARTNA_PRIMARY, borderTopColor: 'transparent' }} />
+        ) : filtered.length === 0 ? (
+          <div style={{ background: 'var(--color-white)', border: 'var(--border)', boxShadow: 'var(--shadow-sm)', padding: 'var(--space-16)', textAlign: 'center' }}>
+            <span className="icon-outlined" style={{ fontSize: 40, color: 'var(--color-grey-mid)', display: 'block', marginBottom: 'var(--space-3)' }}>
+              group
+            </span>
+            <div style={{ fontWeight: 'var(--weight-bold)', fontSize: 'var(--text-base)', marginBottom: 'var(--space-2)' }}>
+              {customers.length === 0 ? 'No customers yet' : 'No customers match your filters'}
             </div>
-          ) : filtered.length === 0 ? (
-            <div className="text-center py-16">
-              <div className="text-2xl mb-2">👥</div>
-              <div className="text-sm font-semibold mb-1" style={{ color: PARTNA_PRIMARY }}>
-                {customers.length === 0 ? 'No customers yet' : 'No customers match your filters'}
-              </div>
-              <div className="text-xs" style={{ color: 'rgba(0,0,0,0.4)' }}>
-                {customers.length === 0
-                  ? 'Customers will appear here once they register via your portal'
-                  : 'Try adjusting your search or filters'}
-              </div>
+            <div style={{ fontSize: 'var(--text-sm)', color: 'var(--color-grey)' }}>
+              {customers.length === 0
+                ? 'Customers will appear here once they register via your portal.'
+                : 'Try adjusting your search or filters.'}
             </div>
-          ) : (
-            filtered.map((c, i) => {
-              const wallet = wallets[c.id]
-              const balance = wallet ? Number(wallet.balance) : 0
-              const progress = pct(c)
-              const atRisk = isAtRisk(c)
-              const isSelected = selected?.id === c.id
+          </div>
+        ) : (
+          <div className="table-wrapper">
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Customer</th>
+                  <th>Contact</th>
+                  <th>KYC</th>
+                  <th>Balance</th>
+                  <th>Progress</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map(c => {
+                  const wallet    = wallets[c.id]
+                  const balance   = wallet ? Number(wallet.balance) : 0
+                  const progress  = pct(c)
+                  const atRisk    = isAtRisk(c)
+                  const isSelected = selected?.id === c.id
 
-              return (
-                <div key={c.id}
-                  className="grid items-center px-4 py-3 cursor-pointer transition-all"
-                  style={{
-                    gridTemplateColumns: '2fr 1.5fr 1fr 1fr 1fr 0.5fr',
-                    borderBottom: i < filtered.length - 1 ? '1px solid rgba(0,0,0,0.05)' : 'none',
-                    background: isSelected ? 'rgba(27,79,114,0.04)' : 'transparent',
-                  }}
-                  onClick={() => {
-                    setSelected(c)
-                    loadCustomerTxns(c.id)
-                  }}>
-
-                  {/* Name + risk */}
-                  <div className="flex items-center gap-2">
-                    <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0"
-                      style={{ background: 'rgba(27,79,114,0.1)', color: PARTNA_PRIMARY }}>
-                      {c.first_name?.[0]}{c.last_name?.[0]}
-                    </div>
-                    <div>
-                      <div className="text-xs font-semibold" style={{ color: '#333' }}>
-                        {c.first_name} {c.last_name}
-                        {atRisk && (
-                          <span className="ml-2 px-1.5 py-0.5 rounded text-xs font-semibold"
-                            style={{ background: '#FEE2E2', color: '#DC2626', fontSize: '9px' }}>
-                            AT RISK
-                          </span>
-                        )}
-                      </div>
-                      <div style={{ color: 'rgba(0,0,0,0.35)', fontSize: '10px' }}>
-                        {c.draw_code || '—'}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Contact */}
-                  <div>
-                    <div className="text-xs" style={{ color: '#333' }}>{c.phone}</div>
-                    <div className="text-xs truncate" style={{ color: 'rgba(0,0,0,0.4)', fontSize: '10px' }}>
-                      {c.email}
-                    </div>
-                  </div>
-
-                  {/* KYC */}
-                  <div>
-                    <span className="text-xs font-semibold px-2 py-0.5 rounded-full"
+                  return (
+                    <tr
+                      key={c.id}
+                      onClick={() => { setSelected(c); loadCustomerTxns(c.id) }}
                       style={{
-                        background: c.kyc_status === 'verified'
-                          ? 'rgba(22,163,74,0.1)' : 'rgba(217,119,6,0.1)',
-                        color: c.kyc_status === 'verified' ? '#16A34A' : '#D97706',
-                      }}>
-                      {c.kyc_status === 'verified' ? '✓ Verified' : '⏳ Pending'}
-                    </span>
-                  </div>
+                        cursor: 'pointer',
+                        background: isSelected ? 'rgba(174,122,255,0.06)' : undefined,
+                        borderLeft: isSelected ? '3px solid var(--color-primary)' : '3px solid transparent',
+                      }}
+                    >
+                      {/* Name + risk */}
+                      <td>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
+                          <div style={{
+                            width: 32, height: 32,
+                            background: isSelected ? 'var(--color-primary)' : 'var(--color-black)',
+                            border: 'var(--border)',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            fontWeight: 'var(--weight-black)', fontSize: 'var(--text-xs)',
+                            color: isSelected ? 'var(--color-black)' : 'var(--color-primary)',
+                            flexShrink: 0, letterSpacing: 'var(--tracking-tight)',
+                          }}>
+                            {c.first_name?.[0]}{c.last_name?.[0]}
+                          </div>
+                          <div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', fontWeight: 'var(--weight-semibold)', fontSize: 'var(--text-sm)' }}>
+                              {c.first_name} {c.last_name}
+                              {atRisk && (
+                                <span className="badge badge-danger no-dot" style={{ fontSize: 9 }}>At risk</span>
+                              )}
+                            </div>
+                            <div style={{ fontSize: 10, color: 'var(--color-grey)', fontFamily: 'monospace', fontWeight: 'var(--weight-bold)', marginTop: 1 }}>
+                              {c.draw_code || '—'}
+                            </div>
+                          </div>
+                        </div>
+                      </td>
 
-                  {/* Balance */}
-                  <div className="text-xs font-semibold" style={{ color: PARTNA_PRIMARY }}>
-                    {formatUGX(balance)}
-                  </div>
+                      {/* Contact */}
+                      <td>
+                        <div style={{ fontSize: 'var(--text-sm)' }}>{c.phone}</div>
+                        <div style={{ fontSize: 10, color: 'var(--color-grey)', marginTop: 1, maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {c.email}
+                        </div>
+                      </td>
 
-                  {/* Progress */}
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <div className="flex-1 h-1.5 rounded-full" style={{ background: 'rgba(27,79,114,0.1)' }}>
-                        <div className="h-1.5 rounded-full"
-                          style={{
-                            width: `${progress}%`,
-                            background: progress >= 75 ? '#16A34A' : PARTNA_GOLD
-                          }} />
-                      </div>
-                      <span className="text-xs" style={{ color: 'rgba(0,0,0,0.4)', fontSize: '10px' }}>
-                        {progress.toFixed(0)}%
-                      </span>
-                    </div>
-                    <div style={{ color: 'rgba(0,0,0,0.35)', fontSize: '10px' }}>
-                      {formatDate(c.created_at)}
-                    </div>
-                  </div>
+                      {/* KYC */}
+                      <td>
+                        <span className={`badge no-dot ${c.kyc_status === 'verified' ? 'badge-success' : 'badge-warning'}`}>
+                          {c.kyc_status === 'verified' ? 'Verified' : 'Pending'}
+                        </span>
+                      </td>
 
-                  {/* Arrow */}
-                  <div className="text-right">
-                    <span style={{ color: 'rgba(0,0,0,0.2)' }}>→</span>
-                  </div>
+                      {/* Balance */}
+                      <td style={{ fontWeight: 'var(--weight-bold)', fontSize: 'var(--text-sm)' }}>
+                        {formatUGX(balance)}
+                      </td>
 
-                </div>
-              )
-            })
-          )}
-        </div>
+                      {/* Progress */}
+                      <td>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+                          <div className="progress-bar-track" style={{ flex: 1, height: 8 }}>
+                            <div className="progress-bar-fill" style={{
+                              width: `${progress}%`,
+                              background: progress >= 75 ? 'var(--color-green)' : progress >= 50 ? 'var(--color-yellow)' : 'var(--color-primary)',
+                            }} />
+                          </div>
+                          <span style={{ fontSize: 10, color: 'var(--color-grey)', fontWeight: 'var(--weight-bold)', whiteSpace: 'nowrap' }}>
+                            {progress.toFixed(0)}%
+                          </span>
+                        </div>
+                        <div style={{ fontSize: 10, color: 'var(--color-grey)', marginTop: 2 }}>
+                          {formatDate(c.created_at)}
+                        </div>
+                      </td>
+
+                      {/* Arrow */}
+                      <td style={{ textAlign: 'right' }}>
+                        <span className="icon-outlined" style={{ fontSize: 18, color: isSelected ? 'var(--color-primary)' : 'var(--color-grey-mid)' }}>
+                          chevron_right
+                        </span>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
-      {/* Customer detail panel */}
+      {/* ── Detail panel ── */}
       {selected && (
-        <div className="w-80 flex-shrink-0 flex flex-col gap-4">
-          <div className="rounded-2xl p-5" style={{ background: '#fff' }}>
-            {/* Close */}
-            <div className="flex items-center justify-between mb-4">
-              <div className="text-sm font-bold" style={{ color: PARTNA_PRIMARY }}>Customer Detail</div>
-              <button onClick={() => setSelected(null)}
-                className="text-sm" style={{ color: 'rgba(0,0,0,0.3)' }}>✕</button>
+        <div style={{
+          width: 300,
+          flexShrink: 0,
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 'var(--space-4)',
+          position: 'sticky',
+          top: 'var(--space-4)',
+        }}>
+
+          {/* Customer info card */}
+          <div style={{ background: 'var(--color-white)', border: 'var(--border)', boxShadow: 'var(--shadow-sm)', overflow: 'hidden' }}>
+            {/* Header */}
+            <div style={{
+              background: 'var(--color-black)',
+              borderBottom: 'var(--border)',
+              padding: 'var(--space-4)',
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            }}>
+              <span style={{ color: 'var(--color-white)', fontWeight: 'var(--weight-bold)', fontSize: 'var(--text-sm)' }}>
+                Customer details
+              </span>
+              <button onClick={() => setSelected(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex' }}>
+                <span className="icon-outlined" style={{ fontSize: 18, color: 'rgba(255,255,255,0.5)' }}>close</span>
+              </button>
             </div>
 
-            {/* Avatar */}
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-12 h-12 rounded-full flex items-center justify-center text-base font-bold"
-                style={{ background: 'rgba(27,79,114,0.1)', color: PARTNA_PRIMARY }}>
+            {/* Avatar + name */}
+            <div style={{
+              padding: 'var(--space-4)',
+              borderBottom: 'var(--border)',
+              display: 'flex', alignItems: 'center', gap: 'var(--space-3)',
+            }}>
+              <div style={{
+                width: 44, height: 44,
+                background: 'var(--color-primary)',
+                border: '2px solid var(--color-black)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontWeight: 'var(--weight-black)', fontSize: 'var(--text-base)',
+                color: 'var(--color-black)', flexShrink: 0,
+              }}>
                 {selected.first_name?.[0]}{selected.last_name?.[0]}
               </div>
               <div>
-                <div className="text-sm font-bold" style={{ color: PARTNA_PRIMARY }}>
+                <div style={{ fontWeight: 'var(--weight-bold)', fontSize: 'var(--text-base)' }}>
                   {selected.first_name} {selected.last_name}
                 </div>
-                <div className="text-xs" style={{ color: 'rgba(0,0,0,0.4)' }}>{selected.phone}</div>
+                <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-grey)', marginTop: 2 }}>
+                  {selected.phone}
+                </div>
               </div>
             </div>
 
-            {/* Details */}
+            {/* Details rows */}
             {[
-              { label: 'Email', value: selected.email },
-              { label: 'Phone', value: selected.phone },
-              { label: 'NIN', value: selected.nin ? '••••' + selected.nin.slice(-4) : 'Not provided' },
-              { label: 'Draw code', value: selected.draw_code || '—' },
-              { label: 'KYC status', value: selected.kyc_status === 'verified' ? '✓ Verified' : '⏳ Pending' },
-              { label: 'Payment network', value: selected.payment_network ? (selected.payment_network === 'mtn' ? 'MTN MoMo' : 'Airtel Money') : 'Not set' },
-              { label: 'Balance', value: formatUGX(wallets[selected.id] ? Number(wallets[selected.id].balance) : 0) },
-              { label: 'Progress', value: pct(selected).toFixed(1) + '%' },
-              { label: 'Registered', value: formatDate(selected.created_at) },
+              { label: 'Email',           value: selected.email },
+              { label: 'NIN',             value: selected.nin ? '••••' + selected.nin.slice(-4) : 'Not provided' },
+              { label: 'Draw code',       value: selected.draw_code || '—', mono: true },
+              { label: 'KYC status',      value: selected.kyc_status === 'verified' ? 'Verified' : 'Pending', kyc: true },
+              { label: 'Payment network', value: selected.payment_network === 'mtn' ? 'MTN MoMo' : selected.payment_network === 'airtel' ? 'Airtel Money' : 'Not set' },
+              { label: 'Balance',         value: formatUGX(wallets[selected.id] ? Number(wallets[selected.id].balance) : 0) },
+              { label: 'Progress',        value: pct(selected).toFixed(1) + '%' },
+              { label: 'Registered',      value: formatDate(selected.created_at) },
             ].map((row, i, arr) => (
-              <div key={i} className="flex justify-between items-center py-1.5"
-                style={{ borderBottom: i < arr.length - 1 ? '1px solid rgba(0,0,0,0.05)' : 'none' }}>
-                <span className="text-xs" style={{ color: 'rgba(0,0,0,0.4)' }}>{row.label}</span>
-                <span className="text-xs font-semibold"
-                  style={{ color: row.label === 'KYC status' && selected.kyc_status === 'verified' ? '#16A34A' : PARTNA_PRIMARY }}>
-                  {row.value}
-                </span>
+              <div key={i} style={{
+                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                padding: 'var(--space-2) var(--space-4)',
+                borderBottom: i < arr.length - 1 ? '1.5px solid var(--color-grey-light)' : 'none',
+                background: i % 2 === 0 ? 'var(--color-white)' : 'var(--color-bg)',
+              }}>
+                <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-grey)' }}>{row.label}</span>
+                {row.kyc ? (
+                  <span className={`badge no-dot ${selected.kyc_status === 'verified' ? 'badge-success' : 'badge-warning'}`}>
+                    {row.value}
+                  </span>
+                ) : (
+                  <span style={{
+                    fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-bold)',
+                    fontFamily: row.mono ? 'monospace' : 'inherit',
+                    color: 'var(--color-black)',
+                  }}>
+                    {row.value}
+                  </span>
+                )}
               </div>
             ))}
           </div>
 
-          {/* Transaction history */}
-          <div className="rounded-2xl p-5" style={{ background: '#fff' }}>
-            <div className="text-sm font-bold mb-3" style={{ color: PARTNA_PRIMARY }}>
-              Transaction History
+          {/* Transaction history card */}
+          <div style={{ background: 'var(--color-white)', border: 'var(--border)', boxShadow: 'var(--shadow-sm)', overflow: 'hidden' }}>
+            <div style={{
+              background: 'var(--color-black)',
+              borderBottom: 'var(--border)',
+              padding: 'var(--space-3) var(--space-4)',
+            }}>
+              <span style={{ color: 'var(--color-white)', fontWeight: 'var(--weight-bold)', fontSize: 'var(--text-sm)' }}>
+                Transaction history
+              </span>
             </div>
+
             {txnLoading ? (
-              <div className="flex items-center justify-center py-6">
-                <div className="w-5 h-5 border-4 rounded-full animate-spin"
-                  style={{ borderColor: PARTNA_PRIMARY, borderTopColor: 'transparent' }} />
+              <div style={{ display: 'flex', justifyContent: 'center', padding: 'var(--space-8)' }}>
+                <div className="spinner spinner-purple" />
               </div>
             ) : customerTxns.length === 0 ? (
-              <div className="text-xs text-center py-6" style={{ color: 'rgba(0,0,0,0.3)' }}>
+              <div style={{ padding: 'var(--space-8)', textAlign: 'center', fontSize: 'var(--text-sm)', color: 'var(--color-grey)' }}>
                 No transactions yet
               </div>
             ) : (
-              <div className="flex flex-col gap-2">
-                {customerTxns.map((txn, i) => (
-                  <div key={txn.id} className="flex items-center justify-between py-1.5"
-                    style={{ borderBottom: i < customerTxns.length - 1 ? '1px solid rgba(0,0,0,0.05)' : 'none' }}>
-                    <div className="flex items-center gap-2">
-                      <div className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold"
-                        style={{ background: `${txColor(txn.type)}15`, color: txColor(txn.type) }}>
+              customerTxns.map((txn, i) => (
+                <div key={txn.id} style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  padding: 'var(--space-3) var(--space-4)',
+                  borderBottom: i < customerTxns.length - 1 ? '1.5px solid var(--color-grey-light)' : 'none',
+                  background: i % 2 === 0 ? 'var(--color-white)' : 'var(--color-bg)',
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+                    <div style={{
+                      width: 24, height: 24,
+                      background: txAccent(txn.type),
+                      border: 'var(--border)',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      flexShrink: 0,
+                    }}>
+                      <span className="icon-outlined" style={{ fontSize: 12, color: 'var(--color-black)' }}>
                         {txIcon(txn.type)}
-                      </div>
-                      <div>
-                        <div className="text-xs font-semibold capitalize" style={{ color: '#333' }}>
-                          {txn.type === 'payment' ? 'Fee payment' : txn.type}
-                        </div>
-                        <div style={{ color: 'rgba(0,0,0,0.35)', fontSize: '10px' }}>
-                          {formatDate(txn.created_at)}
-                        </div>
-                      </div>
+                      </span>
                     </div>
-                    <div className="text-xs font-bold" style={{ color: txColor(txn.type) }}>
-                      {txn.type === 'deposit' ? '+' : '-'}{formatUGX(txn.amount)}
+                    <div>
+                      <div style={{ fontWeight: 'var(--weight-semibold)', fontSize: 'var(--text-xs)', textTransform: 'capitalize' }}>
+                        {txn.type === 'payment' ? 'Fee payment' : txn.type}
+                      </div>
+                      <div style={{ fontSize: 10, color: 'var(--color-grey)' }}>
+                        {formatDate(txn.created_at)}
+                      </div>
                     </div>
                   </div>
-                ))}
-              </div>
+                  <span style={{ fontWeight: 'var(--weight-black)', fontSize: 'var(--text-xs)', color: txAmountColor(txn.type) }}>
+                    {txn.type === 'deposit' ? '+' : '-'}{formatUGX(txn.amount)}
+                  </span>
+                </div>
+              ))
             )}
           </div>
         </div>

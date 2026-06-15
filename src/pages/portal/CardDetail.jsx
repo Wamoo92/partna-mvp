@@ -3,191 +3,477 @@ import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../supabase'
 import { useBrand } from '../../lib/BrandContext'
 
+function formatCardNumber(num) {
+  if (!num) return '•••• •••• •••• ••••'
+  return num.replace(/(\d{4})(?=\d)/g, '$1 ')
+}
+
+function formatExpiry(dateStr) {
+  if (!dateStr) return 'MM/YY'
+  const d = new Date(dateStr)
+  return `${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getFullYear()).slice(-2)}`
+}
+
 export default function CardDetail({ customer }) {
-  const brand = useBrand()
+  const brand    = useBrand()
   const navigate = useNavigate()
-  const [card, setCard] = useState(null)
+  const [card, setCard]       = useState(null)
   const [loading, setLoading] = useState(true)
   const [flipped, setFlipped] = useState(false)
 
-  useEffect(() => {
-    if (customer) loadCard()
-  }, [customer])
+  useEffect(() => { if (customer) loadCard() }, [customer])
 
   async function loadCard() {
     setLoading(true)
     const { data } = await supabase
-      .from('cards').select('*')
-      .eq('customer_id', customer.id)
+      .from('cards').select('*').eq('customer_id', customer.id)
     if (data && data.length > 0) setCard(data[0])
     setLoading(false)
   }
 
-  function formatCardNumber(num) {
-    if (!num) return '•••• •••• •••• ••••'
-    return num.replace(/(\d{4})(?=\d)/g, '$1 ')
-  }
-
-  function formatExpiry(dateStr) {
-    if (!dateStr) return 'MM/YY'
-    const d = new Date(dateStr)
-    return `${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getFullYear()).slice(-2)}`
-  }
-
   if (loading) return (
-    <div className="min-h-screen flex items-center justify-center" style={{ background: '#f0f2f5' }}>
-      <div className="w-8 h-8 border-4 rounded-full animate-spin"
-        style={{ borderColor: brand.primaryColor, borderTopColor: 'transparent' }} />
+    <div className="loading-screen">
+      <div className="spinner spinner-lg spinner-purple" />
     </div>
   )
 
   return (
-    <div className="min-h-screen flex flex-col" style={{ background: '#f0f2f5' }}>
+    <div style={{ minHeight: '100vh', background: 'var(--color-bg)', display: 'flex', flexDirection: 'column', paddingBottom: 80 }}>
 
-      <header className="flex items-center px-4 py-3 gap-3" style={{ background: brand.primaryColor }}>
-        <button onClick={() => navigate('/portal/home')} className="text-white text-xl">&#8592;</button>
-        <div className="flex items-center gap-2">
-          <img src={brand.logoUrl} alt="" className="w-8 h-8 object-contain" style={{ mixBlendMode: 'screen' }} />
-          <div className="text-white text-xs font-semibold">My Card</div>
+      {/* ── Header ── */}
+      <header style={{
+        background: 'var(--color-black)',
+        borderBottom: 'var(--border)',
+        padding: 'var(--space-4) var(--space-5)',
+        display: 'flex',
+        alignItems: 'center',
+        gap: 'var(--space-4)',
+      }}>
+        <button
+          onClick={() => navigate('/portal/home')}
+          style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            width: 36, height: 36,
+            border: '2px solid rgba(255,255,255,0.25)',
+            background: 'transparent',
+            color: 'var(--color-white)',
+            cursor: 'pointer', flexShrink: 0,
+          }}
+          onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--color-primary)'}
+          onMouseLeave={e => e.currentTarget.style.borderColor = 'rgba(255,255,255,0.25)'}
+        >
+          <span className="icon-outlined icon-sm">arrow_back</span>
+        </button>
+        <div style={{ color: 'var(--color-white)', fontWeight: 'var(--weight-bold)', fontSize: 'var(--text-sm)' }}>
+          My Card
         </div>
       </header>
 
-      <div className="flex flex-col items-center px-5 pt-8 pb-10" style={{ background: brand.primaryColor }}>
+      {/* ── Card display panel ── */}
+      <div style={{
+        background: 'var(--color-black)',
+        borderBottom: '3px solid var(--color-primary)',
+        padding: 'var(--space-8) var(--space-5) var(--space-10)',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        gap: 'var(--space-4)',
+      }}>
+        {/* Flippable card */}
         <div
-          className="cursor-pointer w-full max-w-sm"
-          style={{ perspective: '1000px', height: '200px' }}
-          onClick={() => setFlipped(!flipped)}>
+          onClick={() => setFlipped(f => !f)}
+          style={{
+            perspective: '1000px',
+            width: '100%',
+            maxWidth: 340,
+            height: 210,
+            cursor: 'pointer',
+          }}
+        >
           <div style={{
-            width: '100%', height: '200px',
+            width: '100%',
+            height: 210,
             position: 'relative',
             transformStyle: 'preserve-3d',
             transition: 'transform 0.6s ease',
             transform: flipped ? 'rotateY(180deg)' : 'rotateY(0deg)',
           }}>
 
-            {/* Front */}
-            <div className="rounded-2xl absolute inset-0 overflow-hidden"
-              style={{
-                backfaceVisibility: 'hidden',
-                WebkitBackfaceVisibility: 'hidden',
-                background: brand.primaryColor,
-                border: `2px solid ${brand.secondaryColor}`,
+            {/* ── FRONT ── */}
+            <div style={{
+              position: 'absolute', inset: 0,
+              backfaceVisibility: 'hidden',
+              WebkitBackfaceVisibility: 'hidden',
+              background: 'var(--color-white)',
+              border: '3px solid var(--color-black)',
+              boxShadow: 'var(--shadow-xl)',
+              padding: 'var(--space-5)',
+              display: 'flex',
+              flexDirection: 'column',
+              justifyContent: 'space-between',
+              overflow: 'hidden',
+            }}>
+              {/* Top accent strip */}
+              <div style={{
+                position: 'absolute', top: 0, left: 0, right: 0,
+                height: 6,
+                background: 'var(--color-primary)',
+              }} />
+
+              {/* Top row */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
+                <div style={{
+                  fontWeight: 'var(--weight-black)',
+                  fontSize: 'var(--text-xs)',
+                  letterSpacing: 'var(--tracking-wider)',
+                  textTransform: 'uppercase',
+                  color: 'var(--color-black)',
+                }}>
+                  {brand.businessName}
+                </div>
+                {/* Chip */}
+                <div style={{
+                  width: 38, height: 28,
+                  background: 'linear-gradient(135deg, #EDE5A6, #CFA255)',
+                  border: '1.5px solid var(--color-black)',
+                }} />
+              </div>
+
+              {/* Card number */}
+              <div style={{
+                fontFamily: 'monospace',
+                fontSize: 'var(--text-lg)',
+                fontWeight: 'var(--weight-bold)',
+                letterSpacing: '0.15em',
+                color: 'var(--color-black)',
               }}>
-              <div className="absolute inset-0"
-                style={{ background: 'linear-gradient(135deg, rgba(212,175,55,0.2) 0%, transparent 60%)' }} />
-              <div className="absolute top-4 left-4">
-                <img src={brand.logoUrl} alt="" className="object-contain"
-                  style={{ width: '40px', height: '40px', mixBlendMode: 'screen' }} />
-              </div>
-              <div className="absolute top-4 right-4 flex">
-                <div className="w-8 h-8 rounded-full opacity-90" style={{ background: '#EB001B' }} />
-                <div className="w-8 h-8 rounded-full opacity-90 -ml-3" style={{ background: '#F79E1B' }} />
-              </div>
-              <div className="absolute rounded"
-                style={{ width: '44px', height: '32px', top: '72px', left: '20px', background: 'linear-gradient(135deg,#EDE5A6,#CFA255)' }} />
-              <div className="absolute font-mono font-semibold"
-                style={{ bottom: '52px', left: '20px', right: '20px', color: 'rgba(255,255,255,0.9)', fontSize: '16px', letterSpacing: '2px' }}>
                 {formatCardNumber(card?.card_number)}
               </div>
-              <div className="absolute flex justify-between items-end"
-                style={{ bottom: '20px', left: '20px', right: '20px' }}>
+
+              {/* Bottom row */}
+              <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between' }}>
                 <div>
-                  <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '9px', marginBottom: '2px' }}>CARD HOLDER</div>
-                  <div className="font-semibold uppercase tracking-wide"
-                    style={{ color: 'rgba(255,255,255,0.9)', fontSize: '12px' }}>
+                  <div style={{
+                    fontSize: 9, fontWeight: 'var(--weight-bold)',
+                    letterSpacing: 'var(--tracking-widest)',
+                    textTransform: 'uppercase',
+                    color: 'var(--color-grey)',
+                    marginBottom: 3,
+                  }}>
+                    Cardholder
+                  </div>
+                  <div style={{
+                    fontWeight: 'var(--weight-black)',
+                    fontSize: 'var(--text-sm)',
+                    textTransform: 'uppercase',
+                    letterSpacing: 'var(--tracking-wide)',
+                    color: 'var(--color-black)',
+                  }}>
                     {customer?.first_name} {customer?.last_name}
                   </div>
                 </div>
-                <div className="text-right">
-                  <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '9px', marginBottom: '2px' }}>EXPIRES</div>
-                  <div className="font-mono font-semibold" style={{ color: 'rgba(255,255,255,0.9)', fontSize: '12px' }}>
+                <div style={{ textAlign: 'right' }}>
+                  <div style={{
+                    fontSize: 9, fontWeight: 'var(--weight-bold)',
+                    letterSpacing: 'var(--tracking-widest)',
+                    textTransform: 'uppercase',
+                    color: 'var(--color-grey)',
+                    marginBottom: 3,
+                  }}>
+                    Expires
+                  </div>
+                  <div style={{
+                    fontFamily: 'monospace',
+                    fontWeight: 'var(--weight-bold)',
+                    fontSize: 'var(--text-sm)',
+                    color: 'var(--color-black)',
+                  }}>
                     {formatExpiry(card?.expiry_date)}
                   </div>
                 </div>
+                {/* Mastercard */}
+                <div style={{ display: 'flex' }}>
+                  <div style={{ width: 28, height: 28, borderRadius: '50%', background: '#EB001B', border: '2px solid var(--color-black)' }} />
+                  <div style={{ width: 28, height: 28, borderRadius: '50%', background: '#F79E1B', border: '2px solid var(--color-black)', marginLeft: -10 }} />
+                </div>
               </div>
-              <div className="absolute bottom-1 left-0 right-0 text-center"
-                style={{ color: 'rgba(255,255,255,0.25)', fontSize: '9px' }}>tap to flip</div>
+
+              {/* Tap hint */}
+              <div style={{
+                position: 'absolute', bottom: 5, left: 0, right: 0,
+                textAlign: 'center',
+                fontSize: 8,
+                fontWeight: 'var(--weight-bold)',
+                letterSpacing: 'var(--tracking-widest)',
+                textTransform: 'uppercase',
+                color: 'var(--color-grey-mid)',
+              }}>
+                tap to flip
+              </div>
             </div>
 
-            {/* Back */}
-            <div className="rounded-2xl absolute inset-0 overflow-hidden"
-              style={{
-                backfaceVisibility: 'hidden',
-                WebkitBackfaceVisibility: 'hidden',
-                transform: 'rotateY(180deg)',
-                background: '#0f2d40',
-                border: `2px solid ${brand.secondaryColor}`,
-              }}>
-              <div className="absolute w-full" style={{ height: '44px', top: '30px', background: '#111' }} />
-              <div className="absolute flex items-center" style={{ top: '92px', left: '20px', right: '20px' }}>
-                <div className="flex-1 rounded-l"
-                  style={{ height: '36px', background: 'repeating-linear-gradient(90deg, #e8e8e8 0px, #e8e8e8 4px, #ccc 4px, #ccc 8px)' }} />
-                <div className="rounded-r flex items-center justify-center font-mono font-bold"
-                  style={{ width: '56px', height: '36px', background: '#fff', color: '#333', fontSize: '16px' }}>
+            {/* ── BACK ── */}
+            <div style={{
+              position: 'absolute', inset: 0,
+              backfaceVisibility: 'hidden',
+              WebkitBackfaceVisibility: 'hidden',
+              transform: 'rotateY(180deg)',
+              background: 'var(--color-black)',
+              border: '3px solid var(--color-black)',
+              boxShadow: 'var(--shadow-xl)',
+              overflow: 'hidden',
+            }}>
+              {/* Magnetic stripe */}
+              <div style={{ position: 'absolute', top: 32, left: 0, right: 0, height: 44, background: '#1a1a1a' }} />
+
+              {/* Signature + CVV */}
+              <div style={{ position: 'absolute', top: 92, left: 20, right: 20, display: 'flex', alignItems: 'center' }}>
+                <div style={{
+                  flex: 1, height: 36,
+                  background: 'repeating-linear-gradient(90deg, #e8e8e8 0, #e8e8e8 4px, #ccc 4px, #ccc 8px)',
+                }} />
+                <div style={{
+                  width: 56, height: 36,
+                  background: 'var(--color-white)',
+                  border: '2px solid var(--color-black)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontFamily: 'monospace',
+                  fontWeight: 'var(--weight-black)',
+                  fontSize: 'var(--text-lg)',
+                  color: 'var(--color-black)',
+                }}>
                   {card?.cvv || '•••'}
                 </div>
               </div>
-              <div className="absolute text-right"
-                style={{ top: '132px', right: '20px', color: 'rgba(255,255,255,0.4)', fontSize: '10px' }}>CVV</div>
-              <div className="absolute font-mono"
-                style={{ bottom: '36px', left: '20px', color: 'rgba(255,255,255,0.4)', fontSize: '12px', letterSpacing: '1px' }}>
+
+              {/* CVV label */}
+              <div style={{
+                position: 'absolute', top: 134, right: 20,
+                fontSize: 9, fontWeight: 'var(--weight-bold)',
+                letterSpacing: 'var(--tracking-widest)',
+                textTransform: 'uppercase',
+                color: 'rgba(255,255,255,0.3)',
+              }}>
+                CVV
+              </div>
+
+              {/* Card number */}
+              <div style={{
+                position: 'absolute', bottom: 42, left: 20,
+                fontFamily: 'monospace',
+                fontSize: 'var(--text-sm)',
+                color: 'rgba(255,255,255,0.35)',
+                letterSpacing: '0.1em',
+              }}>
                 {formatCardNumber(card?.card_number)}
               </div>
-              <div className="absolute"
-                style={{ bottom: '18px', left: '20px', color: 'rgba(255,255,255,0.3)', fontSize: '10px' }}>
+
+              {/* Valid thru */}
+              <div style={{
+                position: 'absolute', bottom: 20, left: 20,
+                fontSize: 'var(--text-xs)',
+                color: 'rgba(255,255,255,0.3)',
+                fontWeight: 'var(--weight-bold)',
+              }}>
                 Valid thru {formatExpiry(card?.expiry_date)}
               </div>
-              <div className="absolute bottom-5 right-4 flex">
-                <div className="w-7 h-7 rounded-full opacity-70" style={{ background: '#EB001B' }} />
-                <div className="w-7 h-7 rounded-full opacity-70 -ml-2" style={{ background: '#F79E1B' }} />
+
+              {/* Mastercard circles */}
+              <div style={{ position: 'absolute', bottom: 18, right: 20, display: 'flex' }}>
+                <div style={{ width: 28, height: 28, borderRadius: '50%', background: '#EB001B', border: '2px solid rgba(255,255,255,0.1)', opacity: 0.8 }} />
+                <div style={{ width: 28, height: 28, borderRadius: '50%', background: '#F79E1B', border: '2px solid rgba(255,255,255,0.1)', marginLeft: -10, opacity: 0.8 }} />
               </div>
             </div>
           </div>
         </div>
 
-        <p className="text-xs mt-4" style={{ color: 'rgba(255,255,255,0.4)' }}>
+        {/* Hint */}
+        <div style={{
+          fontSize: 9,
+          fontWeight: 'var(--weight-bold)',
+          letterSpacing: 'var(--tracking-widest)',
+          textTransform: 'uppercase',
+          color: 'rgba(255,255,255,0.25)',
+        }}>
           Tap card to flip
-        </p>
-      </div>
-
-      <div className="rounded-t-3xl flex-1 flex flex-col justify-start px-5 py-6 gap-3"
-        style={{ background: '#f0f2f5', marginTop: '-16px' }}>
-        <div className="grid grid-cols-2 gap-3">
-          <button
-            onClick={() => navigate('/portal/add-money')}
-            className="flex flex-col items-center gap-2 py-5 rounded-2xl"
-            style={{ background: '#fff', border: '1.5px solid rgba(27,79,114,0.1)' }}>
-            <div className="w-10 h-10 rounded-full flex items-center justify-center text-lg font-light"
-              style={{ background: 'rgba(27,79,114,0.1)', color: brand.primaryColor }}>+</div>
-            <span className="text-xs font-semibold" style={{ color: brand.primaryColor }}>Add Money</span>
-          </button>
-
-          <button
-            onClick={() => navigate('/portal/withdraw')}
-            className="flex flex-col items-center gap-2 py-5 rounded-2xl"
-            style={{ background: '#fff', border: '1.5px solid rgba(27,79,114,0.1)' }}>
-            <div className="w-10 h-10 rounded-full flex items-center justify-center text-lg"
-              style={{ background: 'rgba(27,79,114,0.1)', color: brand.primaryColor }}>↓</div>
-            <span className="text-xs font-semibold" style={{ color: brand.primaryColor }}>Withdraw</span>
-          </button>
         </div>
+
+        {/* Card details strip */}
+        {card && (
+          <div style={{
+            width: '100%',
+            maxWidth: 340,
+            display: 'grid',
+            gridTemplateColumns: '1fr 1fr',
+            gap: 'var(--space-2)',
+          }}>
+            {[
+              { label: 'Card number',  value: formatCardNumber(card.card_number), mono: true },
+              { label: 'Expiry',       value: formatExpiry(card.expiry_date),     mono: true },
+            ].map((item, i) => (
+              <div key={i} style={{
+                background: 'rgba(255,255,255,0.06)',
+                border: '1.5px solid rgba(255,255,255,0.1)',
+                padding: 'var(--space-3) var(--space-4)',
+              }}>
+                <div style={{
+                  fontSize: 9,
+                  fontWeight: 'var(--weight-bold)',
+                  letterSpacing: 'var(--tracking-widest)',
+                  textTransform: 'uppercase',
+                  color: 'rgba(255,255,255,0.35)',
+                  marginBottom: 4,
+                }}>
+                  {item.label}
+                </div>
+                <div style={{
+                  fontFamily: item.mono ? 'monospace' : 'inherit',
+                  fontWeight: 'var(--weight-bold)',
+                  fontSize: 'var(--text-sm)',
+                  color: 'var(--color-white)',
+                  letterSpacing: item.mono ? '0.08em' : 0,
+                }}>
+                  {item.value}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
-      <nav className="flex items-center justify-around px-4 py-3 border-t"
-        style={{ background: '#fff', borderColor: 'rgba(0,0,0,0.08)' }}>
-        {[
-          { label: 'Home', icon: '⌂', path: '/portal/home' },
-          { label: 'Rewards', icon: '★', path: '/portal/rewards' },
-          { label: 'History', icon: '↕', path: '/portal/transactions' },
-          { label: 'Profile', icon: '◎', path: '/portal/profile' },
-        ].map(item => (
-          <button key={item.path} onClick={() => navigate(item.path)} className="flex flex-col items-center gap-1">
-            <span className="text-lg leading-none" style={{ color: 'rgba(0,0,0,0.3)' }}>{item.icon}</span>
-            <span className="text-xs" style={{ color: 'rgba(0,0,0,0.3)' }}>{item.label}</span>
-          </button>
-        ))}
-      </nav>
+      {/* ── Action buttons ── */}
+      <div style={{
+        flex: 1,
+        padding: 'var(--space-5)',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 'var(--space-4)',
+      }}>
+        <div style={{
+          fontSize: 'var(--text-xs)',
+          fontWeight: 'var(--weight-black)',
+          letterSpacing: 'var(--tracking-widest)',
+          textTransform: 'uppercase',
+          color: 'var(--color-grey)',
+          paddingLeft: 'var(--space-1)',
+        }}>
+          Quick actions
+        </div>
 
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-3)' }}>
+          {[
+            { label: 'Add money', icon: 'add_circle',  accent: 'var(--color-green)',  path: '/portal/add-money' },
+            { label: 'Withdraw',  icon: 'south',       accent: 'var(--color-yellow)', path: '/portal/withdraw'  },
+          ].map(({ label, icon, accent, path }) => (
+            <button
+              key={path}
+              onClick={() => navigate(path)}
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                gap: 'var(--space-2)',
+                padding: 'var(--space-5) var(--space-3)',
+                background: 'var(--color-white)',
+                border: 'var(--border)',
+                boxShadow: 'var(--shadow-sm)',
+                cursor: 'pointer',
+                transition: 'box-shadow var(--transition-base), transform var(--transition-fast)',
+              }}
+              onMouseEnter={e => { e.currentTarget.style.boxShadow = 'var(--shadow-md)'; e.currentTarget.style.transform = 'translate(-2px,-2px)' }}
+              onMouseLeave={e => { e.currentTarget.style.boxShadow = 'var(--shadow-sm)'; e.currentTarget.style.transform = 'translate(0,0)' }}
+              onMouseDown={e => { e.currentTarget.style.boxShadow = 'none'; e.currentTarget.style.transform = 'translate(3px,3px)' }}
+              onMouseUp={e => { e.currentTarget.style.boxShadow = 'var(--shadow-sm)'; e.currentTarget.style.transform = 'translate(-2px,-2px)' }}
+            >
+              <div style={{
+                width: 44, height: 44,
+                background: 'var(--color-black)',
+                border: 'var(--border)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}>
+                <span className="icon-outlined" style={{ fontSize: 22, color: 'var(--color-white)' }}>
+                  {icon}
+                </span>
+              </div>
+              <span style={{
+                fontSize: 'var(--text-xs)',
+                fontWeight: 'var(--weight-black)',
+                letterSpacing: 'var(--tracking-wide)',
+                textTransform: 'uppercase',
+                color: 'var(--color-black)',
+              }}>
+                {label}
+              </span>
+            </button>
+          ))}
+        </div>
+
+        {/* No card state */}
+        {!card && (
+          <div style={{
+            background: 'var(--color-white)',
+            border: 'var(--border)',
+            boxShadow: 'var(--shadow-sm)',
+            padding: 'var(--space-6)',
+            textAlign: 'center',
+          }}>
+            <span className="icon-outlined" style={{ fontSize: 40, color: 'var(--color-grey-mid)', display: 'block', marginBottom: 'var(--space-3)' }}>
+              credit_card_off
+            </span>
+            <div style={{ fontWeight: 'var(--weight-bold)', fontSize: 'var(--text-base)', marginBottom: 'var(--space-2)' }}>
+              No card issued yet
+            </div>
+            <div style={{ fontSize: 'var(--text-sm)', color: 'var(--color-grey)' }}>
+              Your savings card will be issued once your account is verified and you make your first deposit.
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* ── Bottom nav ── */}
+      <nav style={{
+        position: 'fixed',
+        bottom: 0, left: 0, right: 0,
+        background: 'var(--color-white)',
+        borderTop: 'var(--border-thick)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-around',
+        padding: 'var(--space-2) var(--space-4)',
+        zIndex: 'var(--z-sticky)',
+      }}>
+        {[
+          { label: 'Home',    icon: 'home',          path: '/portal/home'         },
+          { label: 'Rewards', icon: 'card_giftcard', path: '/portal/rewards'      },
+          { label: 'History', icon: 'receipt_long',  path: '/portal/transactions' },
+          { label: 'Profile', icon: 'person',        path: '/portal/profile'      },
+        ].map(({ label, icon, path }) => {
+          const active = false
+          return (
+            <button
+              key={path}
+              onClick={() => navigate(path)}
+              style={{
+                display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
+                background: 'none', border: 'none', cursor: 'pointer',
+                padding: 'var(--space-1) var(--space-3)',
+              }}>
+              <span className="icon-outlined" style={{ fontSize: 22, color: 'var(--color-grey)' }}>
+                {icon}
+              </span>
+              <span style={{
+                fontWeight: 'var(--weight-medium)',
+                letterSpacing: 'var(--tracking-wide)',
+                textTransform: 'uppercase',
+                fontSize: 9,
+                color: 'var(--color-grey)',
+              }}>
+                {label}
+              </span>
+            </button>
+          )
+        })}
+      </nav>
     </div>
   )
 }

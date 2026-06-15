@@ -2,26 +2,51 @@ import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../../supabase'
 
-const ADMIN_PRIMARY = '#1B4F72'
-const ADMIN_GOLD = '#D4AF37'
+// ── Helpers ────────────────────────────────────────────────────────────────
 
-function Section({ title, children }) {
+function formatUGX(n) {
+  if (n >= 1000000) return 'UGX ' + (n / 1000000).toFixed(1) + 'M'
+  if (n >= 1000)    return 'UGX ' + (n / 1000).toFixed(0) + 'K'
+  return 'UGX ' + Number(n).toLocaleString('en-UG', { maximumFractionDigits: 0 })
+}
+
+function formatDate(d) {
+  if (!d) return '—'
+  return new Date(d).toLocaleDateString('en-UG', { day: 'numeric', month: 'short', year: 'numeric' })
+}
+
+function formatDateTime(d) {
+  if (!d) return '—'
+  return new Date(d).toLocaleString('en-UG', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true })
+}
+
+function txAccent(type) {
+  if (type === 'deposit')    return 'var(--color-green)'
+  if (type === 'withdrawal') return 'var(--color-red)'
+  return 'var(--color-yellow)'
+}
+function txAmountColor(type) { return type === 'deposit' ? '#2D8B45' : '#C0392B' }
+
+// ── Sub-components ─────────────────────────────────────────────────────────
+
+function SectionCard({ title, children }) {
   return (
-    <div className="rounded-2xl overflow-hidden" style={{ background: '#fff' }}>
-      <div className="px-5 py-3 border-b" style={{ borderColor: 'rgba(0,0,0,0.06)', background: '#f8f9fa' }}>
-        <div className="text-xs font-bold uppercase tracking-wide" style={{ color: 'rgba(0,0,0,0.4)' }}>{title}</div>
+    <div style={{ background: 'var(--color-white)', border: 'var(--border)', boxShadow: 'var(--shadow-sm)', overflow: 'hidden' }}>
+      <div style={{ background: 'var(--color-black)', borderBottom: 'var(--border)', padding: 'var(--space-3) var(--space-5)' }}>
+        <span style={{ fontWeight: 'var(--weight-bold)', fontSize: 'var(--text-sm)', color: 'var(--color-white)' }}>{title}</span>
       </div>
-      <div className="p-5">{children}</div>
+      <div style={{ padding: 'var(--space-5)' }}>{children}</div>
     </div>
   )
 }
 
-function Row({ label, value, valueColor }) {
+function InfoRow({ label, value, last, green, red, mono }) {
   return (
-    <div className="flex items-center justify-between py-2"
-      style={{ borderBottom: '1px solid rgba(0,0,0,0.05)' }}>
-      <span className="text-xs" style={{ color: 'rgba(0,0,0,0.4)' }}>{label}</span>
-      <span className="text-xs font-semibold" style={{ color: valueColor || ADMIN_PRIMARY }}>{value || '—'}</span>
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: 'var(--space-2) 0', borderBottom: last ? 'none' : '1.5px solid var(--color-grey-light)' }}>
+      <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-grey)' }}>{label}</span>
+      <span style={{ fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-bold)', fontFamily: mono ? 'monospace' : 'inherit', color: green ? '#2D8B45' : red ? '#C0392B' : 'var(--color-black)' }}>
+        {value || '—'}
+      </span>
     </div>
   )
 }
@@ -29,100 +54,62 @@ function Row({ label, value, valueColor }) {
 export default function CustomerDetail() {
   const { id } = useParams()
   const navigate = useNavigate()
-  const [customer, setCustomer] = useState(null)
-  const [business, setBusiness] = useState(null)
-  const [campaign, setCampaign] = useState(null)
-  const [wallet, setWallet] = useState(null)
+
+  const [customer, setCustomer]       = useState(null)
+  const [business, setBusiness]       = useState(null)
+  const [campaign, setCampaign]       = useState(null)
+  const [wallet, setWallet]           = useState(null)
   const [transactions, setTransactions] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [activeTab, setActiveTab] = useState('profile')
+  const [loading, setLoading]         = useState(true)
+  const [activeTab, setActiveTab]     = useState('profile')
 
-  // KYC action
-  const [savingKYC, setSavingKYC] = useState(false)
-  const [kycSuccess, setKycSuccess] = useState('')
-
-  // Flag action
-  const [savingFlag, setSavingFlag] = useState(false)
+  const [savingKYC, setSavingKYC]     = useState(false)
+  const [kycSuccess, setKycSuccess]   = useState('')
+  const [savingFlag, setSavingFlag]   = useState(false)
   const [flagSuccess, setFlagSuccess] = useState('')
 
-  // Refund action
-  const [refundAmount, setRefundAmount] = useState('')
+  const [refundAmount, setRefundAmount]   = useState('')
   const [refundConfirm, setRefundConfirm] = useState('')
-  const [savingRefund, setSavingRefund] = useState(false)
+  const [savingRefund, setSavingRefund]   = useState(false)
   const [refundSuccess, setRefundSuccess] = useState('')
-  const [refundError, setRefundError] = useState('')
+  const [refundError, setRefundError]     = useState('')
 
-  useEffect(() => {
-    loadAll()
-  }, [id])
+  useEffect(() => { loadAll() }, [id])
 
   async function loadAll() {
     setLoading(true)
     try {
-      // Customer
-      const { data: custData } = await supabase
-        .from('customers')
-        .select('*')
-        .eq('id', id)
-        .maybeSingle()
+      const { data: custData } = await supabase.from('customers').select('*').eq('id', id).maybeSingle()
       if (!custData) { setLoading(false); return }
       setCustomer(custData)
 
-      // Business
       if (custData.business_id) {
-        const { data: bizData } = await supabase
-          .from('businesses')
-          .select('*')
-          .eq('id', custData.business_id)
-          .maybeSingle()
+        const { data: bizData } = await supabase.from('businesses').select('*').eq('id', custData.business_id).maybeSingle()
         setBusiness(bizData)
       }
 
-      // Campaign
       if (custData.campaign_id) {
-        const { data: campData } = await supabase
-          .from('campaigns')
-          .select('*')
-          .eq('id', custData.campaign_id)
-          .maybeSingle()
+        const { data: campData } = await supabase.from('campaigns').select('*').eq('id', custData.campaign_id).maybeSingle()
         setCampaign(campData)
       }
 
-      // Wallet
-      const { data: walletData } = await supabase
-        .from('wallets')
-        .select('*')
-        .eq('customer_id', id)
-        .maybeSingle()
+      const { data: walletData } = await supabase.from('wallets').select('*').eq('customer_id', id).maybeSingle()
       setWallet(walletData)
 
-      // Transactions
-      const { data: txnData } = await supabase
-        .from('transactions')
-        .select('*')
-        .eq('customer_id', id)
-        .order('created_at', { ascending: false })
+      const { data: txnData } = await supabase.from('transactions').select('*').eq('customer_id', id).order('created_at', { ascending: false })
       setTransactions(txnData || [])
-
-    } catch (e) {
-      console.error('CustomerDetail load error:', e)
-    }
+    } catch (e) { console.error('CustomerDetail load error:', e) }
     setLoading(false)
   }
 
   async function handleVerifyKYC() {
     setSavingKYC(true)
     try {
-      await supabase
-        .from('customers')
-        .update({ kyc_status: 'verified' })
-        .eq('id', id)
+      await supabase.from('customers').update({ kyc_status: 'verified' }).eq('id', id)
       setCustomer(prev => ({ ...prev, kyc_status: 'verified' }))
       setKycSuccess('KYC manually verified successfully.')
       setTimeout(() => setKycSuccess(''), 3000)
-    } catch (e) {
-      console.error('KYC verify error:', e)
-    }
+    } catch (e) { console.error('KYC verify error:', e) }
     setSavingKYC(false)
   }
 
@@ -130,139 +117,86 @@ export default function CustomerDetail() {
     setSavingFlag(true)
     try {
       const newFlag = !customer.is_flagged
-      await supabase
-        .from('customers')
-        .update({ is_flagged: newFlag })
-        .eq('id', id)
+      await supabase.from('customers').update({ is_flagged: newFlag }).eq('id', id)
       setCustomer(prev => ({ ...prev, is_flagged: newFlag }))
       setFlagSuccess(newFlag ? 'Account flagged.' : 'Flag removed.')
       setTimeout(() => setFlagSuccess(''), 3000)
-    } catch (e) {
-      console.error('Flag error:', e)
-    }
+    } catch (e) { console.error('Flag error:', e) }
     setSavingFlag(false)
   }
 
   async function handleRefund() {
     setRefundError('')
     const amount = Number(refundAmount)
-    if (!amount || amount <= 0) {
-      setRefundError('Please enter a valid refund amount.')
-      return
-    }
     const customerName = `${customer.first_name} ${customer.last_name}`
-    if (refundConfirm !== customerName) {
-      setRefundError(`Please type the customer's full name exactly: "${customerName}"`)
-      return
-    }
+    if (!amount || amount <= 0) { setRefundError('Please enter a valid refund amount.'); return }
+    if (refundConfirm !== customerName) { setRefundError(`Please type the customer's full name exactly: "${customerName}"`); return }
     setSavingRefund(true)
     try {
       const reference = 'TXN-' + Math.random().toString(36).substring(2, 8).toUpperCase()
-      await supabase.from('transactions').insert({
-        customer_id: id,
-        wallet_id: wallet?.id,
-        campaign_id: customer.campaign_id,
-        type: 'withdrawal',
-        amount,
-        status: 'pending',
-        reference,
-        notes: 'Manual refund by Partna admin',
-      })
+      await supabase.from('transactions').insert({ customer_id: id, wallet_id: wallet?.id, campaign_id: customer.campaign_id, type: 'withdrawal', amount, status: 'pending', reference, notes: 'Manual refund by Partna admin' })
       setRefundSuccess(`Refund of ${formatUGX(amount)} initiated. Reference: ${reference}`)
-      setRefundAmount('')
-      setRefundConfirm('')
-      // Reload transactions
-      const { data: txnData } = await supabase
-        .from('transactions')
-        .select('*')
-        .eq('customer_id', id)
-        .order('created_at', { ascending: false })
+      setRefundAmount(''); setRefundConfirm('')
+      const { data: txnData } = await supabase.from('transactions').select('*').eq('customer_id', id).order('created_at', { ascending: false })
       setTransactions(txnData || [])
-    } catch (e) {
-      console.error('Refund error:', e)
-      setRefundError('Something went wrong. Please try again.')
-    }
+    } catch (e) { console.error('Refund error:', e); setRefundError('Something went wrong. Please try again.') }
     setSavingRefund(false)
   }
 
-  function formatUGX(n) {
-    if (n >= 1000000) return 'UGX ' + (n / 1000000).toFixed(1) + 'M'
-    if (n >= 1000) return 'UGX ' + (n / 1000).toFixed(0) + 'K'
-    return 'UGX ' + Number(n).toLocaleString('en-UG', { maximumFractionDigits: 0 })
-  }
-
-  function formatDate(d) {
-    if (!d) return '—'
-    return new Date(d).toLocaleDateString('en-UG', { day: 'numeric', month: 'short', year: 'numeric' })
-  }
-
-  function formatDateTime(d) {
-    if (!d) return '—'
-    return new Date(d).toLocaleString('en-UG', {
-      day: 'numeric', month: 'short', year: 'numeric',
-      hour: '2-digit', minute: '2-digit', hour12: true,
-    })
-  }
-
-  function txColor(type) { return type === 'deposit' ? '#16A34A' : '#DC2626' }
-  function txIcon(type) { return type === 'deposit' ? '↓' : '↑' }
-
   if (loading) return (
-    <div className="flex items-center justify-center py-20">
-      <div className="w-8 h-8 border-4 rounded-full animate-spin"
-        style={{ borderColor: ADMIN_PRIMARY, borderTopColor: 'transparent' }} />
+    <div style={{ display: 'flex', justifyContent: 'center', padding: 'var(--space-20)' }}>
+      <div className="spinner spinner-lg spinner-purple" />
     </div>
   )
 
   if (!customer) return (
-    <div className="flex flex-col items-center justify-center py-20 gap-3">
-      <div className="text-sm" style={{ color: 'rgba(0,0,0,0.4)' }}>Customer not found</div>
-      <button onClick={() => navigate('/admin/customers')}
-        className="text-xs font-semibold px-4 py-2 rounded-xl"
-        style={{ background: ADMIN_PRIMARY, color: '#fff' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 'var(--space-20)', gap: 'var(--space-4)' }}>
+      <span style={{ fontSize: 'var(--text-sm)', color: 'var(--color-grey)' }}>Customer not found</span>
+      <button onClick={() => navigate('/admin/customers')} className="btn btn-primary">
+        <span className="icon-outlined icon-sm">arrow_back</span>
         Back to customers
       </button>
     </div>
   )
 
   const balance = Number(wallet?.balance || 0)
-  const target = Number(campaign?.target_amount || 0)
-  const pct = target > 0 ? Math.min((balance / target) * 100, 100) : 0
-
-  const TABS = ['profile', 'transactions', 'actions']
+  const target  = Number(campaign?.target_amount || 0)
+  const pct     = target > 0 ? Math.min((balance / target) * 100, 100) : 0
+  const TABS    = ['profile', 'transactions', 'actions']
 
   return (
-    <div className="flex flex-col gap-5">
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-5)' }}>
 
-      {/* Back + header */}
-      <div className="flex items-center gap-4">
-        <button onClick={() => navigate('/admin/customers')}
-          className="text-xs font-semibold px-3 py-2 rounded-xl"
-          style={{ background: '#fff', color: ADMIN_PRIMARY, border: '1.5px solid rgba(27,79,114,0.15)' }}>
-          ← Back
+      {/* ── Page header ── */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-4)' }}>
+        <button onClick={() => navigate('/admin/customers')} className="btn btn-secondary btn-sm">
+          <span className="icon-outlined icon-xs">arrow_back</span>
+          Back
         </button>
-        <div className="flex items-center gap-3 flex-1">
-          <div className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0"
-            style={{ background: business?.primary_color || ADMIN_PRIMARY, color: '#fff' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', flex: 1 }}>
+          <div style={{
+            width: 40, height: 40, flexShrink: 0,
+            background: 'var(--color-black)',
+            border: '2px solid var(--color-primary)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontWeight: 'var(--weight-black)', fontSize: 'var(--text-base)',
+            color: 'var(--color-primary)',
+          }}>
             {customer.first_name?.[0]}{customer.last_name?.[0]}
           </div>
           <div>
-            <div className="text-lg font-bold" style={{ color: ADMIN_PRIMARY }}>
+            <div style={{ fontWeight: 'var(--weight-black)', fontSize: 'var(--text-xl)', letterSpacing: 'var(--tracking-tight)', fontVariationSettings: "'wdth' 100, 'opsz' 24" }}>
               {customer.first_name} {customer.last_name}
             </div>
-            <div className="flex items-center gap-2">
-              <span className="text-xs" style={{ color: 'rgba(0,0,0,0.4)' }}>{customer.phone}</span>
-              <span className="text-xs px-2 py-0.5 rounded-full font-semibold"
-                style={{
-                  background: customer.kyc_status === 'verified' ? 'rgba(22,163,74,0.1)' : 'rgba(217,119,6,0.1)',
-                  color: customer.kyc_status === 'verified' ? '#16A34A' : '#D97706',
-                }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', marginTop: 4 }}>
+              <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-grey)' }}>{customer.phone}</span>
+              <span className={`badge no-dot ${customer.kyc_status === 'verified' ? 'badge-success' : 'badge-warning'}`}>
                 KYC: {customer.kyc_status === 'verified' ? 'Verified' : 'Pending'}
               </span>
               {customer.is_flagged && (
-                <span className="text-xs px-2 py-0.5 rounded-full font-semibold"
-                  style={{ background: 'rgba(220,38,38,0.1)', color: '#DC2626' }}>
-                  ⚑ Flagged
+                <span className="badge no-dot badge-danger">
+                  <span className="icon-outlined icon-xs">flag</span>
+                  Flagged
                 </span>
               )}
             </div>
@@ -270,125 +204,117 @@ export default function CustomerDetail() {
         </div>
       </div>
 
-      {/* Tabs */}
-      <div className="flex gap-1 p-1 rounded-xl" style={{ background: '#fff' }}>
-        {TABS.map(tab => (
-          <button key={tab} onClick={() => setActiveTab(tab)}
-            className="flex-1 py-2 rounded-lg text-xs font-semibold capitalize"
-            style={{
-              background: activeTab === tab ? ADMIN_PRIMARY : 'transparent',
-              color: activeTab === tab ? '#fff' : 'rgba(0,0,0,0.4)',
-            }}>
+      {/* ── Tabs ── */}
+      <div style={{ display: 'flex', border: 'var(--border)', overflow: 'hidden' }}>
+        {TABS.map((tab, i) => (
+          <button key={tab} onClick={() => setActiveTab(tab)} style={{
+            flex: 1, padding: 'var(--space-3)',
+            background: activeTab === tab ? 'var(--color-black)' : 'var(--color-white)',
+            color: activeTab === tab ? 'var(--color-white)' : 'var(--color-grey)',
+            border: 'none', borderLeft: i > 0 ? '1.5px solid var(--color-grey-light)' : 'none',
+            fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-bold)',
+            textTransform: 'capitalize', cursor: 'pointer', transition: 'all var(--transition-fast)',
+          }}>
             {tab}
           </button>
         ))}
       </div>
 
-      {/* ── PROFILE TAB ── */}
+      {/* ── PROFILE ── */}
       {activeTab === 'profile' && (
-        <div className="grid grid-cols-2 gap-5">
-          <Section title="Personal Details">
-            <Row label="First name" value={customer.first_name} />
-            <Row label="Last name" value={customer.last_name} />
-            {customer.other_names && <Row label="Other names" value={customer.other_names} />}
-            <Row label="Phone" value={customer.phone} />
-            <Row label="Email" value={customer.email} />
-            <Row label="NIN" value={customer.nin ? '••••' + customer.nin.slice(-4) : '—'} />
-            <Row label="Draw code" value={customer.draw_code} />
-            <Row label="Enrolled" value={formatDate(customer.created_at)} />
-          </Section>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-5)' }}>
+          <SectionCard title="Personal details">
+            <InfoRow label="First name"   value={customer.first_name} />
+            <InfoRow label="Last name"    value={customer.last_name} />
+            {customer.other_names && <InfoRow label="Other names" value={customer.other_names} />}
+            <InfoRow label="Phone"        value={customer.phone} />
+            <InfoRow label="Email"        value={customer.email} />
+            <InfoRow label="NIN"          value={customer.nin ? '••••' + customer.nin.slice(-4) : '—'} mono />
+            <InfoRow label="Draw code"    value={customer.draw_code} mono />
+            <InfoRow label="Enrolled"     value={formatDate(customer.created_at)} last />
+          </SectionCard>
 
-          <Section title="Savings Summary">
-            <div className="mb-4">
-              <div className="flex justify-between text-xs mb-1.5" style={{ color: 'rgba(0,0,0,0.4)' }}>
+          <SectionCard title="Savings summary">
+            {/* Progress bar */}
+            <div style={{ marginBottom: 'var(--space-4)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 'var(--text-xs)', color: 'var(--color-grey)', marginBottom: 'var(--space-2)' }}>
                 <span>{pct.toFixed(1)}% saved</span>
                 <span>{formatUGX(balance)} of {formatUGX(target)}</span>
               </div>
-              <div className="w-full h-2 rounded-full" style={{ background: 'rgba(0,0,0,0.08)' }}>
-                <div className="h-2 rounded-full transition-all"
-                  style={{
-                    width: `${pct}%`,
-                    background: pct >= 100 ? '#16A34A' : pct >= 50 ? ADMIN_GOLD : '#F59E0B',
-                  }} />
+              <div className="progress-bar-track">
+                <div className="progress-bar-fill" style={{
+                  width: `${pct}%`,
+                  background: pct >= 100 ? 'var(--color-green)' : pct >= 50 ? 'var(--color-yellow)' : 'var(--color-primary)',
+                }} />
               </div>
             </div>
-            <Row label="Wallet balance" value={formatUGX(balance)} valueColor="#16A34A" />
-            <Row label="Target amount" value={formatUGX(target)} />
-            <Row label="Remaining" value={formatUGX(Math.max(target - balance, 0))} valueColor="#DC2626" />
-            <Row label="Progress" value={pct.toFixed(1) + '%'} />
-          </Section>
+            <InfoRow label="Wallet balance" value={formatUGX(balance)} green />
+            <InfoRow label="Target amount"  value={formatUGX(target)} />
+            <InfoRow label="Remaining"      value={formatUGX(Math.max(target - balance, 0))} red />
+            <InfoRow label="Progress"       value={pct.toFixed(1) + '%'} last />
+          </SectionCard>
 
-          <Section title="Business & Campaign">
-            <Row label="Business" value={business?.name} />
-            <Row label="Sector" value={business?.sector} />
-            <Row label="Campaign" value={campaign?.name} />
-            <Row label="Campaign status" value={campaign?.status} />
-            <Row label="Campaign target date" value={formatDate(campaign?.target_date)} />
-          </Section>
+          <SectionCard title="Business & campaign">
+            <InfoRow label="Business"            value={business?.name} />
+            <InfoRow label="Sector"              value={business?.sector} />
+            <InfoRow label="Campaign"            value={campaign?.name} />
+            <InfoRow label="Campaign status"     value={campaign?.status} />
+            <InfoRow label="Campaign target date" value={formatDate(campaign?.target_date)} last />
+          </SectionCard>
 
-          <Section title="Payment Source">
-            <Row label="Network" value={customer.payment_network?.toUpperCase()} />
-            <Row label="Number" value={customer.payment_number} />
-            <Row label="KYC status" value={customer.kyc_status} />
-          </Section>
+          <SectionCard title="Payment source">
+            <InfoRow label="Network" value={customer.payment_network?.toUpperCase()} />
+            <InfoRow label="Number"  value={customer.payment_number} mono />
+            <InfoRow label="KYC"     value={customer.kyc_status} last />
+          </SectionCard>
         </div>
       )}
 
-      {/* ── TRANSACTIONS TAB ── */}
+      {/* ── TRANSACTIONS ── */}
       {activeTab === 'transactions' && (
-        <Section title={`Transaction History (${transactions.length})`}>
+        <SectionCard title={`Transaction history (${transactions.length})`}>
           {transactions.length === 0 ? (
-            <div className="text-xs py-4 text-center" style={{ color: 'rgba(0,0,0,0.3)' }}>
+            <div style={{ textAlign: 'center', padding: 'var(--space-8)', fontSize: 'var(--text-sm)', color: 'var(--color-grey)' }}>
               No transactions yet
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full">
+            <div className="table-wrapper" style={{ margin: 'calc(-1 * var(--space-5))', marginTop: 0 }}>
+              <table className="table">
                 <thead>
-                  <tr style={{ borderBottom: '1px solid rgba(0,0,0,0.06)' }}>
-                    {['Reference', 'Type', 'Amount', 'Status', 'Date'].map(h => (
-                      <th key={h} className="py-2 text-left">
-                        <span className="text-xs font-bold" style={{ color: 'rgba(0,0,0,0.4)' }}>{h}</span>
-                      </th>
-                    ))}
+                  <tr>
+                    <th>Reference</th>
+                    <th>Type</th>
+                    <th>Amount</th>
+                    <th>Status</th>
+                    <th>Date</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {transactions.map((t, i) => (
-                    <tr key={t.id}
-                      style={{ borderBottom: i < transactions.length - 1 ? '1px solid rgba(0,0,0,0.05)' : 'none' }}>
-                      <td className="py-2.5 pr-4">
-                        <span className="text-xs font-mono" style={{ color: 'rgba(0,0,0,0.5)' }}>
+                  {transactions.map(t => (
+                    <tr key={t.id}>
+                      <td>
+                        <span style={{ fontFamily: 'monospace', fontSize: 'var(--text-xs)', color: 'var(--color-grey)' }}>
                           {t.reference || t.id.slice(0, 8)}
                         </span>
                       </td>
-                      <td className="py-2.5 pr-4">
-                        <div className="flex items-center gap-1.5">
-                          <span className="text-xs font-bold"
-                            style={{ color: txColor(t.type) }}>
-                            {txIcon(t.type)}
-                          </span>
-                          <span className="text-xs capitalize" style={{ color: '#333' }}>{t.type}</span>
+                      <td>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+                          <div style={{ width: 20, height: 20, background: txAccent(t.type), border: 'var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                            <span className="icon-outlined" style={{ fontSize: 11 }}>{t.type === 'deposit' ? 'south' : 'north'}</span>
+                          </div>
+                          <span style={{ fontSize: 'var(--text-sm)', textTransform: 'capitalize' }}>{t.type}</span>
                         </div>
                       </td>
-                      <td className="py-2.5 pr-4">
-                        <span className="text-xs font-semibold" style={{ color: txColor(t.type) }}>
-                          {t.type === 'deposit' ? '+' : '-'}{formatUGX(t.amount)}
-                        </span>
+                      <td style={{ fontWeight: 'var(--weight-black)', fontSize: 'var(--text-sm)', color: txAmountColor(t.type) }}>
+                        {t.type === 'deposit' ? '+' : '-'}{formatUGX(t.amount)}
                       </td>
-                      <td className="py-2.5 pr-4">
-                        <span className="text-xs font-semibold px-2 py-0.5 rounded-full capitalize"
-                          style={{
-                            background: t.status === 'completed' ? 'rgba(22,163,74,0.1)' : 'rgba(217,119,6,0.1)',
-                            color: t.status === 'completed' ? '#16A34A' : '#D97706',
-                          }}>
+                      <td>
+                        <span className={`badge no-dot ${t.status === 'completed' ? 'badge-success' : 'badge-warning'}`} style={{ textTransform: 'capitalize' }}>
                           {t.status}
                         </span>
                       </td>
-                      <td className="py-2.5">
-                        <span className="text-xs" style={{ color: 'rgba(0,0,0,0.4)' }}>
-                          {formatDateTime(t.created_at)}
-                        </span>
+                      <td style={{ fontSize: 'var(--text-sm)', color: 'var(--color-grey)' }}>
+                        {formatDateTime(t.created_at)}
                       </td>
                     </tr>
                   ))}
@@ -396,120 +322,100 @@ export default function CustomerDetail() {
               </table>
             </div>
           )}
-        </Section>
+        </SectionCard>
       )}
 
-      {/* ── ACTIONS TAB ── */}
+      {/* ── ACTIONS ── */}
       {activeTab === 'actions' && (
-        <div className="grid grid-cols-2 gap-5">
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-5)' }}>
 
           {/* KYC verification */}
-          <Section title="KYC Verification">
+          <SectionCard title="KYC verification">
             {kycSuccess && (
-              <div className="text-xs px-3 py-2 rounded-xl font-semibold mb-3"
-                style={{ background: 'rgba(22,163,74,0.1)', color: '#16A34A' }}>
-                ✓ {kycSuccess}
+              <div className="alert alert-success" style={{ marginBottom: 'var(--space-3)' }}>
+                <span className="icon-outlined alert-icon">check_circle</span>
+                <div className="alert-content">{kycSuccess}</div>
               </div>
             )}
-            <div className="text-xs mb-4" style={{ color: 'rgba(0,0,0,0.5)' }}>
-              Current status: <span className="font-semibold" style={{
-                color: customer.kyc_status === 'verified' ? '#16A34A' : '#D97706'
-              }}>{customer.kyc_status}</span>
-            </div>
+            <p style={{ fontSize: 'var(--text-sm)', color: 'var(--color-grey)', marginBottom: 'var(--space-4)', lineHeight: 'var(--leading-normal)' }}>
+              Current status: <strong style={{ color: customer.kyc_status === 'verified' ? '#2D8B45' : '#8A6700' }}>
+                {customer.kyc_status}
+              </strong>
+            </p>
             {customer.kyc_status !== 'verified' ? (
-              <button onClick={handleVerifyKYC} disabled={savingKYC}
-                className="w-full py-2.5 rounded-xl text-xs font-bold"
-                style={{ background: '#16A34A', color: '#fff', opacity: savingKYC ? 0.5 : 1 }}>
-                {savingKYC ? 'Verifying...' : '✓ Manually verify KYC'}
+              <button onClick={handleVerifyKYC} disabled={savingKYC} className="btn btn-success btn-full">
+                {savingKYC
+                  ? <><div className="spinner spinner-sm" style={{ borderTopColor: 'var(--color-black)' }} /> Verifying…</>
+                  : <><span className="icon-outlined icon-sm">verified_user</span> Manually verify KYC</>
+                }
               </button>
             ) : (
-              <div className="text-xs px-3 py-2 rounded-xl"
-                style={{ background: 'rgba(22,163,74,0.08)', color: '#16A34A' }}>
-                ✓ KYC already verified
+              <div className="alert alert-success">
+                <span className="icon-outlined alert-icon">verified_user</span>
+                <div className="alert-content">KYC already verified.</div>
               </div>
             )}
-          </Section>
+          </SectionCard>
 
           {/* Flag account */}
-          <Section title="Flag Account">
+          <SectionCard title="Flag account">
             {flagSuccess && (
-              <div className="text-xs px-3 py-2 rounded-xl font-semibold mb-3"
-                style={{ background: 'rgba(22,163,74,0.1)', color: '#16A34A' }}>
-                ✓ {flagSuccess}
+              <div className="alert alert-success" style={{ marginBottom: 'var(--space-3)' }}>
+                <span className="icon-outlined alert-icon">check_circle</span>
+                <div className="alert-content">{flagSuccess}</div>
               </div>
             )}
-            <div className="text-xs mb-4" style={{ color: 'rgba(0,0,0,0.5)' }}>
+            <p style={{ fontSize: 'var(--text-sm)', color: 'var(--color-grey)', marginBottom: 'var(--space-4)', lineHeight: 'var(--leading-normal)' }}>
               Flagging an account marks it for review. The customer can still use the platform.
-            </div>
+            </p>
             <button onClick={handleToggleFlag} disabled={savingFlag}
-              className="w-full py-2.5 rounded-xl text-xs font-bold"
-              style={{
-                background: customer.is_flagged ? 'rgba(22,163,74,0.08)' : 'rgba(220,38,38,0.08)',
-                color: customer.is_flagged ? '#16A34A' : '#DC2626',
-                opacity: savingFlag ? 0.5 : 1,
-              }}>
-              {savingFlag ? 'Saving...' : customer.is_flagged ? '✓ Remove flag' : '⚑ Flag this account'}
+              className={`btn btn-full ${customer.is_flagged ? 'btn-success' : 'btn-danger'}`}>
+              {savingFlag
+                ? <><div className="spinner spinner-sm" style={{ borderTopColor: 'var(--color-black)' }} /> Saving…</>
+                : customer.is_flagged
+                ? <><span className="icon-outlined icon-sm">flag</span> Remove flag</>
+                : <><span className="icon-outlined icon-sm">flag</span> Flag this account</>
+              }
             </button>
-          </Section>
+          </SectionCard>
 
           {/* Manual refund */}
-          <Section title="Manual Refund">
-            <div className="flex flex-col gap-3">
+          <SectionCard title="Manual refund">
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
               {refundSuccess && (
-                <div className="text-xs px-3 py-2 rounded-xl font-semibold"
-                  style={{ background: 'rgba(22,163,74,0.1)', color: '#16A34A' }}>
-                  ✓ {refundSuccess}
+                <div className="alert alert-success">
+                  <span className="icon-outlined alert-icon">check_circle</span>
+                  <div className="alert-content">{refundSuccess}</div>
                 </div>
               )}
               {refundError && (
-                <div className="text-xs px-3 py-2 rounded-xl"
-                  style={{ background: '#FEE2E2', color: '#991B1B' }}>
-                  {refundError}
+                <div className="alert alert-danger">
+                  <span className="icon-outlined alert-icon">error_outline</span>
+                  <div className="alert-content">{refundError}</div>
                 </div>
               )}
-              <div className="text-xs" style={{ color: 'rgba(0,0,0,0.5)' }}>
-                Creates a pending withdrawal transaction. Current balance: <span className="font-semibold" style={{ color: '#16A34A' }}>{formatUGX(balance)}</span>
+              <p style={{ fontSize: 'var(--text-sm)', color: 'var(--color-grey)', lineHeight: 'var(--leading-normal)' }}>
+                Creates a pending withdrawal. Current balance:{' '}
+                <strong style={{ color: '#2D8B45' }}>{formatUGX(balance)}</strong>
+              </p>
+              <div className="input-group">
+                <label className="input-label">Refund amount (UGX)</label>
+                <input type="number" className="input" value={refundAmount} onChange={e => setRefundAmount(e.target.value)} placeholder="e.g. 500000" />
               </div>
-              <div className="flex flex-col gap-1">
-                <label className="text-xs font-semibold" style={{ color: ADMIN_PRIMARY }}>
-                  Refund amount (UGX)
-                </label>
-                <input
-                  type="number"
-                  value={refundAmount}
-                  onChange={e => setRefundAmount(e.target.value)}
-                  placeholder="e.g. 500000"
-                  className="w-full px-4 py-2.5 rounded-xl text-sm outline-none"
-                  style={{ background: '#f0f2f5', border: 'none', color: '#333' }}
-                />
+              <div className="input-group">
+                <label className="input-label">Type customer's full name to confirm</label>
+                <input type="text" className="input" value={refundConfirm} onChange={e => setRefundConfirm(e.target.value)} placeholder={`${customer.first_name} ${customer.last_name}`} />
               </div>
-              <div className="flex flex-col gap-1">
-                <label className="text-xs font-semibold" style={{ color: ADMIN_PRIMARY }}>
-                  Type customer's full name to confirm
-                </label>
-                <input
-                  type="text"
-                  value={refundConfirm}
-                  onChange={e => setRefundConfirm(e.target.value)}
-                  placeholder={`${customer.first_name} ${customer.last_name}`}
-                  className="w-full px-4 py-2.5 rounded-xl text-sm outline-none"
-                  style={{ background: '#f0f2f5', border: 'none', color: '#333' }}
-                />
-              </div>
-              <button onClick={handleRefund} disabled={savingRefund}
-                className="w-full py-2.5 rounded-xl text-xs font-bold"
-                style={{
-                  background: savingRefund ? 'rgba(220,38,38,0.3)' : '#DC2626',
-                  color: '#fff',
-                }}>
-                {savingRefund ? 'Processing...' : 'Process refund'}
+              <button onClick={handleRefund} disabled={savingRefund} className="btn btn-danger btn-full">
+                {savingRefund
+                  ? <><div className="spinner spinner-sm" style={{ borderTopColor: 'var(--color-black)' }} /> Processing…</>
+                  : <><span className="icon-outlined icon-sm">undo</span> Process refund</>
+                }
               </button>
             </div>
-          </Section>
-
+          </SectionCard>
         </div>
       )}
-
     </div>
   )
 }

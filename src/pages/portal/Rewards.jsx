@@ -6,20 +6,25 @@ import { useBrand } from '../../lib/BrandContext'
 function getMerchantLogo(name) {
   if (!name) return null
   const n = name.toLowerCase()
-  if (n.includes('kfc')) return '/kfc-logo.svg'
-  if (n.includes('shell')) return '/shell-logo.svg'
+  if (n.includes('kfc'))       return '/kfc-logo.svg'
+  if (n.includes('shell'))     return '/shell-logo.svg'
   if (n.includes('java') || n.includes('cj')) return '/cjs-logo.svg'
   if (n.includes('carrefour')) return '/carrefour-logo.svg'
-  if (n.includes('glovo')) return '/glovo-logo.svg'
+  if (n.includes('glovo'))     return '/glovo-logo.svg'
   return null
 }
 
+function fmt(n) {
+  return 'UGX ' + Number(n).toLocaleString('en-UG', { maximumFractionDigits: 0 })
+}
+
+// ── Countdown hooks ────────────────────────────────────────────────────────
 function VoucherCountdown({ campaignStart, campaignEnd, fraction }) {
   const [timeLeft, setTimeLeft] = useState('...')
   useEffect(() => {
     if (!campaignStart || !campaignEnd || fraction == null) { setTimeLeft('--'); return }
-    const start = new Date(campaignStart).getTime()
-    const end = new Date(campaignEnd).getTime()
+    const start  = new Date(campaignStart).getTime()
+    const end    = new Date(campaignEnd).getTime()
     const expiry = start + (end - start) * Number(fraction)
     function calc() {
       const diff = expiry - Date.now()
@@ -59,123 +64,89 @@ function PrizeCountdown({ drawDate }) {
 }
 
 export default function Rewards({ customer }) {
-  const brand = useBrand()
+  const brand    = useBrand()
   const navigate = useNavigate()
-  const [campaign, setCampaign] = useState(null)
-  const [wallet, setWallet] = useState(null)
-  const [vouchers, setVouchers] = useState([])
-  const [claims, setClaims] = useState([])
-  const [prizes, setPrizes] = useState([])
-  const [prizeDraws, setPrizeDraws] = useState([])
-  const [showWinners, setShowWinners] = useState(false)
-  const [loading, setLoading] = useState(true)
-  const [claimModal, setClaimModal] = useState(null)
-  const [termsChecked, setTermsChecked] = useState(false)
-  const [claiming, setClaiming] = useState(false)
-  const [successVoucher, setSuccessVoucher] = useState(null)
-  const [current, setCurrent] = useState(0)
 
-  useEffect(() => {
-    if (customer) loadAll()
-  }, [customer])
+  const [campaign, setCampaign]       = useState(null)
+  const [wallet, setWallet]           = useState(null)
+  const [vouchers, setVouchers]       = useState([])
+  const [claims, setClaims]           = useState([])
+  const [prizes, setPrizes]           = useState([])
+  const [prizeDraws, setPrizeDraws]   = useState([])
+  const [showWinners, setShowWinners] = useState(false)
+  const [loading, setLoading]         = useState(true)
+  const [claimModal, setClaimModal]   = useState(null)
+  const [termsChecked, setTermsChecked] = useState(false)
+  const [claiming, setClaiming]       = useState(false)
+  const [successVoucher, setSuccessVoucher] = useState(null)
+  const [current, setCurrent]         = useState(0)
+
+  useEffect(() => { if (customer) loadAll() }, [customer])
 
   async function loadAll() {
     setLoading(true)
-
-    // Use customer's actual campaign_id — no hardcoded fallback
     const campaignId = customer.campaign_id
 
-    // Campaign
     try {
       if (campaignId) {
         const r1 = await supabase.from('campaigns').select('*').eq('id', campaignId)
-        if (r1.data && r1.data.length > 0) setCampaign(r1.data[0])
+        if (r1.data?.length > 0) setCampaign(r1.data[0])
       }
     } catch(e) {}
 
-    // Wallet
     try {
       const r2 = await supabase.from('wallets').select('*').eq('customer_id', customer.id)
-      if (r2.data && r2.data.length > 0) setWallet(r2.data[0])
+      if (r2.data?.length > 0) setWallet(r2.data[0])
     } catch(e) {}
 
-    // Vouchers — fetch via campaign_vouchers junction table
     if (campaignId) {
       try {
         const { data: cvData } = await supabase
-          .from('campaign_vouchers')
-          .select('voucher_id')
-          .eq('campaign_id', campaignId)
-
-        if (cvData && cvData.length > 0) {
-          const voucherIds = cvData.map(cv => cv.voucher_id)
+          .from('campaign_vouchers').select('voucher_id').eq('campaign_id', campaignId)
+        if (cvData?.length > 0) {
+          const ids = cvData.map(cv => cv.voucher_id)
           const { data: vData } = await supabase
-            .from('vouchers')
-            .select('*, merchants(id, name)')
-            .in('id', voucherIds)
-            .eq('is_active', true)
+            .from('vouchers').select('*, merchants(id, name)').in('id', ids).eq('is_active', true)
           setVouchers(vData || [])
         } else {
-          // Fallback: direct campaign_id on vouchers (legacy)
           const { data: vData } = await supabase
-            .from('vouchers')
-            .select('*, merchants(id, name)')
-            .eq('campaign_id', campaignId)
-            .eq('is_active', true)
+            .from('vouchers').select('*, merchants(id, name)').eq('campaign_id', campaignId).eq('is_active', true)
           setVouchers(vData || [])
         }
       } catch(e) { console.error('Vouchers load error:', e) }
     }
 
-    // Voucher claims for this customer
     try {
       const { data: claimData } = await supabase
-        .from('voucher_claims')
-        .select('voucher_id')
-        .eq('customer_id', customer.id)
+        .from('voucher_claims').select('voucher_id').eq('customer_id', customer.id)
       if (claimData) setClaims(claimData.map(c => c.voucher_id))
     } catch(e) {}
 
-    // Prizes for this campaign
     if (campaignId) {
       try {
         const { data: prizeData } = await supabase
-          .from('prizes')
-          .select('*')
-          .eq('campaign_id', campaignId)
-          .eq('is_active', true)
+          .from('prizes').select('*').eq('campaign_id', campaignId).eq('is_active', true)
         if (prizeData) setPrizes(prizeData)
       } catch(e) {}
-    }
 
-    // Prize draws — fetch all, filter to this campaign's prizes
-    if (campaignId) {
       try {
         const { data: drawData } = await supabase
-          .from('prize_draws')
-          .select('*, prizes(id, title, campaign_id)')
-          .order('drawn_at', { ascending: false })
-        if (drawData) {
-          setPrizeDraws(drawData.filter(d => d.prizes?.campaign_id === campaignId))
-        }
+          .from('prize_draws').select('*, prizes(id, title, campaign_id)').order('drawn_at', { ascending: false })
+        if (drawData) setPrizeDraws(drawData.filter(d => d.prizes?.campaign_id === campaignId))
       } catch(e) {}
     }
 
     setLoading(false)
   }
 
-  const balance = wallet ? Number(wallet.balance) : 0
-  const target = campaign ? Number(campaign.target_amount) : 0
-  const pct = target > 0 ? Math.min((balance / target) * 100, 100) : 0
-
-  function fmt(n) {
-    return 'UGX ' + Number(n).toLocaleString('en-UG', { maximumFractionDigits: 0 })
-  }
+  const balance = wallet   ? Number(wallet.balance)          : 0
+  const target  = campaign ? Number(campaign.target_amount)  : 0
+  const pct     = target > 0 ? Math.min((balance / target) * 100, 100) : 0
 
   function isExpiredByFraction(fraction) {
     if (!campaign) return false
-    const start = new Date(campaign.created_at).getTime()
-    const end = new Date(campaign.target_date).getTime()
+    const start  = new Date(campaign.created_at).getTime()
+    const end    = new Date(campaign.target_date).getTime()
     const expiry = start + (end - start) * Number(fraction)
     return Date.now() > expiry
   }
@@ -185,21 +156,12 @@ export default function Rewards({ customer }) {
     return balance >= minBal && !isExpiredByFraction(v.expiry_offset_fraction)
   }
 
-  function isClaimed(v) { return claims.includes(v.id) }
-
-  function minBalDisplay(v) {
-    return fmt(target * Number(v.min_balance_percentage) / 100)
-  }
-
-  function prizeQualifies(prize) {
-    const minBal = target * (Number(prize.min_balance_percentage) / 100)
-    return balance >= minBal
-  }
-
-  function prizeProgress(prize) {
-    const minBal = target * (Number(prize.min_balance_percentage) / 100)
-    if (minBal === 0) return 100
-    return Math.min((balance / minBal) * 100, 100)
+  function isClaimed(v)       { return claims.includes(v.id) }
+  function minBalDisplay(v)   { return fmt(target * Number(v.min_balance_percentage) / 100) }
+  function prizeQualifies(p)  { return balance >= target * (Number(p.min_balance_percentage) / 100) }
+  function prizeProgress(p) {
+    const minBal = target * (Number(p.min_balance_percentage) / 100)
+    return minBal === 0 ? 100 : Math.min((balance / minBal) * 100, 100)
   }
 
   async function handleClaim() {
@@ -219,54 +181,97 @@ export default function Rewards({ customer }) {
   }
 
   if (loading) return (
-    <div className="min-h-screen flex items-center justify-center" style={{ background: '#f0f2f5' }}>
-      <div className="w-8 h-8 border-4 rounded-full animate-spin"
-        style={{ borderColor: brand.primaryColor, borderTopColor: 'transparent' }} />
+    <div className="loading-screen">
+      <div className="spinner spinner-lg spinner-purple" />
     </div>
   )
 
-  const v = vouchers[current] || null
+  const v        = vouchers[current] || null
   const unlocked = v ? isUnlocked(v) : false
-  const claimed = v ? isClaimed(v) : false
-  const expired = v ? isExpiredByFraction(v.expiry_offset_fraction) : false
+  const claimed  = v ? isClaimed(v) : false
+  const expired  = v ? isExpiredByFraction(v.expiry_offset_fraction) : false
   const merchantName = v?.merchants?.name || ''
-  const logo = v ? getMerchantLogo(merchantName) : null
+  const logo     = v ? getMerchantLogo(merchantName) : null
   const needMore = v ? Math.max((target * Number(v.min_balance_percentage) / 100) - balance, 0) : 0
 
   return (
-    <div className="min-h-screen flex flex-col" style={{ background: '#f0f2f5' }}>
+    <div style={{ minHeight: '100vh', background: 'var(--color-bg)', display: 'flex', flexDirection: 'column', paddingBottom: 80 }}>
 
       {/* ── Success overlay ── */}
       {successVoucher && (
-        <div className="fixed inset-0 z-50 flex flex-col items-center justify-center px-6"
-          style={{ background: brand.primaryColor }}>
-          <div className="w-full max-w-sm rounded-3xl p-6 text-center"
-            style={{ background: '#fff', border: '3px solid ' + brand.secondaryColor }}>
-            <div className="text-4xl mb-3">🎉</div>
-            <div className="text-xs font-semibold mb-1" style={{ color: 'rgba(0,0,0,0.4)' }}>
-              {successVoucher.merchants?.name || ''}
+        <div style={{
+          position: 'fixed', inset: 0,
+          zIndex: 'var(--z-modal)',
+          background: 'var(--color-black)',
+          display: 'flex', flexDirection: 'column',
+          alignItems: 'center', justifyContent: 'center',
+          padding: 'var(--space-6)',
+          gap: 'var(--space-4)',
+        }}>
+          {/* Voucher card */}
+          <div style={{
+            width: '100%', maxWidth: 360,
+            background: 'var(--color-white)',
+            border: '3px solid var(--color-primary)',
+            boxShadow: 'var(--shadow-xl)',
+            overflow: 'hidden',
+          }}>
+            {/* Header */}
+            <div style={{
+              background: 'var(--color-primary)',
+              borderBottom: '3px solid var(--color-black)',
+              padding: 'var(--space-4) var(--space-5)',
+              display: 'flex', alignItems: 'center', gap: 'var(--space-3)',
+            }}>
+              <span className="icon-outlined" style={{ fontSize: 28, color: 'var(--color-black)' }}>
+                card_giftcard
+              </span>
+              <div>
+                <div style={{ fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-bold)', letterSpacing: 'var(--tracking-widest)', textTransform: 'uppercase', color: 'rgba(0,0,0,0.5)' }}>
+                  {successVoucher.merchants?.name || ''}
+                </div>
+                <div style={{ fontSize: 'var(--text-xl)', fontWeight: 'var(--weight-black)', letterSpacing: 'var(--tracking-tight)', color: 'var(--color-black)' }}>
+                  {successVoucher.title}
+                </div>
+              </div>
             </div>
-            <div className="text-2xl font-bold mb-2" style={{ color: brand.primaryColor }}>
-              {successVoucher.title}
-            </div>
-            <div className="text-xs mb-3" style={{ color: 'rgba(0,0,0,0.5)' }}>
-              {successVoucher.description}
-            </div>
-            <div className="text-xs px-4 py-2 rounded-xl mb-3"
-              style={{ background: 'rgba(27,79,114,0.07)', color: brand.primaryColor }}>
-              {brand.businessName} Savings Program — Powered by Partna
-            </div>
-            <div className="text-xs leading-relaxed mb-4" style={{ color: 'rgba(0,0,0,0.4)' }}>
-              {successVoucher.terms_and_conditions}
-            </div>
-            <div className="text-xs" style={{ color: 'rgba(0,0,0,0.3)' }}>
-              {customer ? customer.first_name + ' ' + customer.last_name : ''}
+            <div style={{ padding: 'var(--space-5)', display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+              <p style={{ fontSize: 'var(--text-sm)', color: 'var(--color-grey)', lineHeight: 'var(--leading-normal)' }}>
+                {successVoucher.description}
+              </p>
+              <div style={{
+                padding: 'var(--space-3) var(--space-4)',
+                background: 'var(--color-bg)',
+                border: 'var(--border)',
+                fontSize: 'var(--text-xs)',
+                color: 'var(--color-grey)',
+                lineHeight: 'var(--leading-normal)',
+              }}>
+                {successVoucher.terms_and_conditions}
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: 'var(--border)', paddingTop: 'var(--space-3)' }}>
+                <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-grey)', fontWeight: 'var(--weight-bold)' }}>
+                  {brand.businessName} — Powered by Partna
+                </span>
+                <span style={{ fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-bold)', color: 'var(--color-black)' }}>
+                  {customer?.first_name} {customer?.last_name}
+                </span>
+              </div>
             </div>
           </div>
-          <p className="text-xs mt-4" style={{ color: 'rgba(255,255,255,0.6)' }}>Screenshot to save</p>
-          <button onClick={() => setSuccessVoucher(null)}
-            className="mt-4 px-6 py-3 rounded-xl text-sm font-bold"
-            style={{ background: brand.secondaryColor, color: brand.primaryColor }}>
+
+          <div style={{
+            fontSize: 'var(--text-xs)',
+            fontWeight: 'var(--weight-bold)',
+            letterSpacing: 'var(--tracking-widest)',
+            textTransform: 'uppercase',
+            color: 'rgba(255,255,255,0.4)',
+          }}>
+            Screenshot to save
+          </div>
+
+          <button onClick={() => setSuccessVoucher(null)} className="btn btn-primary btn-lg">
+            <span className="icon-outlined icon-sm">check</span>
             Done
           </button>
         </div>
@@ -274,44 +279,44 @@ export default function Rewards({ customer }) {
 
       {/* ── Claim modal ── */}
       {claimModal && (
-        <div className="fixed inset-0 z-40 flex items-center justify-center px-5"
-          style={{ background: 'rgba(0,0,0,0.5)' }}>
-          <div className="w-full max-w-sm rounded-2xl p-5" style={{ background: '#fff' }}>
-            <div className="flex justify-between items-start mb-3">
+        <div className="modal-backdrop">
+          <div className="modal modal-sm">
+            <div className="modal-header">
               <div>
-                <div className="text-xs" style={{ color: 'rgba(0,0,0,0.4)' }}>
+                <div style={{ fontSize: 'var(--text-xs)', color: 'rgba(255,255,255,0.5)', marginBottom: 2 }}>
                   {claimModal.merchants?.name || ''}
                 </div>
-                <div className="text-base font-bold" style={{ color: brand.primaryColor }}>
-                  {claimModal.title}
-                </div>
+                <span className="modal-title">{claimModal.title}</span>
               </div>
-              <button onClick={() => { setClaimModal(null); setTermsChecked(false) }}
-                className="text-lg ml-3" style={{ color: 'rgba(0,0,0,0.3)' }}>✕</button>
+              <button onClick={() => { setClaimModal(null); setTermsChecked(false) }} className="modal-close">
+                <span className="icon-outlined icon-sm">close</span>
+              </button>
             </div>
-            <div className="text-xs px-3 py-2 rounded-xl mb-4 leading-relaxed"
-              style={{ background: 'rgba(27,79,114,0.06)', color: 'rgba(0,0,0,0.6)' }}>
-              {claimModal.terms_and_conditions}
+            <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+              <div style={{
+                padding: 'var(--space-3) var(--space-4)',
+                background: 'var(--color-bg)',
+                border: 'var(--border)',
+                fontSize: 'var(--text-sm)',
+                color: 'var(--color-grey)',
+                lineHeight: 'var(--leading-normal)',
+              }}>
+                {claimModal.terms_and_conditions}
+              </div>
+              <label className="checkbox-group">
+                <input type="checkbox" checked={termsChecked} onChange={e => setTermsChecked(e.target.checked)} />
+                <span className="checkbox-label">I agree to the terms and conditions</span>
+              </label>
             </div>
-            <label className="flex items-start gap-3 mb-4 cursor-pointer">
-              <input type="checkbox" checked={termsChecked}
-                onChange={e => setTermsChecked(e.target.checked)}
-                className="mt-0.5 w-4 h-4 flex-shrink-0" />
-              <span className="text-xs" style={{ color: 'rgba(0,0,0,0.6)' }}>
-                I agree to the terms and conditions
-              </span>
-            </label>
-            <div className="flex gap-3">
-              <button onClick={() => { setClaimModal(null); setTermsChecked(false) }}
-                className="flex-1 py-3 rounded-xl text-sm font-semibold"
-                style={{ background: '#f0f2f5', color: brand.primaryColor }}>Cancel</button>
-              <button onClick={handleClaim} disabled={!termsChecked || claiming}
-                className="flex-1 py-3 rounded-xl text-sm font-bold"
-                style={{
-                  background: (!termsChecked || claiming) ? 'rgba(27,79,114,0.3)' : brand.primaryColor,
-                  color: '#fff',
-                }}>
-                {claiming ? 'Claiming...' : 'Confirm'}
+            <div className="modal-footer">
+              <button onClick={() => { setClaimModal(null); setTermsChecked(false) }} className="btn btn-secondary" style={{ flex: 1 }}>
+                Cancel
+              </button>
+              <button onClick={handleClaim} disabled={!termsChecked || claiming} className="btn btn-primary" style={{ flex: 1 }}>
+                {claiming
+                  ? <><div className="spinner spinner-sm" style={{ borderTopColor: 'var(--color-black)' }} /> Claiming…</>
+                  : 'Confirm'
+                }
               </button>
             </div>
           </div>
@@ -320,194 +325,282 @@ export default function Rewards({ customer }) {
 
       {/* ── Winners modal ── */}
       {showWinners && (
-        <div className="fixed inset-0 z-40 flex items-end justify-center"
-          style={{ background: 'rgba(0,0,0,0.5)' }}>
-          <div className="w-full max-w-lg rounded-t-3xl p-5 pb-8"
-            style={{ background: '#fff', maxHeight: '80vh', overflowY: 'auto' }}>
-            <div className="flex justify-between items-center mb-4">
-              <div className="text-sm font-bold" style={{ color: brand.primaryColor }}>Prize Draw Winners</div>
-              <button onClick={() => setShowWinners(false)}
-                className="text-lg" style={{ color: 'rgba(0,0,0,0.3)' }}>✕</button>
+        <div className="modal-backdrop" style={{ alignItems: 'flex-end' }}>
+          <div className="modal" style={{
+            borderLeft: 'none', borderRight: 'none', borderBottom: 'none',
+            maxHeight: '80vh', overflowY: 'auto',
+            animation: 'none',
+          }}>
+            <div className="modal-header">
+              <span className="modal-title">Prize draw winners</span>
+              <button onClick={() => setShowWinners(false)} className="modal-close">
+                <span className="icon-outlined icon-sm">close</span>
+              </button>
             </div>
-            {prizeDraws.length === 0 ? (
-              <div className="text-center py-8">
-                <div className="text-2xl mb-2">🏆</div>
-                <div className="text-xs" style={{ color: 'rgba(0,0,0,0.4)' }}>
-                  No prize draws have taken place yet
+            <div className="modal-body">
+              {prizeDraws.length === 0 ? (
+                <div className="empty-state" style={{ padding: 'var(--space-8)' }}>
+                  <span className="icon-outlined empty-state-icon">emoji_events</span>
+                  <div className="empty-state-title">No draws yet</div>
+                  <p className="empty-state-body">No prize draws have taken place yet.</p>
                 </div>
-              </div>
-            ) : (
-              <div className="rounded-xl overflow-hidden" style={{ border: '1px solid rgba(0,0,0,0.08)' }}>
-                <div className="grid grid-cols-2 px-4 py-2" style={{ background: brand.primaryColor }}>
-                  <div className="text-xs font-bold text-white">Prize</div>
-                  <div className="text-xs font-bold text-white text-right">Winning Code</div>
-                </div>
-                {prizeDraws.map((draw, i) => (
-                  <div key={draw.id} className="grid grid-cols-2 px-4 py-3"
-                    style={{ borderBottom: i < prizeDraws.length - 1 ? '1px solid rgba(0,0,0,0.05)' : 'none' }}>
-                    <div>
-                      <div className="text-xs font-semibold" style={{ color: brand.primaryColor }}>
-                        {draw.prizes?.title || 'Prize'}
-                      </div>
-                      <div className="text-xs" style={{ color: 'rgba(0,0,0,0.4)' }}>
-                        {new Date(draw.drawn_at).toLocaleDateString('en-UG', { day: 'numeric', month: 'short', year: 'numeric' })}
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <div className="text-xs font-mono font-bold"
-                        style={{ color: draw.winning_code === customer?.draw_code ? '#16A34A' : brand.primaryColor }}>
-                        {draw.winning_code}
-                      </div>
-                      {draw.winning_code === customer?.draw_code && (
-                        <div className="text-xs font-semibold" style={{ color: '#16A34A' }}>That's you! 🎉</div>
-                      )}
-                    </div>
+              ) : (
+                <div style={{ border: 'var(--border)', overflow: 'hidden' }}>
+                  {/* Table header */}
+                  <div style={{
+                    display: 'grid', gridTemplateColumns: '1fr 1fr',
+                    padding: 'var(--space-2) var(--space-4)',
+                    background: 'var(--color-black)',
+                  }}>
+                    <span style={{ fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-black)', letterSpacing: 'var(--tracking-widest)', textTransform: 'uppercase', color: 'var(--color-white)' }}>Prize</span>
+                    <span style={{ fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-black)', letterSpacing: 'var(--tracking-widest)', textTransform: 'uppercase', color: 'var(--color-white)', textAlign: 'right' }}>Winning code</span>
                   </div>
-                ))}
-              </div>
-            )}
+                  {prizeDraws.map((draw, i) => {
+                    const isWinner = draw.winning_code === customer?.draw_code
+                    return (
+                      <div key={draw.id} style={{
+                        display: 'grid', gridTemplateColumns: '1fr 1fr',
+                        padding: 'var(--space-3) var(--space-4)',
+                        borderBottom: i < prizeDraws.length - 1 ? '1.5px solid var(--color-grey-light)' : 'none',
+                        background: isWinner ? 'var(--color-green)' : i % 2 === 0 ? 'var(--color-white)' : 'var(--color-bg)',
+                      }}>
+                        <div>
+                          <div style={{ fontWeight: 'var(--weight-bold)', fontSize: 'var(--text-sm)' }}>
+                            {draw.prizes?.title || 'Prize'}
+                          </div>
+                          <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-grey)', marginTop: 2 }}>
+                            {new Date(draw.drawn_at).toLocaleDateString('en-UG', { day: 'numeric', month: 'short', year: 'numeric' })}
+                          </div>
+                        </div>
+                        <div style={{ textAlign: 'right' }}>
+                          <div style={{ fontFamily: 'monospace', fontWeight: 'var(--weight-black)', fontSize: 'var(--text-sm)', color: isWinner ? '#2D8B45' : 'var(--color-black)' }}>
+                            {draw.winning_code}
+                          </div>
+                          {isWinner && (
+                            <div style={{ fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-bold)', color: '#2D8B45', marginTop: 2 }}>
+                              That's you!
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}
 
       {/* ── Header ── */}
-      <header className="flex items-center px-4 py-3 gap-3" style={{ background: brand.primaryColor }}>
-        <button onClick={() => navigate('/portal/home')} className="text-white text-xl">&#8592;</button>
-        <div className="flex items-center gap-2">
-          <img src={brand.logoUrl} alt="" className="w-8 h-8 object-contain" style={{ mixBlendMode: 'screen' }} />
-          <div className="text-white text-xs font-semibold">Rewards</div>
+      <header style={{
+        background: 'var(--color-black)',
+        borderBottom: 'var(--border)',
+        padding: 'var(--space-4) var(--space-5)',
+        display: 'flex', alignItems: 'center', gap: 'var(--space-4)',
+        position: 'sticky', top: 0,
+        zIndex: 'var(--z-sticky)',
+      }}>
+        <button
+          onClick={() => navigate('/portal/home')}
+          style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            width: 36, height: 36,
+            border: '2px solid rgba(255,255,255,0.25)',
+            background: 'transparent', color: 'var(--color-white)',
+            cursor: 'pointer', flexShrink: 0,
+          }}
+          onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--color-primary)'}
+          onMouseLeave={e => e.currentTarget.style.borderColor = 'rgba(255,255,255,0.25)'}
+        >
+          <span className="icon-outlined icon-sm">arrow_back</span>
+        </button>
+        <div style={{ color: 'var(--color-white)', fontWeight: 'var(--weight-bold)', fontSize: 'var(--text-sm)' }}>
+          Rewards
         </div>
       </header>
 
-      {/* ── Hero / progress ── */}
-      <div className="px-5 pt-5 pb-8" style={{ background: brand.primaryColor }}>
-        <div className="text-xs mb-1" style={{ color: 'rgba(255,255,255,0.6)' }}>Current balance</div>
-        <div className="text-white text-2xl font-bold mb-1">{fmt(balance)}</div>
-        <div className="w-full h-1.5 rounded-full mb-1" style={{ background: 'rgba(255,255,255,0.2)' }}>
-          <div className="h-1.5 rounded-full transition-all"
-            style={{
-              width: pct + '%',
-              background: pct >= 100 ? '#22C55E' : pct >= 75 ? '#22C55E' : pct >= 50 ? brand.secondaryColor : '#F59E0B',
-            }} />
+      {/* ── Balance / progress hero ── */}
+      <div style={{
+        background: 'var(--color-black)',
+        borderBottom: '3px solid var(--color-primary)',
+        padding: 'var(--space-6) var(--space-5) var(--space-8)',
+      }}>
+        <div style={{ fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-bold)', letterSpacing: 'var(--tracking-widest)', textTransform: 'uppercase', color: 'rgba(255,255,255,0.4)', marginBottom: 'var(--space-1)' }}>
+          Current balance
         </div>
-        <div className="flex justify-between text-xs" style={{ color: 'rgba(255,255,255,0.6)' }}>
-          <span>{pct.toFixed(0)}% of savings goal</span>
-          <span>{fmt(target)} target</span>
+        <div style={{
+          fontSize: 'var(--text-3xl)',
+          fontWeight: 'var(--weight-black)',
+          color: 'var(--color-white)',
+          letterSpacing: 'var(--tracking-tight)',
+          fontVariationSettings: "'wdth' 110, 'opsz' 36",
+          marginBottom: 'var(--space-3)',
+        }}>
+          {fmt(balance)}
+        </div>
+        <div className="progress-bar-track" style={{ background: 'rgba(255,255,255,0.15)', marginBottom: 'var(--space-2)' }}>
+          <div className="progress-bar-fill" style={{
+            width: pct + '%',
+            background: pct >= 100 ? 'var(--color-green)' : pct >= 75 ? 'var(--color-green)' : pct >= 50 ? 'var(--color-yellow)' : 'var(--color-primary)',
+          }} />
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+          <span style={{ fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-bold)', color: 'rgba(255,255,255,0.45)' }}>
+            {pct.toFixed(0)}% of savings goal
+          </span>
+          <span style={{ fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-bold)', color: 'rgba(255,255,255,0.45)' }}>
+            {fmt(target)} target
+          </span>
         </div>
       </div>
 
-      <div className="rounded-t-3xl flex-1 px-4 py-5 flex flex-col gap-5"
-        style={{ background: '#f0f2f5', marginTop: '-16px' }}>
+      {/* ── Body ── */}
+      <div style={{ flex: 1, padding: 'var(--space-5)', display: 'flex', flexDirection: 'column', gap: 'var(--space-5)' }}>
 
         {/* ── Prizes ── */}
         {prizes.length > 0 && (
           <div>
-            <div className="flex items-center justify-between mb-3">
-              <div className="text-sm font-bold" style={{ color: brand.primaryColor }}>🏆 Prize Draw</div>
-              <button onClick={() => setShowWinners(true)}
-                className="text-xs font-semibold" style={{ color: brand.secondaryColor }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 'var(--space-3)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+                <span className="icon-outlined" style={{ fontSize: 20, color: 'var(--color-black)' }}>emoji_events</span>
+                <span style={{ fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-black)', letterSpacing: 'var(--tracking-widest)', textTransform: 'uppercase' }}>
+                  Prize draw
+                </span>
+              </div>
+              <button
+                onClick={() => setShowWinners(true)}
+                style={{ background: 'none', border: 'none', fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-bold)', color: 'var(--color-primary)', cursor: 'pointer', textDecoration: 'underline', textUnderlineOffset: 3 }}>
                 See all winners
               </button>
             </div>
+
             {prizes.map(prize => {
-              const qualifies = prizeQualifies(prize)
-              const progress = prizeProgress(prize)
-              const minBal = target * (Number(prize.min_balance_percentage) / 100)
+              const qualifies  = prizeQualifies(prize)
+              const progress   = prizeProgress(prize)
+              const minBal     = target * (Number(prize.min_balance_percentage) / 100)
               const drawPassed = new Date(prize.draw_date) < new Date()
+              const prizeTypeIcon = prize.prize_type === 'cash' ? 'payments' : prize.prize_type === 'item' ? 'redeem' : 'discount'
+
               return (
-                <div key={prize.id} className="rounded-2xl overflow-hidden mb-3"
-                  style={{
-                    background: '#fff',
-                    border: qualifies ? `2px solid ${brand.secondaryColor}` : '2px solid rgba(0,0,0,0.06)',
-                    opacity: !qualifies ? 0.75 : 1,
+                <div key={prize.id} style={{
+                  background: 'var(--color-white)',
+                  border: qualifies ? '3px solid var(--color-black)' : 'var(--border)',
+                  boxShadow: qualifies ? 'var(--shadow-md)' : 'none',
+                  marginBottom: 'var(--space-3)',
+                  overflow: 'hidden',
+                  opacity: !qualifies ? 0.75 : 1,
+                }}>
+                  {/* Prize type tag */}
+                  <div style={{
+                    background: qualifies ? 'var(--color-primary)' : 'var(--color-grey-light)',
+                    borderBottom: 'var(--border)',
+                    padding: 'var(--space-2) var(--space-4)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                   }}>
-                  <div className="p-4">
-                    <div className="flex items-start justify-between mb-3">
-                      <div className="flex items-center gap-3">
-                        <div className="w-14 h-14 rounded-xl flex items-center justify-center text-2xl flex-shrink-0"
-                          style={{ background: qualifies ? 'rgba(27,79,114,0.08)' : '#f0f2f5' }}>
-                          {prize.prize_type === 'cash' ? '💰' : prize.prize_type === 'item' ? '🎁' : '🏷️'}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+                      <span className="icon-outlined" style={{ fontSize: 16 }}>{prizeTypeIcon}</span>
+                      <span style={{ fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-black)', letterSpacing: 'var(--tracking-wide)', textTransform: 'uppercase' }}>
+                        {prize.prize_type === 'cash' ? 'Cash prize' : prize.prize_type === 'item' ? 'Item prize' : 'Discount prize'}
+                      </span>
+                    </div>
+                    {qualifies && (
+                      <span className="badge badge-black no-dot">Qualified</span>
+                    )}
+                  </div>
+
+                  <div style={{ padding: 'var(--space-4)' }}>
+                    {/* Title + draw code */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 'var(--space-3)' }}>
+                      <div>
+                        <div style={{ fontWeight: 'var(--weight-black)', fontSize: 'var(--text-lg)', letterSpacing: 'var(--tracking-tight)', fontVariationSettings: "'wdth' 100, 'opsz' 20", marginBottom: 4 }}>
+                          {prize.title}
                         </div>
-                        <div>
-                          <div className="text-xs mb-0.5" style={{ color: 'rgba(0,0,0,0.35)' }}>
-                            {prize.prize_type === 'cash' ? 'Cash Prize' : prize.prize_type === 'item' ? 'Item Prize' : 'Discount Prize'}
+                        {prize.prize_type === 'cash' && prize.prize_value && (
+                          <div style={{ fontWeight: 'var(--weight-black)', fontSize: 'var(--text-xl)', color: '#2D8B45', letterSpacing: 'var(--tracking-tight)' }}>
+                            {fmt(prize.prize_value)}
                           </div>
-                          <div className="text-base font-bold"
-                            style={{ color: qualifies ? brand.primaryColor : 'rgba(0,0,0,0.35)' }}>
-                            {prize.title}
-                          </div>
-                          {prize.prize_type === 'cash' && prize.prize_value && (
-                            <div className="text-xs font-semibold"
-                              style={{ color: qualifies ? brand.secondaryColor : 'rgba(0,0,0,0.3)' }}>
-                              {fmt(prize.prize_value)}
-                            </div>
-                          )}
-                        </div>
+                        )}
                       </div>
-                      <div className="text-right flex-shrink-0 ml-2">
-                        <div className="text-xs mb-0.5" style={{ color: 'rgba(0,0,0,0.35)' }}>Your code</div>
-                        <div className="text-xs font-mono font-bold px-2 py-1 rounded-lg"
-                          style={{
-                            background: qualifies ? 'rgba(27,79,114,0.08)' : '#f0f2f5',
-                            color: qualifies ? brand.primaryColor : 'rgba(0,0,0,0.3)',
-                          }}>
+                      <div style={{ textAlign: 'right', flexShrink: 0, marginLeft: 'var(--space-4)' }}>
+                        <div style={{ fontSize: 9, fontWeight: 'var(--weight-bold)', letterSpacing: 'var(--tracking-widest)', textTransform: 'uppercase', color: 'var(--color-grey)', marginBottom: 4 }}>
+                          Your code
+                        </div>
+                        <div style={{
+                          fontFamily: 'monospace',
+                          fontWeight: 'var(--weight-black)',
+                          fontSize: 'var(--text-sm)',
+                          background: qualifies ? 'var(--color-black)' : 'var(--color-grey-light)',
+                          color: qualifies ? 'var(--color-primary)' : 'var(--color-grey)',
+                          padding: '4px var(--space-3)',
+                          border: 'var(--border)',
+                          letterSpacing: '0.1em',
+                        }}>
                           {customer?.draw_code || '——'}
                         </div>
                       </div>
                     </div>
+
                     {prize.description && (
-                      <div className="text-xs mb-3 leading-relaxed"
-                        style={{ color: qualifies ? 'rgba(0,0,0,0.5)' : 'rgba(0,0,0,0.3)' }}>
+                      <p style={{ fontSize: 'var(--text-sm)', color: 'var(--color-grey)', lineHeight: 'var(--leading-normal)', marginBottom: 'var(--space-3)' }}>
                         {prize.description}
-                      </div>
+                      </p>
                     )}
-                    <div className="flex justify-between items-center mb-3">
-                      <div>
-                        <div className="text-xs mb-0.5" style={{ color: 'rgba(0,0,0,0.35)' }}>Winners</div>
-                        <div className="text-xs font-semibold"
-                          style={{ color: qualifies ? brand.primaryColor : 'rgba(0,0,0,0.3)' }}>
-                          {prize.number_of_winners} {prize.number_of_winners === 1 ? 'winner' : 'winners'}
-                        </div>
-                      </div>
-                      <div>
-                        <div className="text-xs mb-0.5" style={{ color: 'rgba(0,0,0,0.35)' }}>Min. balance</div>
-                        <div className="text-xs font-semibold"
-                          style={{ color: qualifies ? brand.primaryColor : 'rgba(0,0,0,0.3)' }}>
-                          {fmt(minBal)}
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <div className="text-xs mb-0.5" style={{ color: 'rgba(0,0,0,0.35)' }}>
-                          {drawPassed ? 'Draw date' : 'Draw in'}
-                        </div>
-                        <div className="text-xs font-bold font-mono"
-                          style={{ color: drawPassed ? 'rgba(0,0,0,0.4)' : qualifies ? '#D97706' : 'rgba(0,0,0,0.3)' }}>
-                          {drawPassed
+
+                    {/* Meta row */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 'var(--space-3)' }}>
+                      {[
+                        { label: 'Winners', value: prize.number_of_winners + (prize.number_of_winners === 1 ? ' winner' : ' winners') },
+                        { label: 'Min. balance', value: fmt(minBal) },
+                        { label: drawPassed ? 'Draw date' : 'Draw in', value: drawPassed
                             ? new Date(prize.draw_date).toLocaleDateString('en-UG', { day: 'numeric', month: 'short' })
-                            : <PrizeCountdown drawDate={prize.draw_date} />
-                          }
+                            : <PrizeCountdown drawDate={prize.draw_date} />,
+                          mono: !drawPassed,
+                        },
+                      ].map((item, i) => (
+                        <div key={i}>
+                          <div style={{ fontSize: 9, fontWeight: 'var(--weight-bold)', letterSpacing: 'var(--tracking-widest)', textTransform: 'uppercase', color: 'var(--color-grey)', marginBottom: 4 }}>
+                            {item.label}
+                          </div>
+                          <div style={{ fontWeight: 'var(--weight-bold)', fontSize: 'var(--text-xs)', fontFamily: item.mono ? 'monospace' : 'inherit', color: 'var(--color-black)' }}>
+                            {item.value}
+                          </div>
                         </div>
+                      ))}
+                    </div>
+
+                    {/* Qualification progress */}
+                    <div style={{ marginBottom: 'var(--space-1)' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 'var(--space-2)' }}>
+                        <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-grey)', fontWeight: 'var(--weight-bold)' }}>Qualification progress</span>
+                        <span style={{ fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-black)', color: qualifies ? '#2D8B45' : 'var(--color-black)' }}>
+                          {Math.min(progress, 100).toFixed(0)}%
+                        </span>
+                      </div>
+                      <div className="progress-bar-track">
+                        <div className="progress-bar-fill" style={{
+                          width: Math.min(progress, 100) + '%',
+                          background: qualifies ? 'var(--color-green)' : 'var(--color-primary)',
+                        }} />
                       </div>
                     </div>
-                    <div className="mb-1">
-                      <div className="flex justify-between text-xs mb-1" style={{ color: 'rgba(0,0,0,0.35)' }}>
-                        <span>Qualification progress</span>
-                        <span>{Math.min(progress, 100).toFixed(0)}%</span>
-                      </div>
-                      <div className="w-full h-2 rounded-full" style={{ background: '#f0f2f5' }}>
-                        <div className="h-2 rounded-full transition-all"
-                          style={{
-                            width: Math.min(progress, 100) + '%',
-                            background: qualifies ? '#16A34A' : brand.secondaryColor,
-                          }} />
-                      </div>
-                    </div>
+
                     {qualifies ? (
-                      <div className="text-xs font-semibold mt-2 text-center" style={{ color: '#16A34A' }}>
-                        ✓ You qualify for this prize draw
+                      <div className="alert alert-success" style={{ marginTop: 'var(--space-3)' }}>
+                        <span className="icon-outlined alert-icon">check_circle</span>
+                        <div className="alert-content">You qualify for this prize draw</div>
                       </div>
                     ) : (
-                      <div className="text-xs mt-2 text-center" style={{ color: 'rgba(0,0,0,0.4)' }}>
+                      <div style={{
+                        marginTop: 'var(--space-3)',
+                        padding: 'var(--space-2) var(--space-3)',
+                        background: 'var(--color-bg)',
+                        border: 'var(--border)',
+                        fontSize: 'var(--text-xs)',
+                        color: 'var(--color-grey)',
+                        textAlign: 'center',
+                        fontWeight: 'var(--weight-bold)',
+                      }}>
                         Save {fmt(Math.max(minBal - balance, 0))} more to qualify
                       </div>
                     )}
@@ -520,168 +613,250 @@ export default function Rewards({ customer }) {
 
         {/* ── Vouchers ── */}
         <div>
-          <div className="flex items-center justify-between mb-4">
-            <div className="text-sm font-bold" style={{ color: brand.primaryColor }}>Vouchers</div>
-            <div className="text-xs" style={{ color: 'rgba(0,0,0,0.4)' }}>
-              {vouchers.length > 0 ? (current + 1) + ' of ' + vouchers.length : ''}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 'var(--space-3)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+              <span className="icon-outlined" style={{ fontSize: 20 }}>local_activity</span>
+              <span style={{ fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-black)', letterSpacing: 'var(--tracking-widest)', textTransform: 'uppercase' }}>
+                Vouchers
+              </span>
             </div>
+            {vouchers.length > 0 && (
+              <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-grey)', fontWeight: 'var(--weight-bold)' }}>
+                {current + 1} / {vouchers.length}
+              </span>
+            )}
           </div>
 
-          {vouchers.length === 0 && (
-            <div className="rounded-2xl p-8 text-center" style={{ background: '#fff' }}>
-              <div className="text-2xl mb-2">🎫</div>
-              <div className="text-sm font-semibold mb-1" style={{ color: 'rgba(0,0,0,0.4)' }}>
-                No vouchers available
-              </div>
-              <div className="text-xs" style={{ color: 'rgba(0,0,0,0.3)' }}>
-                Vouchers for this campaign will appear here once they've been added.
+          {vouchers.length === 0 ? (
+            <div style={{ background: 'var(--color-white)', border: 'var(--border)', boxShadow: 'var(--shadow-sm)', padding: 'var(--space-10)', textAlign: 'center' }}>
+              <span className="icon-outlined" style={{ fontSize: 40, color: 'var(--color-grey-mid)', display: 'block', marginBottom: 'var(--space-3)' }}>
+                local_activity
+              </span>
+              <div style={{ fontWeight: 'var(--weight-bold)', fontSize: 'var(--text-base)', marginBottom: 'var(--space-2)' }}>No vouchers available</div>
+              <div style={{ fontSize: 'var(--text-sm)', color: 'var(--color-grey)' }}>
+                Vouchers for this campaign will appear here once added.
               </div>
             </div>
-          )}
-
-          {vouchers.length > 0 && v && (
-            <div className="flex items-center gap-3">
-              <button onClick={() => setCurrent(c => Math.max(0, c - 1))} disabled={current === 0}
-                className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 text-sm font-bold"
-                style={{
-                  background: current === 0 ? 'rgba(0,0,0,0.06)' : brand.primaryColor,
-                  color: current === 0 ? 'rgba(0,0,0,0.2)' : '#fff',
-                }}>
-                &#8592;
-              </button>
-
-              <div className="flex-1 rounded-2xl overflow-hidden"
-                style={{
-                  background: '#fff',
-                  border: (unlocked && !claimed) ? '2px solid ' + brand.secondaryColor : '2px solid rgba(0,0,0,0.06)',
-                  opacity: (claimed || expired) ? 0.7 : 1,
-                  filter: unlocked ? 'none' : 'grayscale(0.4)',
-                }}>
-                <div className="p-4">
-                  <div className="flex items-center gap-3 mb-4">
-                    {logo ? (
-                      <div className="w-16 h-16 rounded-xl flex items-center justify-center flex-shrink-0 overflow-hidden">
-                        <img src={logo} alt={merchantName} className="w-14 h-14 object-contain" />
-                      </div>
-                    ) : (
-                      <div className="w-16 h-16 rounded-xl flex items-center justify-center text-2xl flex-shrink-0"
-                        style={{ background: 'rgba(27,79,114,0.06)' }}>🎫</div>
-                    )}
-                    <div>
-                      <div className="text-xs mb-0.5"
-                        style={{ color: unlocked ? 'rgba(0,0,0,0.4)' : 'rgba(0,0,0,0.25)' }}>
-                        {merchantName}
-                      </div>
-                      <div className="text-lg font-bold leading-tight"
-                        style={{ color: unlocked ? brand.primaryColor : 'rgba(0,0,0,0.3)' }}>
-                        {v.title}
-                      </div>
-                    </div>
-                  </div>
-                  <div className="text-xs mb-4 leading-relaxed"
-                    style={{ color: unlocked ? 'rgba(0,0,0,0.5)' : 'rgba(0,0,0,0.25)' }}>
-                    {v.description}
-                  </div>
-                  <div className="flex items-end justify-between mb-4">
-                    <div>
-                      <div className="text-xs mb-0.5" style={{ color: 'rgba(0,0,0,0.35)' }}>Minimum balance</div>
-                      <div className="text-sm font-bold"
-                        style={{ color: unlocked ? brand.primaryColor : 'rgba(0,0,0,0.3)' }}>
-                        {minBalDisplay(v)}
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <div className="text-xs mb-0.5" style={{ color: 'rgba(0,0,0,0.35)' }}>
-                        {expired ? 'Status' : 'Expires in'}
-                      </div>
-                      <div className="text-xs font-bold font-mono"
-                        style={{ color: expired ? '#DC2626' : claimed ? '#16A34A' : '#D97706' }}>
-                        {expired ? 'Expired' : claimed ? 'Claimed' : (
-                          campaign
-                            ? <VoucherCountdown campaignStart={campaign.created_at} campaignEnd={campaign.target_date} fraction={v.expiry_offset_fraction} />
-                            : '--'
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                  {claimed ? (
-                    <div className="w-full py-3 rounded-xl text-sm font-bold text-center"
-                      style={{ background: 'rgba(22,163,74,0.1)', color: '#16A34A' }}>
-                      Claimed ✓
-                    </div>
-                  ) : expired ? (
-                    <div className="w-full py-3 rounded-xl text-sm font-bold text-center"
-                      style={{ background: 'rgba(220,38,38,0.1)', color: '#DC2626' }}>
-                      Expired
-                    </div>
-                  ) : unlocked ? (
-                    <button onClick={() => setClaimModal(v)}
-                      className="w-full py-3 rounded-xl text-sm font-bold"
-                      style={{ background: brand.secondaryColor, color: brand.primaryColor }}>
-                      Claim Voucher
-                    </button>
-                  ) : (
-                    <div className="w-full py-3 rounded-xl text-xs font-semibold text-center"
-                      style={{ background: '#f0f2f5', color: 'rgba(0,0,0,0.35)' }}>
-                      {needMore > 0 ? `Save ${fmt(needMore)} more to unlock` : 'Locked'}
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              <button
-                onClick={() => setCurrent(c => Math.min(vouchers.length - 1, c + 1))}
-                disabled={current === vouchers.length - 1}
-                className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 text-sm font-bold"
-                style={{
-                  background: current === vouchers.length - 1 ? 'rgba(0,0,0,0.06)' : brand.primaryColor,
-                  color: current === vouchers.length - 1 ? 'rgba(0,0,0,0.2)' : '#fff',
-                }}>
-                &#8594;
-              </button>
-            </div>
-          )}
-
-          {vouchers.length > 0 && (
-            <div className="flex justify-center gap-1.5 mt-4">
-              {vouchers.map((_, i) => (
-                <button key={i} onClick={() => setCurrent(i)} className="rounded-full transition-all"
+          ) : v && (
+            <>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
+                {/* Prev */}
+                <button
+                  onClick={() => setCurrent(c => Math.max(0, c - 1))}
+                  disabled={current === 0}
                   style={{
-                    width: i === current ? '20px' : '6px',
-                    height: '6px',
-                    background: i === current ? brand.primaryColor : 'rgba(0,0,0,0.15)',
+                    width: 36, height: 36, flexShrink: 0,
+                    background: current === 0 ? 'var(--color-grey-light)' : 'var(--color-black)',
+                    border: 'var(--border)',
+                    color: current === 0 ? 'var(--color-grey)' : 'var(--color-white)',
+                    cursor: current === 0 ? 'not-allowed' : 'pointer',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  }}>
+                  <span className="icon-outlined icon-sm">chevron_left</span>
+                </button>
+
+                {/* Voucher card */}
+                <div style={{
+                  flex: 1,
+                  background: 'var(--color-white)',
+                  border: (unlocked && !claimed) ? '3px solid var(--color-black)' : 'var(--border)',
+                  boxShadow: (unlocked && !claimed) ? 'var(--shadow-md)' : 'none',
+                  overflow: 'hidden',
+                  opacity: (claimed || expired) ? 0.7 : 1,
+                  filter: unlocked ? 'none' : 'grayscale(0.3)',
+                }}>
+                  {/* Status bar */}
+                  <div style={{
+                    background: claimed ? 'var(--color-green)'
+                      : expired ? 'var(--color-red)'
+                      : unlocked ? 'var(--color-primary)'
+                      : 'var(--color-grey-light)',
+                    borderBottom: 'var(--border)',
+                    padding: '5px var(--space-4)',
+                    display: 'flex', alignItems: 'center', gap: 'var(--space-2)',
+                  }}>
+                    <span className="icon-outlined" style={{ fontSize: 14 }}>
+                      {claimed ? 'check_circle' : expired ? 'cancel' : unlocked ? 'lock_open' : 'lock'}
+                    </span>
+                    <span style={{ fontSize: 9, fontWeight: 'var(--weight-black)', letterSpacing: 'var(--tracking-widest)', textTransform: 'uppercase' }}>
+                      {claimed ? 'Claimed' : expired ? 'Expired' : unlocked ? 'Unlocked — ready to claim' : 'Locked'}
+                    </span>
+                  </div>
+
+                  <div style={{ padding: 'var(--space-4)' }}>
+                    {/* Merchant + title */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', marginBottom: 'var(--space-3)' }}>
+                      {logo ? (
+                        <div style={{ width: 56, height: 56, flexShrink: 0, border: 'var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+                          <img src={logo} alt={merchantName} style={{ width: 44, height: 44, objectFit: 'contain' }} />
+                        </div>
+                      ) : (
+                        <div style={{ width: 56, height: 56, flexShrink: 0, border: 'var(--border)', background: 'var(--color-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                          <span className="icon-outlined" style={{ fontSize: 24, color: 'var(--color-grey)' }}>local_activity</span>
+                        </div>
+                      )}
+                      <div>
+                        <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-grey)', fontWeight: 'var(--weight-bold)', marginBottom: 2 }}>
+                          {merchantName}
+                        </div>
+                        <div style={{ fontWeight: 'var(--weight-black)', fontSize: 'var(--text-lg)', letterSpacing: 'var(--tracking-tight)', color: unlocked ? 'var(--color-black)' : 'var(--color-grey)', fontVariationSettings: "'wdth' 100, 'opsz' 20" }}>
+                          {v.title}
+                        </div>
+                      </div>
+                    </div>
+
+                    <p style={{ fontSize: 'var(--text-sm)', color: unlocked ? 'var(--color-grey)' : 'var(--color-grey-mid)', lineHeight: 'var(--leading-normal)', marginBottom: 'var(--space-4)' }}>
+                      {v.description}
+                    </p>
+
+                    {/* Min bal + expiry */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 'var(--space-4)' }}>
+                      <div>
+                        <div style={{ fontSize: 9, fontWeight: 'var(--weight-bold)', letterSpacing: 'var(--tracking-widest)', textTransform: 'uppercase', color: 'var(--color-grey)', marginBottom: 4 }}>
+                          Minimum balance
+                        </div>
+                        <div style={{ fontWeight: 'var(--weight-bold)', fontSize: 'var(--text-sm)', color: unlocked ? 'var(--color-black)' : 'var(--color-grey)' }}>
+                          {minBalDisplay(v)}
+                        </div>
+                      </div>
+                      <div style={{ textAlign: 'right' }}>
+                        <div style={{ fontSize: 9, fontWeight: 'var(--weight-bold)', letterSpacing: 'var(--tracking-widest)', textTransform: 'uppercase', color: 'var(--color-grey)', marginBottom: 4 }}>
+                          {expired ? 'Status' : 'Expires in'}
+                        </div>
+                        <div style={{ fontFamily: 'monospace', fontWeight: 'var(--weight-black)', fontSize: 'var(--text-xs)', color: expired ? '#C0392B' : claimed ? '#2D8B45' : '#8A6700' }}>
+                          {expired ? 'Expired' : claimed ? 'Claimed' : (
+                            campaign
+                              ? <VoucherCountdown campaignStart={campaign.created_at} campaignEnd={campaign.target_date} fraction={v.expiry_offset_fraction} />
+                              : '--'
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* CTA */}
+                    {claimed ? (
+                      <div style={{
+                        padding: 'var(--space-3)',
+                        background: 'var(--color-green)',
+                        border: 'var(--border)',
+                        textAlign: 'center',
+                        fontWeight: 'var(--weight-black)',
+                        fontSize: 'var(--text-sm)',
+                        letterSpacing: 'var(--tracking-wide)',
+                        textTransform: 'uppercase',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 'var(--space-2)',
+                      }}>
+                        <span className="icon-outlined icon-sm">check_circle</span>
+                        Claimed
+                      </div>
+                    ) : expired ? (
+                      <div style={{
+                        padding: 'var(--space-3)',
+                        background: 'var(--color-red)',
+                        border: 'var(--border)',
+                        textAlign: 'center',
+                        fontWeight: 'var(--weight-black)',
+                        fontSize: 'var(--text-sm)',
+                        letterSpacing: 'var(--tracking-wide)',
+                        textTransform: 'uppercase',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 'var(--space-2)',
+                      }}>
+                        <span className="icon-outlined icon-sm">cancel</span>
+                        Expired
+                      </div>
+                    ) : unlocked ? (
+                      <button
+                        onClick={() => setClaimModal(v)}
+                        className="btn btn-primary btn-full"
+                      >
+                        <span className="icon-outlined icon-sm">redeem</span>
+                        Claim voucher
+                      </button>
+                    ) : (
+                      <div style={{
+                        padding: 'var(--space-3)',
+                        background: 'var(--color-grey-light)',
+                        border: 'var(--border)',
+                        textAlign: 'center',
+                        fontSize: 'var(--text-sm)',
+                        fontWeight: 'var(--weight-bold)',
+                        color: 'var(--color-grey)',
+                      }}>
+                        {needMore > 0 ? `Save ${fmt(needMore)} more to unlock` : 'Locked'}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Next */}
+                <button
+                  onClick={() => setCurrent(c => Math.min(vouchers.length - 1, c + 1))}
+                  disabled={current === vouchers.length - 1}
+                  style={{
+                    width: 36, height: 36, flexShrink: 0,
+                    background: current === vouchers.length - 1 ? 'var(--color-grey-light)' : 'var(--color-black)',
+                    border: 'var(--border)',
+                    color: current === vouchers.length - 1 ? 'var(--color-grey)' : 'var(--color-white)',
+                    cursor: current === vouchers.length - 1 ? 'not-allowed' : 'pointer',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  }}>
+                  <span className="icon-outlined icon-sm">chevron_right</span>
+                </button>
+              </div>
+
+              {/* Dot indicators */}
+              <div style={{ display: 'flex', justifyContent: 'center', gap: 6, marginTop: 'var(--space-4)' }}>
+                {vouchers.map((_, i) => (
+                  <button key={i} onClick={() => setCurrent(i)} style={{
+                    width: i === current ? 20 : 6,
+                    height: 6,
+                    background: i === current ? 'var(--color-black)' : 'var(--color-grey-mid)',
+                    border: 'none', padding: 0, cursor: 'pointer',
+                    transition: 'all var(--transition-base)',
                   }} />
-              ))}
-            </div>
+                ))}
+              </div>
+            </>
           )}
         </div>
       </div>
 
       {/* ── Bottom nav ── */}
-      <nav className="flex items-center justify-around px-4 py-3 border-t"
-        style={{ background: '#fff', borderColor: 'rgba(0,0,0,0.08)' }}>
+      <nav style={{
+        position: 'fixed', bottom: 0, left: 0, right: 0,
+        background: 'var(--color-white)',
+        borderTop: 'var(--border-thick)',
+        display: 'flex', alignItems: 'center', justifyContent: 'space-around',
+        padding: 'var(--space-2) var(--space-4)',
+        zIndex: 'var(--z-sticky)',
+      }}>
         {[
-          { label: 'Home', icon: '⌂', path: '/portal/home' },
-          { label: 'Rewards', icon: '★', path: '/portal/rewards' },
-          { label: 'History', icon: '↕', path: '/portal/transactions' },
-          { label: 'Profile', icon: '◎', path: '/portal/profile' },
-        ].map(item => (
-          <button key={item.path} onClick={() => navigate(item.path)} className="flex flex-col items-center gap-1">
-            <span className="text-lg leading-none"
-              style={{ color: item.path === '/portal/rewards' ? brand.primaryColor : 'rgba(0,0,0,0.3)' }}>
-              {item.icon}
-            </span>
-            <span className="text-xs"
-              style={{
-                color: item.path === '/portal/rewards' ? brand.primaryColor : 'rgba(0,0,0,0.3)',
-                fontWeight: item.path === '/portal/rewards' ? 600 : 400,
-              }}>
-              {item.label}
-            </span>
-          </button>
-        ))}
+          { label: 'Home',    icon: 'home',          path: '/portal/home'         },
+          { label: 'Rewards', icon: 'card_giftcard', path: '/portal/rewards'      },
+          { label: 'History', icon: 'receipt_long',  path: '/portal/transactions' },
+          { label: 'Profile', icon: 'person',        path: '/portal/profile'      },
+        ].map(({ label, icon, path }) => {
+          const active = path === '/portal/rewards'
+          return (
+            <button key={path} onClick={() => navigate(path)} style={{
+              display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
+              background: 'none', border: 'none', cursor: 'pointer',
+              padding: 'var(--space-1) var(--space-3)',
+              position: 'relative',
+            }}>
+              {active && (
+                <div style={{ position: 'absolute', top: -8, left: '50%', transform: 'translateX(-50%)', width: 24, height: 3, background: 'var(--color-primary)' }} />
+              )}
+              <span className="icon-outlined" style={{ fontSize: 22, color: active ? 'var(--color-black)' : 'var(--color-grey)' }}>
+                {icon}
+              </span>
+              <span style={{ fontWeight: active ? 'var(--weight-black)' : 'var(--weight-medium)', letterSpacing: 'var(--tracking-wide)', textTransform: 'uppercase', fontSize: 9, color: active ? 'var(--color-black)' : 'var(--color-grey)' }}>
+                {label}
+              </span>
+            </button>
+          )
+        })}
       </nav>
-
     </div>
   )
 }

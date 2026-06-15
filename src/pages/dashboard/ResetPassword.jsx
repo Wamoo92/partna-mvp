@@ -2,38 +2,27 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../supabase'
 
-const PARTNA_PRIMARY = '#1B4F72'
-const PARTNA_GOLD = '#D4AF37'
-
 export default function ResetPassword() {
   const navigate = useNavigate()
-  const [password, setPassword] = useState('')
+
+  const [password, setPassword]           = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
-  const [success, setSuccess] = useState(false)
-  const [validSession, setValidSession] = useState(false)
+  const [loading, setLoading]             = useState(false)
+  const [error, setError]                 = useState('')
+  const [success, setSuccess]             = useState(false)
+  const [validSession, setValidSession]   = useState(false)
   const [checkingSession, setCheckingSession] = useState(true)
 
   useEffect(() => {
-    // Supabase puts the recovery token in the URL hash
-    // onAuthStateChange fires with event 'PASSWORD_RECOVERY' when the link is clicked
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === 'PASSWORD_RECOVERY' && session) {
-        setValidSession(true)
-        setCheckingSession(false)
-      } else if (event === 'SIGNED_IN' && session) {
-        // Already signed in via recovery link
+      if ((event === 'PASSWORD_RECOVERY' || event === 'SIGNED_IN') && session) {
         setValidSession(true)
         setCheckingSession(false)
       }
     })
 
-    // Also check existing session in case page was refreshed
     supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session) {
-        setValidSession(true)
-      }
+      if (session) setValidSession(true)
       setCheckingSession(false)
     })
 
@@ -42,14 +31,9 @@ export default function ResetPassword() {
 
   async function handleReset() {
     setError('')
-    if (!password || password.length < 8) {
-      setError('Password must be at least 8 characters.')
-      return
-    }
-    if (password !== confirmPassword) {
-      setError('Passwords do not match.')
-      return
-    }
+    if (!password || password.length < 8) { setError('Password must be at least 8 characters.'); return }
+    if (password !== confirmPassword)      { setError('Passwords do not match.'); return }
+
     setLoading(true)
     try {
       const { error: updateError } = await supabase.auth.updateUser({ password })
@@ -59,7 +43,6 @@ export default function ResetPassword() {
         return
       }
       setSuccess(true)
-      // Redirect to login after 3 seconds
       setTimeout(() => navigate('/dashboard/login', { replace: true }), 3000)
     } catch (e) {
       console.error('Reset password error:', e)
@@ -68,145 +51,219 @@ export default function ResetPassword() {
     setLoading(false)
   }
 
+  const passwordsMatch = password.length >= 8 && confirmPassword.length >= 8 && password === confirmPassword
+
   if (checkingSession) return (
-    <div className="min-h-screen flex items-center justify-center" style={{ background: '#f0f2f5' }}>
-      <div className="w-8 h-8 border-4 rounded-full animate-spin"
-        style={{ borderColor: PARTNA_PRIMARY, borderTopColor: 'transparent' }} />
+    <div className="loading-screen">
+      <div className="spinner spinner-lg spinner-purple" />
     </div>
   )
 
   return (
-    <div className="min-h-screen flex flex-col" style={{ background: '#f0f2f5' }}>
+    <div style={{ minHeight: '100vh', background: 'var(--color-bg)', display: 'flex', flexDirection: 'column' }}>
 
-      {/* Header */}
-      <header className="flex items-center px-6 py-4 border-b"
-        style={{ background: '#fff', borderColor: 'rgba(0,0,0,0.08)' }}>
-        <div className="flex items-center gap-3">
-          <img src="/partna-icon.svg" alt="Partna" className="w-8 h-8" />
-          <div>
-            <div className="text-sm font-bold" style={{ color: PARTNA_PRIMARY }}>Partna</div>
-            <div className="text-xs" style={{ color: 'rgba(0,0,0,0.4)' }}>Business Portal</div>
+      {/* ── Header ── */}
+      <header style={{
+        background: 'var(--color-white)',
+        borderBottom: 'var(--border)',
+        padding: 'var(--space-4) var(--space-6)',
+        display: 'flex', alignItems: 'center', gap: 'var(--space-3)',
+      }}>
+        <img src="/partna-icon.svg" alt="Partna" style={{ width: 32, height: 32 }} />
+        <div>
+          <div style={{
+            fontWeight: 'var(--weight-black)',
+            fontSize: 'var(--text-base)',
+            letterSpacing: 'var(--tracking-tight)',
+            fontVariationSettings: "'wdth' 110, 'opsz' 16",
+          }}>
+            Part<span style={{ color: 'var(--color-primary)' }}>na</span>
+          </div>
+          <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-grey)', fontWeight: 'var(--weight-bold)', letterSpacing: 'var(--tracking-wide)' }}>
+            Business Portal
           </div>
         </div>
       </header>
 
-      <div className="flex-1 flex items-center justify-center px-6 py-12">
-        <div className="w-full max-w-md">
+      {/* ── Main ── */}
+      <div style={{
+        flex: 1,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        padding: 'var(--space-8) var(--space-6)',
+      }}>
+        <div style={{ width: '100%', maxWidth: 440 }}>
 
-          <div className="text-center mb-8">
-            <div className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4"
-              style={{ background: PARTNA_PRIMARY }}>
-              <img src="/partna-icon.svg" alt="Partna" className="w-10 h-10" />
+          {/* Logo + title */}
+          <div style={{ textAlign: 'center', marginBottom: 'var(--space-8)' }}>
+            <div style={{
+              width: 64, height: 64,
+              background: 'var(--color-black)',
+              border: success
+                ? '3px solid var(--color-green)'
+                : !validSession
+                ? '3px solid var(--color-red)'
+                : '3px solid var(--color-primary)',
+              boxShadow: 'var(--shadow-md)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              margin: '0 auto var(--space-4)',
+            }}>
+              <img src="/partna-icon.svg" alt="Partna" style={{ width: 36, height: 36 }} />
             </div>
-            <h1 className="text-2xl font-bold mb-1" style={{ color: PARTNA_PRIMARY }}>
-              {success ? 'Password updated' : 'Set new password'}
+            <h1 style={{
+              fontSize: 'var(--text-2xl)',
+              fontWeight: 'var(--weight-black)',
+              letterSpacing: 'var(--tracking-tight)',
+              fontVariationSettings: "'wdth' 110, 'opsz' 30",
+              marginBottom: 'var(--space-2)',
+            }}>
+              {success ? 'Password updated' : !validSession ? 'Link expired' : 'Set new password'}
             </h1>
-            <p className="text-sm" style={{ color: 'rgba(0,0,0,0.45)' }}>
+            <p style={{ fontSize: 'var(--text-sm)', color: 'var(--color-grey)' }}>
               {success
-                ? 'Redirecting you to login...'
-                : 'Choose a strong password for your account'}
+                ? 'Redirecting you to login…'
+                : !validSession
+                ? 'This password reset link is invalid or has expired.'
+                : 'Choose a strong password for your business account.'}
             </p>
           </div>
 
-          <div className="rounded-2xl p-6 flex flex-col gap-4" style={{ background: '#fff' }}>
+          {/* Card */}
+          <div style={{
+            background: 'var(--color-white)',
+            border: 'var(--border-thick)',
+            boxShadow: 'var(--shadow-xl)',
+            padding: 'var(--space-8)',
+            display: 'flex', flexDirection: 'column', gap: 'var(--space-4)',
+          }}>
 
-            {/* Invalid or expired link */}
+            {/* ── Invalid / expired ── */}
             {!validSession && !success && (
-              <div className="flex flex-col items-center gap-4 py-4">
-                <div className="text-4xl">⚠️</div>
-                <div className="text-center">
-                  <div className="text-sm font-bold mb-1" style={{ color: PARTNA_PRIMARY }}>
+              <>
+                <div style={{
+                  background: 'var(--color-red)',
+                  border: 'var(--border)',
+                  padding: 'var(--space-6)',
+                  textAlign: 'center',
+                }}>
+                  <div style={{
+                    width: 56, height: 56,
+                    background: 'var(--color-black)', border: 'var(--border)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    margin: '0 auto var(--space-4)',
+                  }}>
+                    <span className="icon-outlined" style={{ fontSize: 28, color: 'var(--color-white)' }}>link_off</span>
+                  </div>
+                  <div style={{ fontWeight: 'var(--weight-bold)', fontSize: 'var(--text-base)', marginBottom: 'var(--space-2)' }}>
                     Invalid or expired link
                   </div>
-                  <div className="text-xs" style={{ color: 'rgba(0,0,0,0.5)' }}>
+                  <div style={{ fontSize: 'var(--text-sm)', color: 'rgba(0,0,0,0.6)', lineHeight: 'var(--leading-normal)' }}>
                     This password reset link is invalid or has expired. Reset links are valid for 1 hour.
                   </div>
                 </div>
-                <button
-                  onClick={() => navigate('/dashboard/login')}
-                  className="w-full py-3 rounded-xl text-sm font-bold"
-                  style={{ background: PARTNA_PRIMARY, color: '#fff' }}>
+                <button onClick={() => navigate('/dashboard/login')} className="btn btn-primary btn-full btn-lg">
+                  <span className="icon-outlined icon-sm">send</span>
                   Request a new link
                 </button>
-              </div>
+              </>
             )}
 
-            {/* Success state */}
+            {/* ── Success ── */}
             {success && (
-              <div className="flex flex-col items-center gap-4 py-4">
-                <div className="w-14 h-14 rounded-full flex items-center justify-center text-2xl"
-                  style={{ background: 'rgba(22,163,74,0.1)' }}>
-                  ✓
-                </div>
-                <div className="text-center">
-                  <div className="text-sm font-bold mb-1" style={{ color: '#16A34A' }}>
+              <>
+                <div style={{
+                  background: 'var(--color-green)',
+                  border: 'var(--border)',
+                  padding: 'var(--space-6)',
+                  textAlign: 'center',
+                }}>
+                  <div style={{
+                    width: 56, height: 56,
+                    background: 'var(--color-black)', border: '3px solid var(--color-white)',
+                    boxShadow: 'var(--shadow-sm)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    margin: '0 auto var(--space-4)',
+                  }}>
+                    <span className="icon-outlined" style={{ fontSize: 28, color: 'var(--color-white)' }}>lock_reset</span>
+                  </div>
+                  <div style={{ fontWeight: 'var(--weight-black)', fontSize: 'var(--text-xl)', marginBottom: 'var(--space-2)', letterSpacing: 'var(--tracking-tight)', fontVariationSettings: "'wdth' 100, 'opsz' 24" }}>
                     Password updated successfully
                   </div>
-                  <div className="text-xs" style={{ color: 'rgba(0,0,0,0.5)' }}>
+                  <div style={{ fontSize: 'var(--text-sm)', color: 'rgba(0,0,0,0.6)', lineHeight: 'var(--leading-normal)' }}>
                     You will be redirected to the login page in a moment.
                   </div>
                 </div>
-                <button
-                  onClick={() => navigate('/dashboard/login', { replace: true })}
-                  className="w-full py-3 rounded-xl text-sm font-bold"
-                  style={{ background: PARTNA_PRIMARY, color: '#fff' }}>
+                <button onClick={() => navigate('/dashboard/login', { replace: true })} className="btn btn-black btn-full btn-lg">
+                  <span className="icon-outlined icon-sm">login</span>
                   Go to login now
                 </button>
-              </div>
+              </>
             )}
 
-            {/* Reset form */}
+            {/* ── Reset form ── */}
             {validSession && !success && (
               <>
-                <div className="flex flex-col gap-1">
-                  <label className="text-xs font-semibold" style={{ color: PARTNA_PRIMARY }}>
-                    New password
-                  </label>
-                  <input
-                    type="password"
-                    placeholder="Minimum 8 characters"
-                    value={password}
-                    onChange={e => setPassword(e.target.value)}
-                    onKeyDown={e => e.key === 'Enter' && handleReset()}
-                    className="w-full px-4 py-3 rounded-xl text-sm outline-none"
-                    style={{ background: '#f0f2f5', border: 'none', color: '#333' }}
-                  />
-                  <div className="text-xs" style={{ color: 'rgba(0,0,0,0.35)' }}>
-                    Minimum 8 characters
+                <div className="input-group">
+                  <label className="input-label">New password</label>
+                  <div className="input-wrapper">
+                    <span className="icon-outlined input-icon-left">lock</span>
+                    <input
+                      type="password"
+                      className="input"
+                      placeholder="Minimum 8 characters"
+                      value={password}
+                      onChange={e => setPassword(e.target.value)}
+                      onKeyDown={e => e.key === 'Enter' && handleReset()}
+                    />
+                  </div>
+                  <span className="input-hint">Minimum 8 characters.</span>
+                </div>
+
+                <div className="input-group">
+                  <label className="input-label">Confirm new password</label>
+                  <div className="input-wrapper">
+                    <span className="icon-outlined input-icon-left">lock</span>
+                    <input
+                      type="password"
+                      className="input"
+                      placeholder="Re-enter your new password"
+                      value={confirmPassword}
+                      onChange={e => setConfirmPassword(e.target.value)}
+                      onKeyDown={e => e.key === 'Enter' && handleReset()}
+                    />
                   </div>
                 </div>
 
-                <div className="flex flex-col gap-1">
-                  <label className="text-xs font-semibold" style={{ color: PARTNA_PRIMARY }}>
-                    Confirm new password
-                  </label>
-                  <input
-                    type="password"
-                    placeholder="Re-enter your new password"
-                    value={confirmPassword}
-                    onChange={e => setConfirmPassword(e.target.value)}
-                    onKeyDown={e => e.key === 'Enter' && handleReset()}
-                    className="w-full px-4 py-3 rounded-xl text-sm outline-none"
-                    style={{ background: '#f0f2f5', border: 'none', color: '#333' }}
-                  />
-                </div>
+                {/* Password match indicator */}
+                {password.length >= 8 && confirmPassword.length >= 8 && (
+                  <div style={{
+                    display: 'flex', alignItems: 'center', gap: 'var(--space-2)',
+                    fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-bold)',
+                    color: passwordsMatch ? '#2D8B45' : '#C0392B',
+                  }}>
+                    <span className="icon-outlined icon-sm">
+                      {passwordsMatch ? 'check_circle' : 'cancel'}
+                    </span>
+                    {passwordsMatch ? 'Passwords match' : 'Passwords do not match'}
+                  </div>
+                )}
 
                 {error && (
-                  <div className="text-xs px-4 py-3 rounded-xl"
-                    style={{ background: '#FEE2E2', color: '#991B1B' }}>
-                    {error}
+                  <div className="alert alert-danger">
+                    <span className="icon-outlined alert-icon">error_outline</span>
+                    <div className="alert-content">{error}</div>
                   </div>
                 )}
 
                 <button
                   onClick={handleReset}
                   disabled={loading}
-                  className="w-full py-3 rounded-xl text-sm font-bold mt-1"
-                  style={{
-                    background: loading ? 'rgba(27,79,114,0.4)' : PARTNA_PRIMARY,
-                    color: '#fff',
-                  }}>
-                  {loading ? 'Updating...' : 'Update password'}
+                  className="btn btn-primary btn-full btn-lg"
+                  style={{ marginTop: 'var(--space-2)' }}
+                >
+                  {loading
+                    ? <><div className="spinner spinner-sm" style={{ borderTopColor: 'var(--color-black)' }} /> Updating…</>
+                    : <><span className="icon-outlined icon-sm">lock_reset</span> Update password</>
+                  }
                 </button>
               </>
             )}
@@ -214,12 +271,16 @@ export default function ResetPassword() {
         </div>
       </div>
 
-      <footer className="text-center py-4 border-t" style={{ borderColor: 'rgba(0,0,0,0.06)' }}>
-        <span className="text-xs" style={{ color: 'rgba(0,0,0,0.3)' }}>
+      {/* ── Footer ── */}
+      <footer style={{
+        textAlign: 'center',
+        padding: 'var(--space-4) var(--space-6)',
+        borderTop: '1.5px solid var(--color-grey-light)',
+      }}>
+        <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-grey)', fontWeight: 'var(--weight-bold)', letterSpacing: 'var(--tracking-wide)' }}>
           © 2026 Partna. All rights reserved.
         </span>
       </footer>
-
     </div>
   )
 }

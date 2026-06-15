@@ -1,23 +1,10 @@
 import { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { supabase } from '../../supabase'
 import { useBrand } from '../../lib/BrandContext'
 import { getEffectiveStatus } from '../../lib/campaignUtils'
 
-// ── Shade utility: shifts a hex color lighter or darker by a percentage ──
-function shadeHex(hex, percent) {
-  const num = parseInt(hex.replace('#', ''), 16)
-  const r = Math.min(255, Math.max(0, (num >> 16) + Math.round(255 * percent / 100)))
-  const g = Math.min(255, Math.max(0, ((num >> 8) & 0xff) + Math.round(255 * percent / 100)))
-  const b = Math.min(255, Math.max(0, (num & 0xff) + Math.round(255 * percent / 100)))
-  return '#' + [r, g, b].map(v => v.toString(16).padStart(2, '0')).join('')
-}
-
-// Returns a distinct shade for each campaign index
-function campaignCardColor(primaryColor, index) {
-  const shades = [0, 20, -20, 35, -35, 50, -50]
-  return shadeHex(primaryColor, shades[index % shades.length])
-}
+// ── Helpers ────────────────────────────────────────────────────────────────
 
 function formatCardNumber(num) {
   if (!num) return '•••• •••• •••• ••••'
@@ -30,29 +17,47 @@ function formatExpiry(dateStr) {
   return `${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getFullYear()).slice(-2)}`
 }
 
-export default function Home({ customer, signOut }) {
-  const brand = useBrand()
-  const navigate = useNavigate()
+function formatUGX(amount) {
+  return 'UGX ' + Number(amount).toLocaleString('en-UG', { maximumFractionDigits: 0 })
+}
 
-  const [enrollments, setEnrollments] = useState([])
-  const [cards, setCards] = useState({}) // keyed by enrollment id
-  const [activeIdx, setActiveIdx] = useState(0)
-  const [loading, setLoading] = useState(true)
-  const [cardFlipped, setCardFlipped] = useState(false)
+function formatDate(dateStr) {
+  return new Date(dateStr).toLocaleDateString('en-UG', {
+    day: 'numeric', month: 'short', year: 'numeric',
+  })
+}
+
+// Accent colors cycling through the secondary palette per campaign slot
+const CAMPAIGN_ACCENTS = [
+  'var(--color-primary)',   // purple
+  'var(--color-yellow)',    // yellow
+  'var(--color-green)',     // green
+  'var(--color-red)',       // red
+]
+
+function campaignAccent(index) {
+  return CAMPAIGN_ACCENTS[index % CAMPAIGN_ACCENTS.length]
+}
+
+// ── Component ──────────────────────────────────────────────────────────────
+
+export default function Home({ customer, signOut }) {
+  const brand  = useBrand()
+  const navigate  = useNavigate()
+
+  const [enrollments, setEnrollments]   = useState([])
+  const [cards, setCards]               = useState({})   // keyed by enrollment id
+  const [activeIdx, setActiveIdx]       = useState(0)
+  const [loading, setLoading]           = useState(true)
+  const [cardFlipped, setCardFlipped]   = useState(false)
   const [transactions, setTransactions] = useState([])
 
-  useEffect(() => {
-    if (customer) fetchData()
-  }, [customer])
-
-  useEffect(() => {
-    setCardFlipped(false)
-  }, [activeIdx])
+  useEffect(() => { if (customer) fetchData() }, [customer])
+  useEffect(() => { setCardFlipped(false) }, [activeIdx])
 
   async function fetchData() {
     setLoading(true)
     try {
-      // Fetch all active enrollments with campaign + wallet data
       const { data: enrollData } = await supabase
         .from('customer_campaigns')
         .select('*, campaigns(*), wallets(*)')
@@ -62,20 +67,15 @@ export default function Home({ customer, signOut }) {
 
       setEnrollments(enrollData || [])
 
-      // Fetch cards per enrollment
-      if (enrollData && enrollData.length > 0) {
+      if (enrollData?.length > 0) {
         const enrollIds = enrollData.map(e => e.id)
         const { data: cardData } = await supabase
-          .from('cards')
-          .select('*')
-          .in('customer_campaign_id', enrollIds)
-
+          .from('cards').select('*').in('customer_campaign_id', enrollIds)
         const cardMap = {}
         ;(cardData || []).forEach(c => { cardMap[c.customer_campaign_id] = c })
         setCards(cardMap)
       }
 
-      // Fetch recent transactions across all campaigns
       const { data: txnData } = await supabase
         .from('transactions')
         .select('*')
@@ -83,7 +83,6 @@ export default function Home({ customer, signOut }) {
         .order('created_at', { ascending: false })
         .limit(20)
       setTransactions(txnData || [])
-
     } catch (err) {
       console.error('Error fetching home data:', err)
     } finally {
@@ -92,282 +91,525 @@ export default function Home({ customer, signOut }) {
   }
 
   const activeEnrollment = enrollments[activeIdx] || null
-  const activeCampaign = activeEnrollment?.campaigns || null
-  const activeWallet = activeEnrollment?.wallets || null
-  const activeCard = activeEnrollment ? cards[activeEnrollment.id] : null
-  const activeCardColor = campaignCardColor(brand.primaryColor, activeIdx)
+  const activeCampaign   = activeEnrollment?.campaigns || null
+  const activeWallet     = activeEnrollment?.wallets   || null
+  const activeCard       = activeEnrollment ? cards[activeEnrollment.id] : null
+  const accent           = campaignAccent(activeIdx)
 
-  const balance = activeWallet ? Number(activeWallet.balance) : 0
-  const target = activeCampaign ? Number(activeCampaign.target_amount) : 0
-  const progress = target > 0 ? Math.min((balance / target) * 100, 100) : 0
-  const remaining = target > 0 ? Math.max(target - balance, 0) : 0
+  const balance   = activeWallet    ? Number(activeWallet.balance)          : 0
+  const target    = activeCampaign  ? Number(activeCampaign.target_amount)  : 0
+  const progress  = target > 0      ? Math.min((balance / target) * 100, 100) : 0
+  const remaining = target > 0      ? Math.max(target - balance, 0)           : 0
   const daysRemaining = activeCampaign?.target_date
     ? Math.max(Math.ceil((new Date(activeCampaign.target_date).getTime() - Date.now()) / 86400000), 0)
     : 0
 
-  const kycPending = customer?.kyc_status === 'pending'
+  const kycPending     = customer?.kyc_status === 'pending'
   const campaignStatus = activeCampaign ? getEffectiveStatus(activeCampaign) : 'active'
   const campaignLocked = campaignStatus === 'paused' || campaignStatus === 'deleted'
 
-  // Transactions filtered to active campaign
-  const campaignTxns = transactions.filter(t => t.campaign_id === activeCampaign?.id).slice(0, 5)
+  const campaignTxns = transactions
+    .filter(t => t.campaign_id === activeCampaign?.id)
+    .slice(0, 5)
 
-  function formatUGX(amount) {
-    return 'UGX ' + Number(amount).toLocaleString('en-UG', { maximumFractionDigits: 0 })
-  }
-
-  function formatDate(dateStr) {
-    return new Date(dateStr).toLocaleDateString('en-UG', { day: 'numeric', month: 'short', year: 'numeric' })
-  }
-
-  function txIcon(type) { return type === 'deposit' ? '↓' : '↑' }
-  function txColor(type) { return type === 'deposit' ? '#16A34A' : '#DC2626' }
+  const hasMultiple = enrollments.length > 1
 
   function getRewardsStrip() {
     if (!activeWallet || !activeCampaign || target === 0 || campaignLocked) return null
     const pct = (balance / target) * 100
-    if (pct >= 75) return { title: '🎯 Next voucher at 100%', body: 'Save ' + formatUGX(Math.max(target - balance, 0)) + ' more to reach your goal' }
-    if (pct >= 50) return { title: '🎯 Next voucher at 75%', body: 'Save ' + formatUGX(Math.max(target * 0.75 - balance, 0)) + ' more to unlock your next voucher' }
-    if (pct >= 25) return { title: '🎯 Next voucher at 50%', body: 'Save ' + formatUGX(Math.max(target * 0.50 - balance, 0)) + ' more to unlock your next voucher' }
-    return { title: '🎯 First voucher at 25%', body: 'Save ' + formatUGX(Math.max(target * 0.25 - balance, 0)) + ' more to unlock your first voucher' }
+    if (pct >= 75) return {
+      icon: 'emoji_events',
+      title: 'Next voucher at 100%',
+      body: `Save ${formatUGX(Math.max(target - balance, 0))} more to reach your goal`,
+    }
+    if (pct >= 50) return {
+      icon: 'local_activity',
+      title: 'Next voucher at 75%',
+      body: `Save ${formatUGX(Math.max(target * 0.75 - balance, 0))} more to unlock your next voucher`,
+    }
+    if (pct >= 25) return {
+      icon: 'local_activity',
+      title: 'Next voucher at 50%',
+      body: `Save ${formatUGX(Math.max(target * 0.5 - balance, 0))} more to unlock your next voucher`,
+    }
+    return {
+      icon: 'stars',
+      title: 'First voucher at 25%',
+      body: `Save ${formatUGX(Math.max(target * 0.25 - balance, 0))} more to unlock your first voucher`,
+    }
   }
 
   const rewardsStrip = getRewardsStrip()
 
+  // ── Loading ──
   if (loading) return (
-    <div className="min-h-screen flex items-center justify-center" style={{ background: '#f0f2f5' }}>
-      <div className="w-8 h-8 border-4 border-t-transparent rounded-full animate-spin"
-        style={{ borderColor: brand.primaryColor, borderTopColor: 'transparent' }} />
+    <div className="loading-screen">
+      <div className="spinner spinner-lg spinner-purple" />
     </div>
   )
 
-  if (enrollments.length === 0) {
-    return (
-      <div className="min-h-screen flex flex-col items-center justify-center gap-4 px-6"
-        style={{ background: '#f0f2f5' }}>
-        <div className="text-3xl">🎯</div>
-        <div className="text-sm font-bold text-center" style={{ color: brand.primaryColor }}>
-          You're not enrolled in any campaigns yet
-        </div>
-        <button onClick={() => navigate('/portal/select-campaign')}
-          className="px-6 py-3 rounded-xl text-sm font-bold"
-          style={{ background: brand.primaryColor, color: '#fff' }}>
+  // ── Empty ──
+  if (enrollments.length === 0) return (
+    <div style={{
+      minHeight: '100vh',
+      background: 'var(--color-bg)',
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: 'center',
+      justifyContent: 'center',
+      padding: 'var(--space-8)',
+      gap: 'var(--space-4)',
+    }}>
+      <div className="empty-state">
+        <span className="icon-outlined empty-state-icon">savings</span>
+        <div className="empty-state-title">No campaigns yet</div>
+        <p className="empty-state-body">
+          You're not enrolled in any savings campaigns. Browse available campaigns to get started.
+        </p>
+        <button
+          onClick={() => navigate('/portal/select-campaign')}
+          className="btn btn-primary btn-lg"
+        >
+          <span className="icon-outlined icon-sm">explore</span>
           Browse campaigns
         </button>
       </div>
-    )
-  }
-
-  const CARD_W = 300
-  const CARD_H = 190
-  const hasMultiple = enrollments.length > 1
+    </div>
+  )
 
   return (
-    <div className="min-h-screen flex flex-col" style={{ background: '#f0f2f5' }}>
+    <div style={{ minHeight: '100vh', background: 'var(--color-bg)', display: 'flex', flexDirection: 'column' }}>
 
-      {/* Header */}
-      <header className="flex items-center justify-between px-4 py-3"
-        style={{ background: campaignLocked ? '#6B7280' : activeCardColor }}>
-        <div className="flex items-center gap-2">
-          <img src={brand.logoUrl} alt={brand.businessName} className="w-8 h-8 object-contain"
-            style={{ mixBlendMode: 'screen' }} />
+      {/* ── Header ── */}
+      <header style={{
+        background: 'var(--color-black)',
+        borderBottom: 'var(--border)',
+        padding: 'var(--space-3) var(--space-5)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        position: 'sticky',
+        top: 0,
+        zIndex: 'var(--z-sticky)',
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
+          {brand.logoUrl && (
+            <div style={{
+              width: 32, height: 32,
+              background: accent,
+              border: '2px solid var(--color-black)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              flexShrink: 0,
+            }}>
+              <img src={brand.logoUrl} alt={brand.businessName}
+                style={{ width: 22, height: 22, objectFit: 'contain' }} />
+            </div>
+          )}
           <div>
-            <div className="text-white text-xs font-semibold">{brand.businessName}</div>
-            <div className="text-xs" style={{ color: 'rgba(255,255,255,0.5)' }}>
+            <div style={{
+              color: 'var(--color-white)',
+              fontWeight: 'var(--weight-bold)',
+              fontSize: 'var(--text-sm)',
+              letterSpacing: 'var(--tracking-tight)',
+              fontVariationSettings: "'wdth' 100, 'opsz' 14",
+            }}>
+              {brand.businessName}
+            </div>
+            <div style={{
+              color: accent === 'var(--color-primary)' ? 'var(--color-primary)' : accent,
+              fontSize: 'var(--text-xs)',
+              fontWeight: 'var(--weight-bold)',
+              letterSpacing: 'var(--tracking-wide)',
+            }}>
               {activeCampaign?.name || 'Savings Program'}
             </div>
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          <button onClick={() => { signOut(); navigate('/portal') }}
-            className="text-xs font-semibold px-3 py-1.5 rounded-lg"
-            style={{ background: 'rgba(255,255,255,0.15)', color: '#fff' }}>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+          <button
+            onClick={() => { signOut(); navigate('/portal') }}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 'var(--space-1)',
+              padding: '6px var(--space-3)',
+              border: '1.5px solid rgba(255,255,255,0.2)',
+              background: 'transparent',
+              color: 'var(--color-white)',
+              fontSize: 'var(--text-xs)',
+              fontWeight: 'var(--weight-bold)',
+              letterSpacing: 'var(--tracking-wide)',
+              textTransform: 'uppercase',
+              cursor: 'pointer',
+              transition: 'border-color var(--transition-base)',
+            }}
+            onMouseEnter={e => e.currentTarget.style.borderColor = 'rgba(255,255,255,0.6)'}
+            onMouseLeave={e => e.currentTarget.style.borderColor = 'rgba(255,255,255,0.2)'}
+          >
+            <span className="icon-outlined icon-xs">logout</span>
             Log out
           </button>
-          <button onClick={() => navigate('/portal/profile')}
-            className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold"
-            style={{ background: brand.secondaryColor, color: brand.primaryColor }}>
+
+          <button
+            onClick={() => navigate('/portal/profile')}
+            style={{
+              width: 36, height: 36,
+              background: accent,
+              border: '2px solid var(--color-white)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontWeight: 'var(--weight-black)',
+              fontSize: 'var(--text-xs)',
+              color: 'var(--color-black)',
+              cursor: 'pointer',
+              flexShrink: 0,
+              letterSpacing: 'var(--tracking-tight)',
+            }}>
             {customer?.first_name?.[0]}{customer?.last_name?.[0]}
           </button>
         </div>
       </header>
 
-      {/* Campaign cancelled banner */}
+      {/* ── Campaign cancelled banner ── */}
       {campaignLocked && (
-        <div className="w-full flex items-start gap-3 px-4 py-4" style={{ background: '#DC2626' }}>
-          <span className="text-xl flex-shrink-0">⚠️</span>
-          <div className="text-left flex-1">
-            <div className="text-xs font-bold text-white">
+        <div style={{
+          background: 'var(--color-red)',
+          border: 'none',
+          borderBottom: '3px solid var(--color-black)',
+          padding: 'var(--space-3) var(--space-5)',
+          display: 'flex',
+          alignItems: 'flex-start',
+          gap: 'var(--space-3)',
+        }}>
+          <span className="icon-outlined" style={{ fontSize: 20, color: 'var(--color-black)', flexShrink: 0, marginTop: 1 }}>
+            warning
+          </span>
+          <div>
+            <div style={{ fontWeight: 'var(--weight-bold)', fontSize: 'var(--text-sm)' }}>
               {brand.businessName} has cancelled this campaign
             </div>
-            <div className="text-xs mt-0.5" style={{ color: 'rgba(255,255,255,0.85)' }}>
+            <div style={{ fontSize: 'var(--text-xs)', color: 'rgba(0,0,0,0.6)', marginTop: 2 }}>
               All funds will be automatically refunded to your payment source within 2–5 working days.
             </div>
           </div>
         </div>
       )}
 
-      {/* KYC banner */}
+      {/* ── KYC banner ── */}
       {kycPending && !campaignLocked && (
-        <button onClick={() => navigate('/portal/kyc')}
-          className="w-full flex items-center gap-3 px-4 py-3"
-          style={{ background: '#D97706' }}>
-          <span className="text-lg flex-shrink-0">🔒</span>
-          <div className="text-left flex-1">
-            <div className="text-xs font-bold text-white">Platform features are locked</div>
-            <div className="text-xs" style={{ color: 'rgba(255,255,255,0.85)' }}>
+        <button
+          onClick={() => navigate('/portal/kyc')}
+          style={{
+            width: '100%',
+            background: 'var(--color-yellow)',
+            border: 'none',
+            borderBottom: '3px solid var(--color-black)',
+            padding: 'var(--space-3) var(--space-5)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 'var(--space-3)',
+            cursor: 'pointer',
+            textAlign: 'left',
+          }}>
+          <span className="icon-outlined" style={{ fontSize: 20, color: 'var(--color-black)', flexShrink: 0 }}>
+            lock
+          </span>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontWeight: 'var(--weight-bold)', fontSize: 'var(--text-sm)' }}>
+              Platform features are locked
+            </div>
+            <div style={{ fontSize: 'var(--text-xs)', color: 'rgba(0,0,0,0.6)' }}>
               Tap to complete your identity verification
             </div>
           </div>
-          <span className="text-white text-sm flex-shrink-0">→</span>
+          <span className="icon-outlined" style={{ fontSize: 18, color: 'var(--color-black)', flexShrink: 0 }}>
+            arrow_forward
+          </span>
         </button>
       )}
 
-      {/* Hero */}
-      <div className="px-5 pt-5 pb-10"
-        style={{ background: campaignLocked ? '#6B7280' : activeCardColor }}>
+      {/* ── Hero panel ── */}
+      <div style={{
+        background: 'var(--color-black)',
+        padding: 'var(--space-5) var(--space-5) var(--space-8)',
+        borderBottom: `4px solid ${accent === 'var(--color-primary)' ? 'var(--color-primary)' : accent}`,
+      }}>
 
-        <div className="mb-4">
-          <div className="text-xs mb-1" style={{ color: 'rgba(255,255,255,0.6)' }}>
+        {/* Balance */}
+        <div style={{ marginBottom: 'var(--space-5)' }}>
+          <div style={{
+            fontSize: 'var(--text-xs)',
+            fontWeight: 'var(--weight-bold)',
+            letterSpacing: 'var(--tracking-widest)',
+            textTransform: 'uppercase',
+            color: 'rgba(255,255,255,0.4)',
+            marginBottom: 'var(--space-1)',
+          }}>
             Welcome back, {customer?.first_name}
           </div>
-          <div className="text-white text-3xl font-bold mb-0.5">{formatUGX(balance)}</div>
-          <div className="text-xs" style={{ color: 'rgba(255,255,255,0.6)' }}>
-            {campaignLocked ? 'pending refund' : `saved toward ${activeCampaign?.name || '—'}`}
+          <div style={{
+            fontSize: 'var(--text-4xl)',
+            fontWeight: 'var(--weight-black)',
+            color: 'var(--color-white)',
+            lineHeight: 1,
+            letterSpacing: 'var(--tracking-tight)',
+            fontVariationSettings: "'wdth' 112, 'opsz' 48",
+            marginBottom: 'var(--space-1)',
+          }}>
+            {formatUGX(balance)}
+          </div>
+          <div style={{
+            fontSize: 'var(--text-xs)',
+            fontWeight: 'var(--weight-bold)',
+            color: campaignLocked ? 'var(--color-red)' : 'rgba(255,255,255,0.45)',
+            letterSpacing: 'var(--tracking-wide)',
+            textTransform: 'uppercase',
+          }}>
+            {campaignLocked ? '⚠ Pending refund' : `Saved toward ${activeCampaign?.name || '—'}`}
           </div>
         </div>
 
-        {/* ── CAMPAIGN CARD CAROUSEL ── */}
-        <div className="flex items-center justify-center gap-3 mb-5">
+        {/* ── Card carousel ── */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 'var(--space-3)', marginBottom: 'var(--space-4)' }}>
 
           {hasMultiple && (
             <button
               onClick={() => setActiveIdx(i => Math.max(0, i - 1))}
               disabled={activeIdx === 0}
-              className="w-9 h-9 rounded-full flex items-center justify-center text-white font-bold flex-shrink-0"
               style={{
-                background: activeIdx === 0 ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.25)',
-                opacity: activeIdx === 0 ? 0.4 : 1,
+                width: 36, height: 36,
+                border: '2px solid rgba(255,255,255,0.2)',
+                background: 'transparent',
+                color: 'var(--color-white)',
+                cursor: activeIdx === 0 ? 'not-allowed' : 'pointer',
+                opacity: activeIdx === 0 ? 0.3 : 1,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                flexShrink: 0,
               }}>
-              ←
+              <span className="icon-outlined icon-sm">chevron_left</span>
             </button>
           )}
 
-          {/* Flippable card */}
+          {/* Flippable card — neobrutalism */}
           <div
-            className={campaignLocked ? '' : 'cursor-pointer'}
-            style={{ perspective: '800px', width: `${CARD_W}px`, height: `${CARD_H}px` }}
-            onClick={() => !campaignLocked && setCardFlipped(!cardFlipped)}>
+            onClick={() => !campaignLocked && setCardFlipped(f => !f)}
+            style={{
+              perspective: '800px',
+              width: 300,
+              height: 186,
+              cursor: campaignLocked ? 'default' : 'pointer',
+              flexShrink: 0,
+            }}>
             <div style={{
-              width: `${CARD_W}px`, height: `${CARD_H}px`,
-              position: 'relative', transformStyle: 'preserve-3d',
-              transition: 'transform 0.6s ease',
+              width: 300, height: 186,
+              position: 'relative',
+              transformStyle: 'preserve-3d',
+              transition: 'transform 0.55s ease',
               transform: !campaignLocked && cardFlipped ? 'rotateY(180deg)' : 'rotateY(0deg)',
-              filter: campaignLocked ? 'grayscale(1) opacity(0.6)' : 'none',
+              filter: campaignLocked ? 'grayscale(0.8) opacity(0.6)' : 'none',
             }}>
 
               {/* ── CARD FRONT ── */}
-              <div className="rounded-2xl absolute inset-0 overflow-hidden" style={{
-                backfaceVisibility: 'hidden', WebkitBackfaceVisibility: 'hidden',
-                background: campaignLocked ? '#9CA3AF' : activeCardColor,
-                border: `2px solid ${brand.secondaryColor}`,
+              <div style={{
+                position: 'absolute', inset: 0,
+                backfaceVisibility: 'hidden',
+                WebkitBackfaceVisibility: 'hidden',
+                background: 'var(--color-white)',
+                border: '3px solid var(--color-black)',
+                boxShadow: `6px 6px 0px 0px ${accent === 'var(--color-primary)' ? '#AE7AFF' : accent.replace('var(', '').replace(')', '')}`,
+                padding: 'var(--space-4)',
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'space-between',
+                overflow: 'hidden',
               }}>
-                <div className="absolute inset-0"
-                  style={{ background: 'linear-gradient(135deg, rgba(212,175,55,0.25) 0%, transparent 60%)' }} />
-                {/* Logo */}
-                <div className="absolute top-4 left-4">
-                  <img src={brand.logoUrl} alt="" className="object-contain"
-                    style={{ width: '36px', height: '36px', mixBlendMode: 'screen' }} />
+                {/* Top accent strip */}
+                <div style={{
+                  position: 'absolute', top: 0, left: 0, right: 0,
+                  height: 5,
+                  background: 'var(--color-black)',
+                }} />
+
+                {/* Top row */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 8 }}>
+                  <div style={{
+                    fontWeight: 'var(--weight-black)',
+                    fontSize: 'var(--text-xs)',
+                    letterSpacing: 'var(--tracking-wider)',
+                    textTransform: 'uppercase',
+                    color: 'var(--color-black)',
+                  }}>
+                    {brand.businessName}
+                  </div>
+                  {/* Chip */}
+                  <div style={{
+                    width: 34, height: 24,
+                    background: 'linear-gradient(135deg, #EDE5A6, #CFA255)',
+                    border: '1.5px solid var(--color-black)',
+                  }} />
                 </div>
-                {/* Mastercard circles */}
-                <div className="absolute top-4 right-4 flex">
-                  <div className="w-7 h-7 rounded-full opacity-90" style={{ background: '#EB001B' }} />
-                  <div className="w-7 h-7 rounded-full opacity-90 -ml-3" style={{ background: '#F79E1B' }} />
-                </div>
-                {/* Chip */}
-                <div className="absolute rounded"
-                  style={{ width: '40px', height: '28px', top: '70px', left: '16px', background: 'linear-gradient(135deg,#EDE5A6,#CFA255)' }} />
-                {/* Campaign name — top right mid */}
-                <div className="absolute font-semibold"
-                  style={{ top: '72px', right: '16px', color: 'rgba(255,255,255,0.65)', fontSize: '9px', maxWidth: '140px', textAlign: 'right' }}>
+
+                {/* Campaign name */}
+                <div style={{
+                  fontSize: 'var(--text-xs)',
+                  fontWeight: 'var(--weight-bold)',
+                  letterSpacing: 'var(--tracking-wide)',
+                  textTransform: 'uppercase',
+                  color: 'var(--color-grey)',
+                }}>
                   {activeCampaign?.name}
                 </div>
+
                 {/* Card number */}
-                <div className="absolute font-mono font-semibold"
-                  style={{ bottom: '44px', left: '16px', right: '16px', color: 'rgba(255,255,255,0.9)', fontSize: '15px', letterSpacing: '2px' }}>
+                <div style={{
+                  fontFamily: 'monospace',
+                  fontSize: 'var(--text-md)',
+                  fontWeight: 'var(--weight-bold)',
+                  letterSpacing: '0.15em',
+                  color: 'var(--color-black)',
+                }}>
                   {formatCardNumber(activeCard?.card_number)}
                 </div>
-                {/* Cardholder + Expiry */}
-                <div className="absolute flex justify-between items-end"
-                  style={{ bottom: '16px', left: '16px', right: '16px' }}>
+
+                {/* Bottom row */}
+                <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between' }}>
                   <div>
-                    <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '8px', marginBottom: '2px' }}>CARD HOLDER</div>
-                    <div className="font-semibold uppercase tracking-wide"
-                      style={{ color: 'rgba(255,255,255,0.9)', fontSize: '11px' }}>
+                    <div style={{
+                      fontSize: 9,
+                      fontWeight: 'var(--weight-bold)',
+                      letterSpacing: 'var(--tracking-widest)',
+                      textTransform: 'uppercase',
+                      color: 'var(--color-grey)',
+                      marginBottom: 2,
+                    }}>
+                      Cardholder
+                    </div>
+                    <div style={{
+                      fontWeight: 'var(--weight-black)',
+                      fontSize: 'var(--text-xs)',
+                      textTransform: 'uppercase',
+                      letterSpacing: 'var(--tracking-wide)',
+                      color: 'var(--color-black)',
+                    }}>
                       {customer?.first_name} {customer?.last_name}
                     </div>
                   </div>
-                  <div className="text-right">
-                    <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '8px', marginBottom: '2px' }}>
-                      {campaignLocked ? 'STATUS' : 'EXPIRES'}
+
+                  <div style={{ textAlign: 'right' }}>
+                    <div style={{
+                      fontSize: 9, fontWeight: 'var(--weight-bold)',
+                      letterSpacing: 'var(--tracking-widest)',
+                      textTransform: 'uppercase',
+                      color: 'var(--color-grey)', marginBottom: 2,
+                    }}>
+                      {campaignLocked ? 'Status' : 'Expires'}
                     </div>
-                    <div className="font-mono font-semibold"
-                      style={{ color: 'rgba(255,255,255,0.9)', fontSize: '11px' }}>
+                    <div style={{
+                      fontFamily: 'monospace',
+                      fontWeight: 'var(--weight-bold)',
+                      fontSize: 'var(--text-xs)',
+                      color: campaignLocked ? '#C0392B' : 'var(--color-black)',
+                    }}>
                       {campaignLocked ? 'LOCKED' : formatExpiry(activeCard?.expiry_date)}
                     </div>
                   </div>
+
+                  {/* Mastercard circles */}
+                  <div style={{ display: 'flex' }}>
+                    <div style={{ width: 26, height: 26, borderRadius: '50%', background: '#EB001B', border: '2px solid var(--color-black)' }} />
+                    <div style={{ width: 26, height: 26, borderRadius: '50%', background: '#F79E1B', border: '2px solid var(--color-black)', marginLeft: -10 }} />
+                  </div>
                 </div>
+
                 {!campaignLocked && (
-                  <div className="absolute bottom-1 left-0 right-0 text-center"
-                    style={{ color: 'rgba(255,255,255,0.25)', fontSize: '8px' }}>tap to flip</div>
+                  <div style={{
+                    position: 'absolute', bottom: 4, left: 0, right: 0,
+                    textAlign: 'center',
+                    fontSize: 9,
+                    fontWeight: 'var(--weight-bold)',
+                    letterSpacing: 'var(--tracking-widest)',
+                    textTransform: 'uppercase',
+                    color: 'var(--color-grey-mid)',
+                  }}>
+                    tap to flip
+                  </div>
                 )}
               </div>
 
               {/* ── CARD BACK ── */}
               {!campaignLocked && (
-                <div className="rounded-2xl absolute inset-0 overflow-hidden" style={{
-                  backfaceVisibility: 'hidden', WebkitBackfaceVisibility: 'hidden',
-                  transform: 'rotateY(180deg)', background: '#0f2d40',
-                  border: `2px solid ${brand.secondaryColor}`,
+                <div style={{
+                  position: 'absolute', inset: 0,
+                  backfaceVisibility: 'hidden',
+                  WebkitBackfaceVisibility: 'hidden',
+                  transform: 'rotateY(180deg)',
+                  background: 'var(--color-black)',
+                  border: '3px solid var(--color-black)',
+                  boxShadow: '6px 6px 0px 0px var(--color-primary)',
+                  overflow: 'hidden',
                 }}>
                   {/* Magnetic stripe */}
-                  <div className="absolute w-full" style={{ height: '40px', top: '28px', background: '#111' }} />
-                  {/* Signature strip + CVV */}
-                  <div className="absolute flex items-center" style={{ top: '86px', left: '16px', right: '16px' }}>
-                    <div className="flex-1 rounded-l"
-                      style={{ height: '32px', background: 'repeating-linear-gradient(90deg, #e8e8e8 0px, #e8e8e8 4px, #ccc 4px, #ccc 8px)' }} />
-                    <div className="rounded-r flex items-center justify-center font-mono font-bold"
-                      style={{ width: '48px', height: '32px', background: '#fff', color: '#333', fontSize: '14px' }}>
+                  <div style={{ position: 'absolute', top: 28, left: 0, right: 0, height: 40, background: '#1a1a1a' }} />
+                  {/* Signature + CVV */}
+                  <div style={{ position: 'absolute', top: 82, left: 16, right: 16, display: 'flex', alignItems: 'center' }}>
+                    <div style={{
+                      flex: 1, height: 32,
+                      background: 'repeating-linear-gradient(90deg, #e8e8e8 0, #e8e8e8 4px, #ccc 4px, #ccc 8px)',
+                    }} />
+                    <div style={{
+                      width: 48, height: 32,
+                      background: 'var(--color-white)',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      fontFamily: 'monospace',
+                      fontWeight: 'var(--weight-black)',
+                      fontSize: 'var(--text-sm)',
+                      color: 'var(--color-black)',
+                      border: '2px solid var(--color-black)',
+                    }}>
                       {activeCard?.cvv || '•••'}
                     </div>
                   </div>
-                  <div className="absolute text-right"
-                    style={{ top: '122px', right: '16px', color: 'rgba(255,255,255,0.4)', fontSize: '9px' }}>CVV</div>
-                  {/* Card number on back */}
-                  <div className="absolute font-mono"
-                    style={{ bottom: '40px', left: '16px', color: 'rgba(255,255,255,0.4)', fontSize: '11px', letterSpacing: '1px' }}>
+                  <div style={{
+                    position: 'absolute', top: 118, right: 16,
+                    fontSize: 9, fontWeight: 'var(--weight-bold)',
+                    letterSpacing: 'var(--tracking-widest)',
+                    textTransform: 'uppercase',
+                    color: 'rgba(255,255,255,0.3)',
+                  }}>CVV</div>
+                  {/* Card number */}
+                  <div style={{
+                    position: 'absolute', bottom: 40, left: 16,
+                    fontFamily: 'monospace',
+                    fontSize: 'var(--text-xs)',
+                    color: 'rgba(255,255,255,0.35)',
+                    letterSpacing: '0.1em',
+                  }}>
                     {formatCardNumber(activeCard?.card_number)}
                   </div>
-                  {/* Expiry + draw code on back */}
-                  <div className="absolute flex justify-between items-end"
-                    style={{ bottom: '16px', left: '16px', right: '16px' }}>
+                  {/* Expiry + Draw code */}
+                  <div style={{
+                    position: 'absolute', bottom: 14, left: 16, right: 16,
+                    display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end',
+                  }}>
                     <div>
-                      <div style={{ color: 'rgba(255,255,255,0.3)', fontSize: '8px', marginBottom: '1px' }}>VALID THRU</div>
-                      <div className="font-mono" style={{ color: 'rgba(255,255,255,0.5)', fontSize: '10px' }}>
+                      <div style={{ fontSize: 9, letterSpacing: 'var(--tracking-widest)', textTransform: 'uppercase', color: 'rgba(255,255,255,0.3)', marginBottom: 2 }}>
+                        Valid thru
+                      </div>
+                      <div style={{ fontFamily: 'monospace', fontSize: 'var(--text-xs)', color: 'rgba(255,255,255,0.5)' }}>
                         {formatExpiry(activeCard?.expiry_date)}
                       </div>
                     </div>
-                    <div className="text-right">
-                      <div style={{ color: 'rgba(255,255,255,0.3)', fontSize: '8px', marginBottom: '1px' }}>DRAW CODE</div>
-                      <div className="font-mono font-bold" style={{ color: brand.secondaryColor, fontSize: '10px' }}>
+                    <div style={{ textAlign: 'right' }}>
+                      <div style={{ fontSize: 9, letterSpacing: 'var(--tracking-widest)', textTransform: 'uppercase', color: 'rgba(255,255,255,0.3)', marginBottom: 2 }}>
+                        Draw code
+                      </div>
+                      <div style={{
+                        fontFamily: 'monospace',
+                        fontWeight: 'var(--weight-black)',
+                        fontSize: 'var(--text-xs)',
+                        color: 'var(--color-primary)',
+                      }}>
                         {activeEnrollment?.draw_code || '——'}
                       </div>
                     </div>
-                  </div>
-                  {/* Mastercard circles */}
-                  <div className="absolute top-4 right-4 flex">
-                    <div className="w-6 h-6 rounded-full opacity-70" style={{ background: '#EB001B' }} />
-                    <div className="w-6 h-6 rounded-full opacity-70 -ml-2" style={{ background: '#F79E1B' }} />
                   </div>
                 </div>
               )}
@@ -378,212 +620,413 @@ export default function Home({ customer, signOut }) {
             <button
               onClick={() => setActiveIdx(i => Math.min(enrollments.length - 1, i + 1))}
               disabled={activeIdx === enrollments.length - 1}
-              className="w-9 h-9 rounded-full flex items-center justify-center text-white font-bold flex-shrink-0"
               style={{
-                background: activeIdx === enrollments.length - 1 ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.25)',
-                opacity: activeIdx === enrollments.length - 1 ? 0.4 : 1,
+                width: 36, height: 36,
+                border: '2px solid rgba(255,255,255,0.2)',
+                background: 'transparent',
+                color: 'var(--color-white)',
+                cursor: activeIdx === enrollments.length - 1 ? 'not-allowed' : 'pointer',
+                opacity: activeIdx === enrollments.length - 1 ? 0.3 : 1,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                flexShrink: 0,
               }}>
-              →
+              <span className="icon-outlined icon-sm">chevron_right</span>
             </button>
           )}
         </div>
 
         {/* Dot indicators */}
         {hasMultiple && (
-          <div className="flex justify-center gap-1.5 mb-4">
+          <div style={{ display: 'flex', justifyContent: 'center', gap: 6, marginBottom: 'var(--space-4)' }}>
             {enrollments.map((_, i) => (
-              <button key={i} onClick={() => setActiveIdx(i)}
-                className="rounded-full transition-all"
+              <button
+                key={i}
+                onClick={() => setActiveIdx(i)}
                 style={{
-                  width: i === activeIdx ? '20px' : '6px',
-                  height: '6px',
-                  background: i === activeIdx ? '#fff' : 'rgba(255,255,255,0.35)',
-                }} />
+                  width: i === activeIdx ? 20 : 6,
+                  height: 6,
+                  background: i === activeIdx ? 'var(--color-primary)' : 'rgba(255,255,255,0.25)',
+                  border: 'none',
+                  cursor: 'pointer',
+                  padding: 0,
+                  transition: 'all var(--transition-base)',
+                }}
+              />
             ))}
           </div>
         )}
 
         {/* Add another campaign */}
-        <div className="flex justify-center mb-4">
-          <button onClick={() => navigate('/portal/select-campaign')}
-            className="text-xs font-semibold px-4 py-2 rounded-xl"
-            style={{ background: 'rgba(255,255,255,0.15)', color: '#fff' }}>
-            + Add another campaign
+        <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 'var(--space-4)' }}>
+          <button
+            onClick={() => navigate('/portal/select-campaign')}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 'var(--space-2)',
+              padding: '6px var(--space-4)',
+              border: '1.5px solid rgba(255,255,255,0.2)',
+              background: 'transparent',
+              color: 'var(--color-white)',
+              fontSize: 'var(--text-xs)',
+              fontWeight: 'var(--weight-bold)',
+              letterSpacing: 'var(--tracking-wide)',
+              textTransform: 'uppercase',
+              cursor: 'pointer',
+              transition: 'border-color var(--transition-base)',
+            }}
+            onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--color-primary)'}
+            onMouseLeave={e => e.currentTarget.style.borderColor = 'rgba(255,255,255,0.2)'}
+          >
+            <span className="icon-outlined icon-xs">add</span>
+            Add campaign
           </button>
         </div>
 
         {/* Progress bar */}
-        <div className="mb-2">
-          <div className="flex justify-between text-xs mb-1.5" style={{ color: 'rgba(255,255,255,0.75)' }}>
-            <span>{progress.toFixed(0)}% of goal</span>
-            <span>Target: {formatUGX(target)}</span>
+        <div>
+          <div style={{
+            display: 'flex', justifyContent: 'space-between',
+            marginBottom: 'var(--space-2)',
+          }}>
+            <span style={{ fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-bold)', color: 'rgba(255,255,255,0.6)' }}>
+              {progress.toFixed(0)}% of goal
+            </span>
+            <span style={{ fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-bold)', color: 'rgba(255,255,255,0.6)' }}>
+              Target: {formatUGX(target)}
+            </span>
           </div>
-          <div className="w-full h-2 rounded-full" style={{ background: 'rgba(255,255,255,0.2)' }}>
-            <div className="h-2 rounded-full transition-all" style={{
-              width: `${progress}%`,
-              background: campaignLocked ? 'rgba(255,255,255,0.4)'
-                : progress >= 75 ? '#22C55E'
-                : progress >= 50 ? brand.secondaryColor
-                : '#F59E0B',
-            }} />
+          <div className="progress-bar-track" style={{ background: 'rgba(255,255,255,0.15)' }}>
+            <div
+              className="progress-bar-fill"
+              style={{
+                width: `${progress}%`,
+                background: campaignLocked
+                  ? 'rgba(255,255,255,0.3)'
+                  : progress >= 75 ? 'var(--color-green)'
+                  : progress >= 50 ? 'var(--color-yellow)'
+                  : 'var(--color-primary)',
+              }}
+            />
           </div>
-        </div>
-        <div className="flex justify-between text-xs" style={{ color: 'rgba(255,255,255,0.6)' }}>
-          <span>{formatUGX(remaining)} remaining</span>
-          <span>{daysRemaining} days left</span>
+          <div style={{
+            display: 'flex', justifyContent: 'space-between',
+            marginTop: 'var(--space-2)',
+          }}>
+            <span style={{ fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-bold)', color: 'rgba(255,255,255,0.45)' }}>
+              {formatUGX(remaining)} remaining
+            </span>
+            <span style={{ fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-bold)', color: 'rgba(255,255,255,0.45)' }}>
+              {daysRemaining} days left
+            </span>
+          </div>
         </div>
       </div>
 
-      {/* Bottom content */}
-      <div className="rounded-t-3xl flex-1 flex flex-col gap-4 px-5 py-5"
-        style={{ background: '#f0f2f5', marginTop: '-16px' }}>
+      {/* ── Body ── */}
+      <div style={{
+        flex: 1,
+        padding: 'var(--space-5) var(--space-5)',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 'var(--space-4)',
+        paddingBottom: 96, /* bottom nav clearance */
+      }}>
 
+        {/* Rewards strip */}
         {rewardsStrip && !campaignLocked && (
-          <div className="rounded-2xl px-4 py-3"
-            style={{ background: '#fff', border: '1.5px solid rgba(27,79,114,0.1)' }}>
-            <div className="text-xs font-semibold mb-0.5" style={{ color: brand.primaryColor }}>
-              {rewardsStrip.title}
+          <div style={{
+            background: 'var(--color-white)',
+            border: 'var(--border)',
+            boxShadow: 'var(--shadow-sm)',
+            padding: 'var(--space-3) var(--space-4)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 'var(--space-3)',
+          }}>
+            <div style={{
+              width: 36, height: 36,
+              background: 'var(--color-primary)',
+              border: 'var(--border)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              flexShrink: 0,
+            }}>
+              <span className="icon-outlined" style={{ fontSize: 18, color: 'var(--color-black)' }}>
+                {rewardsStrip.icon}
+              </span>
             </div>
-            <div className="text-xs" style={{ color: 'rgba(0,0,0,0.5)' }}>{rewardsStrip.body}</div>
+            <div>
+              <div style={{ fontWeight: 'var(--weight-bold)', fontSize: 'var(--text-sm)' }}>
+                {rewardsStrip.title}
+              </div>
+              <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-grey)', marginTop: 2 }}>
+                {rewardsStrip.body}
+              </div>
+            </div>
           </div>
         )}
 
-        <div className="flex gap-3">
-          {/* Action buttons */}
-          <div className="flex flex-col gap-3" style={{ width: '140px', flexShrink: 0 }}>
+        {/* Action buttons row */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 'var(--space-3)' }}>
+          {[
+            {
+              label: 'Add money',
+              icon: campaignLocked || kycPending ? 'lock' : 'add_circle',
+              disabled: campaignLocked,
+              onClick: () => !campaignLocked && (kycPending
+                ? navigate('/portal/kyc')
+                : navigate('/portal/add-money', { state: { enrollmentId: activeEnrollment?.id } })),
+              accent: 'var(--color-green)',
+            },
+            {
+              label: 'Pay',
+              icon: campaignLocked ? 'lock' : 'north',
+              disabled: campaignLocked,
+              onClick: () => !campaignLocked && navigate('/portal/pay', { state: { enrollmentId: activeEnrollment?.id } }),
+              accent: 'var(--color-primary)',
+            },
+            {
+              label: 'Withdraw',
+              icon: campaignLocked || kycPending ? 'lock' : 'south',
+              disabled: campaignLocked,
+              onClick: () => !campaignLocked && (kycPending
+                ? navigate('/portal/kyc')
+                : navigate('/portal/withdraw', { state: { enrollmentId: activeEnrollment?.id } })),
+              accent: 'var(--color-yellow)',
+            },
+          ].map(({ label, icon, disabled, onClick, accent: btnAccent }) => (
             <button
-              disabled={campaignLocked}
-              onClick={() => !campaignLocked && (kycPending ? navigate('/portal/kyc') : navigate('/portal/add-money', { state: { enrollmentId: activeEnrollment?.id } }))}
-              className="flex flex-col items-center gap-2 py-4 rounded-2xl"
+              key={label}
+              onClick={onClick}
+              disabled={disabled}
               style={{
-                background: '#fff', border: '1.5px solid rgba(27,79,114,0.1)',
-                opacity: campaignLocked ? 0.4 : 1,
-                cursor: campaignLocked ? 'not-allowed' : 'pointer',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                gap: 'var(--space-2)',
+                padding: 'var(--space-4) var(--space-3)',
+                background: 'var(--color-white)',
+                border: 'var(--border)',
+                boxShadow: disabled ? 'none' : 'var(--shadow-sm)',
+                cursor: disabled ? 'not-allowed' : 'pointer',
+                opacity: disabled ? 0.4 : 1,
+                transition: 'box-shadow var(--transition-base), transform var(--transition-fast)',
+              }}
+              onMouseEnter={e => { if (!disabled) { e.currentTarget.style.boxShadow = 'var(--shadow-md)'; e.currentTarget.style.transform = 'translate(-2px,-2px)' }}}
+              onMouseLeave={e => { if (!disabled) { e.currentTarget.style.boxShadow = 'var(--shadow-sm)'; e.currentTarget.style.transform = 'translate(0,0)' }}}
+              onMouseDown={e => { if (!disabled) { e.currentTarget.style.boxShadow = 'none'; e.currentTarget.style.transform = 'translate(3px,3px)' }}}
+              onMouseUp={e => { if (!disabled) { e.currentTarget.style.boxShadow = 'var(--shadow-sm)'; e.currentTarget.style.transform = 'translate(-2px,-2px)' }}}
+            >
+              <div style={{
+                width: 40, height: 40,
+                background: disabled ? 'var(--color-grey-light)' : 'var(--color-black)',
+                border: 'var(--border)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
               }}>
-              <div className="w-10 h-10 rounded-full flex items-center justify-center text-lg"
-                style={{ background: 'rgba(27,79,114,0.1)', color: brand.primaryColor }}>
-                {campaignLocked || kycPending ? '🔒' : '+'}
+                <span className="icon-outlined" style={{
+                  fontSize: 20,
+                  color: disabled ? 'var(--color-grey)' : 'var(--color-white)',
+                }}>
+                  {icon}
+                </span>
               </div>
-              <span className="text-xs font-semibold" style={{ color: brand.primaryColor }}>Add money</span>
+              <span style={{
+                fontSize: 'var(--text-xs)',
+                fontWeight: 'var(--weight-bold)',
+                letterSpacing: 'var(--tracking-wide)',
+                textTransform: 'uppercase',
+                color: 'var(--color-black)',
+              }}>
+                {label}
+              </span>
             </button>
+          ))}
+        </div>
 
-            <button
-              disabled={campaignLocked}
-              onClick={() => !campaignLocked && navigate('/portal/pay', { state: { enrollmentId: activeEnrollment?.id } })}
-              className="flex flex-col items-center gap-2 py-4 rounded-2xl"
-              style={{
-                background: campaignLocked ? '#9CA3AF' : brand.primaryColor,
-                opacity: campaignLocked ? 0.4 : 1,
-                cursor: campaignLocked ? 'not-allowed' : 'pointer',
-              }}>
-              <div className="w-10 h-10 rounded-full flex items-center justify-center"
-                style={{ background: 'rgba(255,255,255,0.15)' }}>
-                <span className="text-white text-lg">↑</span>
+        {/* View card shortcut */}
+        {!campaignLocked && (
+          <button
+            onClick={() => navigate('/portal/card', { state: { enrollmentId: activeEnrollment?.id } })}
+            style={{
+              width: '100%',
+              background: 'var(--color-white)',
+              border: 'var(--border)',
+              boxShadow: 'var(--shadow-sm)',
+              padding: 'var(--space-3) var(--space-4)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              cursor: 'pointer',
+              transition: 'box-shadow var(--transition-base), transform var(--transition-fast)',
+            }}
+            onMouseEnter={e => { e.currentTarget.style.boxShadow = 'var(--shadow-md)'; e.currentTarget.style.transform = 'translate(-2px,-2px)' }}
+            onMouseLeave={e => { e.currentTarget.style.boxShadow = 'var(--shadow-sm)'; e.currentTarget.style.transform = 'translate(0,0)' }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
+              <div style={{ display: 'flex' }}>
+                <div style={{ width: 22, height: 22, borderRadius: '50%', background: '#EB001B', border: '2px solid var(--color-black)' }} />
+                <div style={{ width: 22, height: 22, borderRadius: '50%', background: '#F79E1B', border: '2px solid var(--color-black)', marginLeft: -8 }} />
               </div>
-              <span className="text-xs font-semibold text-white">Pay</span>
-            </button>
+              <span style={{ fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-bold)' }}>
+                View your savings card
+              </span>
+            </div>
+            <span className="icon-outlined" style={{ fontSize: 18, color: 'var(--color-grey)' }}>
+              arrow_forward
+            </span>
+          </button>
+        )}
 
+        {/* Recent activity */}
+        <div>
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            marginBottom: 'var(--space-3)',
+          }}>
+            <span style={{
+              fontSize: 'var(--text-xs)',
+              fontWeight: 'var(--weight-black)',
+              letterSpacing: 'var(--tracking-widest)',
+              textTransform: 'uppercase',
+            }}>
+              Recent activity
+            </span>
             <button
-              disabled={campaignLocked}
-              onClick={() => !campaignLocked && (kycPending ? navigate('/portal/kyc') : navigate('/portal/withdraw', { state: { enrollmentId: activeEnrollment?.id } }))}
-              className="flex flex-col items-center gap-2 py-4 rounded-2xl"
+              onClick={() => navigate('/portal/transactions', { state: { enrollmentId: activeEnrollment?.id } })}
               style={{
-                background: '#fff', border: '1.5px solid rgba(27,79,114,0.1)',
-                opacity: campaignLocked ? 0.4 : 1,
-                cursor: campaignLocked ? 'not-allowed' : 'pointer',
+                background: 'none', border: 'none',
+                fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-bold)',
+                letterSpacing: 'var(--tracking-wide)', textTransform: 'uppercase',
+                color: 'var(--color-primary)', cursor: 'pointer',
+                textDecoration: 'underline', textUnderlineOffset: 3,
               }}>
-              <div className="w-10 h-10 rounded-full flex items-center justify-center"
-                style={{ background: 'rgba(27,79,114,0.1)', color: brand.primaryColor }}>
-                {campaignLocked || kycPending ? '🔒' : '↓'}
-              </div>
-              <span className="text-xs font-semibold" style={{ color: brand.primaryColor }}>Withdraw</span>
+              See all
             </button>
           </div>
 
-          {/* Recent activity — filtered to active campaign */}
-          <div className="flex-1 flex flex-col">
-            <div className="flex items-center justify-between mb-2">
-              <div className="text-sm font-semibold" style={{ color: brand.primaryColor }}>Recent activity</div>
-              <button onClick={() => navigate('/portal/transactions', { state: { enrollmentId: activeEnrollment?.id } })}
-                className="text-xs font-semibold" style={{ color: brand.secondaryColor }}>
-                See all
-              </button>
-            </div>
-            <div className="rounded-2xl overflow-hidden flex-1" style={{ background: '#fff' }}>
-              {campaignTxns.length === 0 ? (
-                <div className="px-4 py-6 text-center h-full flex flex-col items-center justify-center">
-                  <div className="text-xs" style={{ color: 'rgba(0,0,0,0.4)' }}>
-                    No transactions yet for this campaign.
-                  </div>
-                </div>
-              ) : (
-                campaignTxns.map((txn, i) => (
-                  <div key={txn.id} className="flex items-center justify-between px-3 py-2.5"
-                    style={{ borderBottom: i < campaignTxns.length - 1 ? '1px solid rgba(0,0,0,0.05)' : 'none' }}>
-                    <div className="flex items-center gap-2">
-                      <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0"
-                        style={{ background: `${txColor(txn.type)}15`, color: txColor(txn.type) }}>
-                        {txIcon(txn.type)}
+          <div style={{
+            background: 'var(--color-white)',
+            border: 'var(--border)',
+            boxShadow: 'var(--shadow-sm)',
+            overflow: 'hidden',
+          }}>
+            {campaignTxns.length === 0 ? (
+              <div style={{
+                padding: 'var(--space-8)',
+                textAlign: 'center',
+                color: 'var(--color-grey)',
+                fontSize: 'var(--text-sm)',
+              }}>
+                <span className="icon-outlined" style={{ fontSize: 32, display: 'block', marginBottom: 'var(--space-2)', color: 'var(--color-grey-mid)' }}>
+                  receipt_long
+                </span>
+                No transactions yet for this campaign.
+              </div>
+            ) : (
+              campaignTxns.map((txn, i) => {
+                const isDeposit = txn.type === 'deposit'
+                return (
+                  <div key={txn.id} style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    padding: 'var(--space-3) var(--space-4)',
+                    borderTop: i > 0 ? '1.5px solid var(--color-grey-light)' : 'none',
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
+                      <div style={{
+                        width: 32, height: 32,
+                        background: isDeposit ? 'var(--color-green)' : 'var(--color-red)',
+                        border: 'var(--border)',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        flexShrink: 0,
+                      }}>
+                        <span className="icon-outlined" style={{ fontSize: 16, color: 'var(--color-black)' }}>
+                          {isDeposit ? 'south' : 'north'}
+                        </span>
                       </div>
                       <div>
-                        <div className="text-xs font-semibold capitalize" style={{ color: '#333' }}>
+                        <div style={{ fontWeight: 'var(--weight-semibold)', fontSize: 'var(--text-sm)', textTransform: 'capitalize' }}>
                           {txn.type === 'payment' ? 'Payment' : txn.type}
                         </div>
-                        <div style={{ color: 'rgba(0,0,0,0.4)', fontSize: '10px' }}>
+                        <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-grey)' }}>
                           {formatDate(txn.created_at)}
                         </div>
                       </div>
                     </div>
-                    <div className="text-xs font-bold flex-shrink-0" style={{ color: txColor(txn.type) }}>
-                      {txn.type === 'deposit' ? '+' : '-'}{formatUGX(txn.amount)}
+                    <div style={{
+                      fontWeight: 'var(--weight-black)',
+                      fontSize: 'var(--text-sm)',
+                      color: isDeposit ? '#2D8B45' : '#C0392B',
+                    }}>
+                      {isDeposit ? '+' : '-'}{formatUGX(txn.amount)}
                     </div>
                   </div>
-                ))
-              )}
-            </div>
+                )
+              })
+            )}
           </div>
         </div>
-
-        {!campaignLocked && (
-          <button onClick={() => navigate('/portal/card', { state: { enrollmentId: activeEnrollment?.id } })}
-            className="w-full rounded-2xl px-4 py-3 flex items-center justify-between"
-            style={{ background: '#fff', border: '1.5px solid rgba(27,79,114,0.1)' }}>
-            <div className="flex items-center gap-3">
-              <div className="flex">
-                <div className="w-5 h-5 rounded-full" style={{ background: '#EB001B' }} />
-                <div className="w-5 h-5 rounded-full -ml-2" style={{ background: '#F79E1B' }} />
-              </div>
-              <div className="text-xs font-semibold" style={{ color: brand.primaryColor }}>
-                View your savings card
-              </div>
-            </div>
-            <span className="text-xs" style={{ color: 'rgba(0,0,0,0.3)' }}>→</span>
-          </button>
-        )}
       </div>
 
-      {/* Bottom nav */}
-      <nav className="flex items-center justify-around px-4 py-3 border-t"
-        style={{ background: '#fff', borderColor: 'rgba(0,0,0,0.08)' }}>
+      {/* ── Bottom nav ── */}
+      <nav style={{
+        position: 'fixed',
+        bottom: 0, left: 0, right: 0,
+        background: 'var(--color-white)',
+        borderTop: 'var(--border-thick)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-around',
+        padding: 'var(--space-2) var(--space-4)',
+        zIndex: 'var(--z-sticky)',
+      }}>
         {[
-          { label: 'Home', icon: '⌂', path: '/portal/home' },
-          { label: 'Rewards', icon: '★', path: '/portal/rewards' },
-          { label: 'History', icon: '↕', path: '/portal/transactions' },
-          { label: 'Profile', icon: '◎', path: '/portal/profile' },
-        ].map((item) => (
-          <button key={item.path} onClick={() => navigate(item.path)} className="flex flex-col items-center gap-1">
-            <span className="text-lg leading-none"
-              style={{ color: item.path === '/portal/home' ? brand.primaryColor : 'rgba(0,0,0,0.3)' }}>
-              {item.icon}
-            </span>
-            <span className="text-xs" style={{
-              color: item.path === '/portal/home' ? brand.primaryColor : 'rgba(0,0,0,0.3)',
-              fontWeight: item.path === '/portal/home' ? 600 : 400,
-            }}>
-              {item.label}
-            </span>
-          </button>
-        ))}
+          { label: 'Home',     icon: 'home',           path: '/portal/home'         },
+          { label: 'Rewards',  icon: 'card_giftcard',  path: '/portal/rewards'      },
+          { label: 'History',  icon: 'receipt_long',   path: '/portal/transactions' },
+          { label: 'Profile',  icon: 'person',         path: '/portal/profile'      },
+        ].map(({ label, icon, path }) => {
+          const active = path === '/portal/home'
+          return (
+            <button
+              key={path}
+              onClick={() => navigate(path)}
+              style={{
+                display: 'flex', flexDirection: 'column', alignItems: 'center',
+                gap: 4,
+                background: 'none', border: 'none', cursor: 'pointer',
+                padding: 'var(--space-1) var(--space-3)',
+                color: active ? 'var(--color-black)' : 'var(--color-grey)',
+                position: 'relative',
+              }}>
+              {/* Active indicator bar */}
+              {active && (
+                <div style={{
+                  position: 'absolute', top: -8, left: '50%',
+                  transform: 'translateX(-50%)',
+                  width: 24, height: 3,
+                  background: 'var(--color-primary)',
+                }} />
+              )}
+              <span className="icon-outlined" style={{
+                fontSize: 22,
+                color: active ? 'var(--color-black)' : 'var(--color-grey)',
+              }}>
+                {icon}
+              </span>
+              <span style={{
+                fontSize: 'var(--text-xs)',
+                fontWeight: active ? 'var(--weight-black)' : 'var(--weight-medium)',
+                letterSpacing: 'var(--tracking-wide)',
+                textTransform: 'uppercase',
+                fontSize: 9,
+              }}>
+                {label}
+              </span>
+            </button>
+          )
+        })}
       </nav>
     </div>
   )

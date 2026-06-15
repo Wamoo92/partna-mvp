@@ -1,30 +1,73 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../../supabase'
 
-const PARTNA_PRIMARY = '#1B4F72'
-const PARTNA_GOLD = '#D4AF37'
+// ── Helpers ────────────────────────────────────────────────────────────────
+
+function formatUGX(n) {
+  return 'UGX ' + Number(n).toLocaleString('en-UG', { maximumFractionDigits: 0 })
+}
+
+function formatUGXShort(n) {
+  if (n >= 1000000) return 'UGX ' + (n / 1000000).toFixed(1) + 'M'
+  if (n >= 1000)    return 'UGX ' + (n / 1000).toFixed(0) + 'K'
+  return 'UGX ' + Number(n).toLocaleString('en-UG', { maximumFractionDigits: 0 })
+}
+
+function formatDateTime(dateStr) {
+  return new Date(dateStr).toLocaleString('en-UG', {
+    day: 'numeric', month: 'short', year: 'numeric',
+    hour: '2-digit', minute: '2-digit', hour12: true,
+  })
+}
+
+function txLabel(type) {
+  switch (type) {
+    case 'deposit':    return 'Deposit'
+    case 'payment':    return 'Fee payment'
+    case 'withdrawal': return 'Withdrawal'
+    default:           return type
+  }
+}
+
+function txAccent(type) {
+  switch (type) {
+    case 'deposit':    return 'var(--color-green)'
+    case 'payment':    return 'var(--color-primary)'
+    case 'withdrawal': return 'var(--color-yellow)'
+    default:           return 'var(--color-grey-light)'
+  }
+}
+
+function txIcon(type) {
+  switch (type) {
+    case 'deposit':    return 'south'
+    case 'withdrawal': return 'north'
+    case 'payment':    return 'north'
+    default:           return 'swap_vert'
+  }
+}
+
+function txAmountColor(type) {
+  return type === 'deposit' ? '#2D8B45' : '#C0392B'
+}
 
 export default function Payments({ admin, business }) {
   const [transactions, setTransactions] = useState([])
-  const [customers, setCustomers] = useState({})
-  const [loading, setLoading] = useState(true)
-  const [search, setSearch] = useState('')
-  const [typeFilter, setTypeFilter] = useState('all')
-  const [dateFrom, setDateFrom] = useState('')
-  const [dateTo, setDateTo] = useState('')
-  const [totals, setTotals] = useState({ deposits: 0, payments: 0, withdrawals: 0 })
+  const [customers, setCustomers]       = useState({})
+  const [loading, setLoading]           = useState(true)
+  const [search, setSearch]             = useState('')
+  const [typeFilter, setTypeFilter]     = useState('all')
+  const [dateFrom, setDateFrom]         = useState('')
+  const [dateTo, setDateTo]             = useState('')
+  const [totals, setTotals]             = useState({ deposits: 0, payments: 0, withdrawals: 0 })
 
-  useEffect(() => {
-    if (business) loadData()
-  }, [business])
+  useEffect(() => { if (business) loadData() }, [business])
 
   async function loadData() {
     setLoading(true)
     try {
-      // Get all customers for this business
       const { data: customerData } = await supabase
-        .from('customers')
-        .select('id, first_name, last_name, phone, email')
+        .from('customers').select('id, first_name, last_name, phone, email')
         .eq('business_id', business.id)
 
       const customerMap = {}
@@ -32,93 +75,39 @@ export default function Payments({ admin, business }) {
       setCustomers(customerMap)
 
       const customerIds = customerData?.map(c => c.id) || []
-      if (customerIds.length === 0) {
-        setTransactions([])
-        setLoading(false)
-        return
-      }
+      if (customerIds.length === 0) { setTransactions([]); setLoading(false); return }
 
-      // Get all transactions
       const { data: txnData } = await supabase
-        .from('transactions')
-        .select('*')
+        .from('transactions').select('*')
         .in('customer_id', customerIds)
         .order('created_at', { ascending: false })
 
       setTransactions(txnData || [])
 
-      // Calculate totals
       const deps = txnData?.filter(t => t.type === 'deposit').reduce((s, t) => s + Number(t.amount), 0) || 0
       const pays = txnData?.filter(t => t.type === 'payment').reduce((s, t) => s + Number(t.amount), 0) || 0
       const wdrs = txnData?.filter(t => t.type === 'withdrawal').reduce((s, t) => s + Number(t.amount), 0) || 0
       setTotals({ deposits: deps, payments: pays, withdrawals: wdrs })
-
     } catch (e) {
       console.error('Payments load error:', e)
     }
     setLoading(false)
   }
 
-  function formatUGX(n) {
-    return 'UGX ' + Number(n).toLocaleString('en-UG', { maximumFractionDigits: 0 })
-  }
-
-  function formatUGXShort(n) {
-    if (n >= 1000000) return 'UGX ' + (n / 1000000).toFixed(1) + 'M'
-    if (n >= 1000) return 'UGX ' + (n / 1000).toFixed(0) + 'K'
-    return 'UGX ' + Number(n).toLocaleString('en-UG', { maximumFractionDigits: 0 })
-  }
-
-  function formatDateTime(dateStr) {
-    return new Date(dateStr).toLocaleString('en-UG', {
-      day: 'numeric', month: 'short', year: 'numeric',
-      hour: '2-digit', minute: '2-digit', hour12: true
-    })
-  }
-
-  function txLabel(type) {
-    switch (type) {
-      case 'deposit': return 'Deposit'
-      case 'payment': return 'Fee payment'
-      case 'withdrawal': return 'Withdrawal'
-      default: return type
-    }
-  }
-
-  function txColor(type) {
-    return type === 'deposit' ? '#16A34A' : '#DC2626'
-  }
-
-  function txIcon(type) {
-    return type === 'deposit' ? '↓' : '↑'
-  }
-
-  // Apply filters
   const filtered = transactions.filter(txn => {
-    const customer = customers[txn.customer_id]
-    const name = customer ? `${customer.first_name} ${customer.last_name} ${customer.phone} ${customer.email}` : ''
+    const c = customers[txn.customer_id]
+    const name = c ? `${c.first_name} ${c.last_name} ${c.phone} ${c.email}` : ''
     if (search && !name.toLowerCase().includes(search.toLowerCase())) return false
     if (typeFilter !== 'all' && txn.type !== typeFilter) return false
-    if (dateFrom) {
-      const from = new Date(dateFrom)
-      from.setHours(0, 0, 0, 0)
-      if (new Date(txn.created_at) < from) return false
-    }
-    if (dateTo) {
-      const to = new Date(dateTo)
-      to.setHours(23, 59, 59, 999)
-      if (new Date(txn.created_at) > to) return false
-    }
+    if (dateFrom) { const from = new Date(dateFrom); from.setHours(0,0,0,0); if (new Date(txn.created_at) < from) return false }
+    if (dateTo)   { const to   = new Date(dateTo);   to.setHours(23,59,59,999); if (new Date(txn.created_at) > to)   return false }
     return true
   })
 
   const filtersActive = typeFilter !== 'all' || dateFrom !== '' || dateTo !== '' || search !== ''
 
   function clearFilters() {
-    setSearch('')
-    setTypeFilter('all')
-    setDateFrom('')
-    setDateTo('')
+    setSearch(''); setTypeFilter('all'); setDateFrom(''); setDateTo('')
   }
 
   function exportCSV() {
@@ -136,8 +125,8 @@ export default function Payments({ admin, business }) {
     })
     const csv = [headers, ...rows].map(r => r.join(',')).join('\n')
     const blob = new Blob([csv], { type: 'text/csv' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
+    const url  = URL.createObjectURL(blob)
+    const a    = document.createElement('a')
     a.href = url
     a.download = `partna-payments-${new Date().toISOString().split('T')[0]}.csv`
     a.click()
@@ -145,175 +134,236 @@ export default function Payments({ admin, business }) {
   }
 
   return (
-    <div className="flex flex-col gap-6">
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>
 
-      {/* Totals row */}
-      <div className="grid grid-cols-4 gap-4">
+      {/* ── Totals row ── */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 'var(--space-4)' }}>
         {[
-          { label: 'Total deposits', value: formatUGXShort(totals.deposits), color: '#16A34A' },
-          { label: 'Total fee payments', value: formatUGXShort(totals.payments), color: PARTNA_PRIMARY },
-          { label: 'Total withdrawals', value: formatUGXShort(totals.withdrawals), color: '#DC2626' },
-          { label: 'Net savings (AUM)', value: formatUGXShort(totals.deposits - totals.withdrawals), color: PARTNA_GOLD },
+          { label: 'Total deposits',     value: formatUGXShort(totals.deposits),                    accent: 'var(--color-green)'   },
+          { label: 'Total fee payments', value: formatUGXShort(totals.payments),                    accent: 'var(--color-primary)' },
+          { label: 'Total withdrawals',  value: formatUGXShort(totals.withdrawals),                 accent: 'var(--color-red)'     },
+          { label: 'Net savings (AUM)',  value: formatUGXShort(totals.deposits - totals.withdrawals), accent: 'var(--color-yellow)' },
         ].map((stat, i) => (
-          <div key={i} className="rounded-2xl p-5" style={{ background: '#fff' }}>
-            <div className="text-xs font-semibold mb-1" style={{ color: 'rgba(0,0,0,0.4)' }}>{stat.label}</div>
-            <div className="text-xl font-bold" style={{ color: stat.color }}>{stat.value}</div>
+          <div key={i} style={{
+            background: 'var(--color-white)',
+            border: 'var(--border)',
+            boxShadow: 'var(--shadow-sm)',
+            padding: 'var(--space-5)',
+          }}>
+            <div style={{ height: 3, background: stat.accent, marginBottom: 'var(--space-3)' }} />
+            <div style={{
+              fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-black)',
+              letterSpacing: 'var(--tracking-widest)', textTransform: 'uppercase',
+              color: 'var(--color-grey)', marginBottom: 'var(--space-2)',
+            }}>
+              {stat.label}
+            </div>
+            <div style={{
+              fontSize: 'var(--text-2xl)', fontWeight: 'var(--weight-black)',
+              letterSpacing: 'var(--tracking-tight)', fontVariationSettings: "'wdth' 105, 'opsz' 30",
+              color: 'var(--color-black)', lineHeight: 1,
+            }}>
+              {stat.value}
+            </div>
           </div>
         ))}
       </div>
 
-      {/* Filters */}
-      <div className="rounded-2xl p-4 flex items-center gap-3 flex-wrap" style={{ background: '#fff' }}>
-        <input
-          type="text"
-          placeholder="Search by customer name, phone or email..."
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-          className="flex-1 min-w-48 px-4 py-2 rounded-xl text-sm outline-none"
-          style={{ background: '#f0f2f5', border: 'none', color: '#333' }}
-        />
+      {/* ── Filter bar ── */}
+      <div style={{
+        background: 'var(--color-white)',
+        border: 'var(--border)',
+        boxShadow: 'var(--shadow-sm)',
+        padding: 'var(--space-4)',
+        display: 'flex',
+        alignItems: 'center',
+        gap: 'var(--space-3)',
+        flexWrap: 'wrap',
+      }}>
+        {/* Search */}
+        <div className="search-wrapper" style={{ flex: 1, minWidth: 200 }}>
+          <span className="icon-outlined search-icon">search</span>
+          <input
+            type="text"
+            className="input search-input"
+            placeholder="Search by name, phone or email…"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+          />
+          {search && (
+            <button className="search-clear" onClick={() => setSearch('')}>
+              <span className="icon-outlined" style={{ fontSize: 16 }}>close</span>
+            </button>
+          )}
+        </div>
 
-        <select value={typeFilter} onChange={e => setTypeFilter(e.target.value)}
-          className="px-3 py-2 rounded-xl text-xs outline-none font-semibold"
-          style={{ background: '#f0f2f5', border: 'none', color: PARTNA_PRIMARY }}>
+        {/* Type filter */}
+        <select
+          className="input"
+          value={typeFilter}
+          onChange={e => setTypeFilter(e.target.value)}
+          style={{ width: 'auto', minWidth: 140 }}
+        >
           <option value="all">All types</option>
           <option value="deposit">Deposits</option>
           <option value="payment">Fee payments</option>
           <option value="withdrawal">Withdrawals</option>
         </select>
 
-        <div className="flex items-center gap-2">
-          <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
-            className="px-3 py-2 rounded-xl text-xs outline-none"
-            style={{ background: '#f0f2f5', border: 'none', color: '#333' }} />
-          <span className="text-xs" style={{ color: 'rgba(0,0,0,0.3)' }}>—</span>
-          <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)}
-            className="px-3 py-2 rounded-xl text-xs outline-none"
-            style={{ background: '#f0f2f5', border: 'none', color: '#333' }} />
+        {/* Date range */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+          <input type="date" className="input input-sm" value={dateFrom} onChange={e => setDateFrom(e.target.value)} style={{ width: 140 }} />
+          <span style={{ color: 'var(--color-grey-mid)', fontSize: 'var(--text-lg)' }}>—</span>
+          <input type="date" className="input input-sm" value={dateTo}   onChange={e => setDateTo(e.target.value)}   style={{ width: 140 }} />
         </div>
 
         {filtersActive && (
-          <button onClick={clearFilters}
-            className="text-xs font-semibold px-3 py-2 rounded-lg"
-            style={{ background: '#FEE2E2', color: '#DC2626' }}>
+          <button onClick={clearFilters} className="btn btn-sm btn-danger">
+            <span className="icon-outlined icon-xs">close</span>
             Clear
           </button>
         )}
 
-        <div className="text-xs font-semibold px-3 py-2 rounded-xl"
-          style={{ background: 'rgba(27,79,114,0.08)', color: PARTNA_PRIMARY }}>
+        {/* Count badge */}
+        <div style={{
+          padding: '4px var(--space-3)',
+          background: 'var(--color-bg)',
+          border: 'var(--border)',
+          fontSize: 'var(--text-xs)',
+          fontWeight: 'var(--weight-black)',
+          letterSpacing: 'var(--tracking-wide)',
+          color: 'var(--color-grey)',
+          whiteSpace: 'nowrap',
+        }}>
           {filtered.length} transaction{filtered.length !== 1 ? 's' : ''}
         </div>
 
-        <button onClick={exportCSV}
-          className="text-xs font-semibold px-4 py-2 rounded-xl"
-          style={{ background: PARTNA_PRIMARY, color: '#fff' }}>
-          ↓ Export CSV
+        {/* Export */}
+        <button onClick={exportCSV} className="btn btn-sm btn-black">
+          <span className="icon-outlined icon-xs">download</span>
+          Export CSV
         </button>
       </div>
 
-      {/* Table */}
-      <div className="rounded-2xl overflow-hidden" style={{ background: '#fff' }}>
-
-        {/* Table header */}
-        <div className="grid px-4 py-3 text-xs font-bold"
-          style={{
-            gridTemplateColumns: '2fr 1.5fr 1fr 1.2fr 0.8fr',
-            color: 'rgba(0,0,0,0.35)',
-            borderBottom: '1px solid rgba(0,0,0,0.06)',
-            background: '#fafafa'
-          }}>
-          <span>Customer</span>
-          <span>Date & time</span>
-          <span>Type</span>
-          <span>Amount</span>
-          <span>Status</span>
-        </div>
-
-        {loading ? (
-          <div className="flex items-center justify-center py-16">
-            <div className="w-6 h-6 border-4 rounded-full animate-spin"
-              style={{ borderColor: PARTNA_PRIMARY, borderTopColor: 'transparent' }} />
-          </div>
-        ) : filtered.length === 0 ? (
-          <div className="text-center py-16">
-            <div className="text-2xl mb-2">💳</div>
-            <div className="text-sm font-semibold mb-1" style={{ color: PARTNA_PRIMARY }}>
-              {transactions.length === 0 ? 'No transactions yet' : 'No transactions match your filters'}
-            </div>
-            <div className="text-xs" style={{ color: 'rgba(0,0,0,0.4)' }}>
-              {transactions.length === 0
-                ? 'Transactions will appear here once customers start depositing'
-                : 'Try adjusting your filters'}
-            </div>
-          </div>
-        ) : (
-          filtered.map((txn, i) => {
-            const customer = customers[txn.customer_id]
-            return (
-              <div key={txn.id}
-                className="grid items-center px-4 py-3"
-                style={{
-                  gridTemplateColumns: '2fr 1.5fr 1fr 1.2fr 0.8fr',
-                  borderBottom: i < filtered.length - 1 ? '1px solid rgba(0,0,0,0.05)' : 'none',
-                }}>
-
-                {/* Customer */}
-                <div className="flex items-center gap-2">
-                  <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0"
-                    style={{ background: 'rgba(27,79,114,0.1)', color: PARTNA_PRIMARY }}>
-                    {customer?.first_name?.[0]}{customer?.last_name?.[0]}
-                  </div>
-                  <div>
-                    <div className="text-xs font-semibold" style={{ color: '#333' }}>
-                      {customer ? `${customer.first_name} ${customer.last_name}` : 'Unknown'}
-                    </div>
-                    <div className="text-xs" style={{ color: 'rgba(0,0,0,0.35)', fontSize: '10px' }}>
-                      {customer?.phone}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Date */}
-                <div className="text-xs" style={{ color: 'rgba(0,0,0,0.5)' }}>
-                  {formatDateTime(txn.created_at)}
-                </div>
-
-                {/* Type */}
-                <div>
-                  <div className="flex items-center gap-1.5">
-                    <div className="w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold"
-                      style={{ background: `${txColor(txn.type)}15`, color: txColor(txn.type) }}>
-                      {txIcon(txn.type)}
-                    </div>
-                    <span className="text-xs font-semibold" style={{ color: txColor(txn.type) }}>
-                      {txLabel(txn.type)}
-                    </span>
-                  </div>
-                </div>
-
-                {/* Amount */}
-                <div className="text-xs font-bold" style={{ color: txColor(txn.type) }}>
-                  {txn.type === 'deposit' ? '+' : '-'}{formatUGX(txn.amount)}
-                </div>
-
-                {/* Status */}
-                <div>
-                  <span className="text-xs font-semibold px-2 py-0.5 rounded-full"
-                    style={{
-                      background: txn.status === 'completed' ? 'rgba(22,163,74,0.1)' : 'rgba(217,119,6,0.1)',
-                      color: txn.status === 'completed' ? '#16A34A' : '#D97706',
-                    }}>
-                    {txn.status === 'completed' ? '✓ Completed' : '⏳ Pending'}
+      {/* ── Table ── */}
+      <div className="table-wrapper">
+        <table className="table">
+          <thead>
+            <tr>
+              <th>Customer</th>
+              <th>Date & time</th>
+              <th>Type</th>
+              <th>Amount</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {loading ? (
+              <tr>
+                <td colSpan={5} style={{ textAlign: 'center', padding: 'var(--space-16)' }}>
+                  <div className="spinner spinner-lg spinner-purple" style={{ margin: '0 auto' }} />
+                </td>
+              </tr>
+            ) : filtered.length === 0 ? (
+              <tr>
+                <td colSpan={5} style={{ padding: 'var(--space-16)', textAlign: 'center' }}>
+                  <span className="icon-outlined" style={{ fontSize: 40, color: 'var(--color-grey-mid)', display: 'block', marginBottom: 'var(--space-3)' }}>
+                    payments
                   </span>
-                </div>
+                  <div style={{ fontWeight: 'var(--weight-bold)', fontSize: 'var(--text-base)', marginBottom: 'var(--space-2)' }}>
+                    {transactions.length === 0 ? 'No transactions yet' : 'No transactions match your filters'}
+                  </div>
+                  <div style={{ fontSize: 'var(--text-sm)', color: 'var(--color-grey)' }}>
+                    {transactions.length === 0
+                      ? 'Transactions will appear here once customers start depositing.'
+                      : 'Try adjusting your filters.'}
+                  </div>
+                  {filtersActive && (
+                    <button onClick={clearFilters} className="btn btn-secondary btn-sm" style={{ margin: 'var(--space-4) auto 0' }}>
+                      Clear filters
+                    </button>
+                  )}
+                </td>
+              </tr>
+            ) : (
+              filtered.map(txn => {
+                const c = customers[txn.customer_id]
+                return (
+                  <tr key={txn.id}>
+                    {/* Customer */}
+                    <td>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
+                        <div style={{
+                          width: 32, height: 32,
+                          background: 'var(--color-black)',
+                          border: 'var(--border)',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          fontWeight: 'var(--weight-black)',
+                          fontSize: 'var(--text-xs)',
+                          color: 'var(--color-primary)',
+                          flexShrink: 0,
+                          letterSpacing: 'var(--tracking-tight)',
+                        }}>
+                          {c?.first_name?.[0]}{c?.last_name?.[0]}
+                        </div>
+                        <div>
+                          <div style={{ fontWeight: 'var(--weight-semibold)', fontSize: 'var(--text-sm)' }}>
+                            {c ? `${c.first_name} ${c.last_name}` : 'Unknown'}
+                          </div>
+                          <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-grey)' }}>
+                            {c?.phone}
+                          </div>
+                        </div>
+                      </div>
+                    </td>
 
-              </div>
-            )
-          })
-        )}
+                    {/* Date */}
+                    <td>
+                      <span style={{ fontSize: 'var(--text-sm)', color: 'var(--color-grey)' }}>
+                        {formatDateTime(txn.created_at)}
+                      </span>
+                    </td>
+
+                    {/* Type */}
+                    <td>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+                        <div style={{
+                          width: 24, height: 24,
+                          background: txAccent(txn.type),
+                          border: 'var(--border)',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          flexShrink: 0,
+                        }}>
+                          <span className="icon-outlined" style={{ fontSize: 13, color: 'var(--color-black)' }}>
+                            {txIcon(txn.type)}
+                          </span>
+                        </div>
+                        <span style={{ fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-semibold)' }}>
+                          {txLabel(txn.type)}
+                        </span>
+                      </div>
+                    </td>
+
+                    {/* Amount */}
+                    <td>
+                      <span style={{ fontWeight: 'var(--weight-black)', fontSize: 'var(--text-sm)', color: txAmountColor(txn.type) }}>
+                        {txn.type === 'deposit' ? '+' : '-'}{formatUGX(txn.amount)}
+                      </span>
+                    </td>
+
+                    {/* Status */}
+                    <td>
+                      <span className={`badge no-dot ${txn.status === 'completed' ? 'badge-success' : 'badge-warning'}`}>
+                        {txn.status === 'completed' ? 'Completed' : 'Pending'}
+                      </span>
+                    </td>
+                  </tr>
+                )
+              })
+            )}
+          </tbody>
+        </table>
       </div>
-
     </div>
   )
 }

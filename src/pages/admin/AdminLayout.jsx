@@ -1,123 +1,235 @@
 import { useNavigate, useLocation } from 'react-router-dom'
 
-const ADMIN_PRIMARY = '#1B4F72'
-const ADMIN_GOLD = '#D4AF37'
-
 const NAV_ITEMS = [
-  { label: 'Dashboard', icon: '▦', path: '/admin/dashboard' },
-  { label: 'Businesses', icon: '🏢', path: '/admin/businesses' },
-  { label: 'Customers', icon: '👤', path: '/admin/customers' },
-  { label: 'Transactions', icon: '↕', path: '/admin/transactions' },
-  { label: 'Revenue', icon: '💰', path: '/admin/revenue' },
-  { label: 'KYB Queue', icon: '📋', path: '/admin/kyb' },
-  { label: 'Vouchers', icon: '🎫', path: '/admin/vouchers' },
-  { label: 'Settings', icon: '⚙', path: '/admin/settings' },
+  { label: 'Dashboard',    icon: 'dashboard',       path: '/admin/dashboard'   },
+  { label: 'Businesses',   icon: 'business',        path: '/admin/businesses'  },
+  { label: 'Customers',    icon: 'group',           path: '/admin/customers'   },
+  { label: 'Transactions', icon: 'swap_vert',       path: '/admin/transactions'},
+  { label: 'Revenue',      icon: 'payments',        path: '/admin/revenue'     },
+  { label: 'KYB Queue',    icon: 'verified_user',   path: '/admin/kyb'         },
+  { label: 'Vouchers',     icon: 'confirmation_number', path: '/admin/vouchers'},
+  { label: 'Settings',     icon: 'settings',        path: '/admin/settings'    },
 ]
+
+// Wired up when KYBQueue is built
+function KYBBadge() { return null }
 
 export default function AdminLayout({ admin, signOut, children }) {
   const navigate = useNavigate()
   const location = useLocation()
 
-  function isActive(path) {
-    return location.pathname.startsWith(path)
-  }
+  function isActive(path) { return location.pathname.startsWith(path) }
+
+  const activeLabel = NAV_ITEMS.find(n => isActive(n.path))?.label || 'Admin'
 
   return (
-    <div className="min-h-screen flex" style={{ background: '#f0f2f5' }}>
+    <div style={{ minHeight: '100vh', display: 'flex', background: 'var(--color-bg)' }}>
 
       {/* ── Sidebar ── */}
-      <aside className="flex flex-col w-56 min-h-screen flex-shrink-0"
-        style={{ background: ADMIN_PRIMARY, boxShadow: '2px 0 12px rgba(0,0,0,0.1)' }}>
+      <aside style={{
+        width: 224,
+        minHeight: '100vh',
+        flexShrink: 0,
+        background: 'var(--color-black)',
+        borderRight: 'var(--border)',
+        display: 'flex',
+        flexDirection: 'column',
+        position: 'sticky',
+        top: 0,
+      }}>
 
         {/* Logo */}
-        <div className="flex items-center gap-3 px-5 py-5 border-b"
-          style={{ borderColor: 'rgba(255,255,255,0.1)' }}>
-          <div className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0"
-            style={{ background: ADMIN_GOLD }}>
-            <img src="/partna-icon.svg" alt="Partna" className="w-5 h-5" />
-          </div>
+        <div style={{
+          padding: 'var(--space-5) var(--space-4)',
+          borderBottom: '1px solid rgba(255,255,255,0.08)',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 'var(--space-3)',
+          minHeight: 'var(--topbar-height)',
+        }}>
+          <img src="/partna-icon.svg" alt="Partna" style={{ width: 32, height: 32, flexShrink: 0 }} />
           <div>
-            <div className="text-white text-sm font-bold leading-tight">Partna</div>
-            <div className="text-xs leading-tight" style={{ color: 'rgba(255,255,255,0.5)' }}>
-              Admin Portal
+            <div style={{
+              color: 'var(--color-white)',
+              fontWeight: 'var(--weight-black)',
+              fontSize: 'var(--text-base)',
+              letterSpacing: 'var(--tracking-tight)',
+              fontVariationSettings: "'wdth' 110, 'opsz' 16",
+            }}>
+              Part<span style={{ color: 'var(--color-primary)' }}>na</span>
+            </div>
+            <div style={{
+              fontSize: 'var(--text-xs)',
+              color: 'rgba(255,255,255,0.35)',
+              fontWeight: 'var(--weight-bold)',
+              letterSpacing: 'var(--tracking-wide)',
+              textTransform: 'uppercase',
+            }}>
+              Admin
             </div>
           </div>
         </div>
 
-        {/* Nav items */}
-        <nav className="flex-1 px-3 py-4 flex flex-col gap-1">
-          {NAV_ITEMS.map(item => (
-            <button
-              key={item.path}
-              onClick={() => navigate(item.path)}
-              className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-left w-full transition-all"
-              style={{
-                background: isActive(item.path) ? 'rgba(255,255,255,0.15)' : 'transparent',
-                color: isActive(item.path) ? '#fff' : 'rgba(255,255,255,0.55)',
-              }}>
-              <span className="text-base leading-none w-5 text-center flex-shrink-0">
-                {item.icon}
-              </span>
-              <span className="text-xs font-semibold">{item.label}</span>
-              {item.path === '/admin/kyb' && (
-                <KYBBadge />
-              )}
-            </button>
-          ))}
+        {/* Nav */}
+        <nav style={{
+          flex: 1,
+          padding: 'var(--space-3) var(--space-2)',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 2,
+          marginTop: 'var(--space-2)',
+        }}>
+          {NAV_ITEMS.map(item => {
+            const active = isActive(item.path)
+            return (
+              <button
+                key={item.path}
+                onClick={() => navigate(item.path)}
+                title={item.label}
+                style={{
+                  width: '100%',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 'var(--space-3)',
+                  padding: 'var(--space-3)',
+                  background: active ? 'var(--color-primary)' : 'transparent',
+                  border: 'none',
+                  color: active ? 'var(--color-black)' : 'rgba(255,255,255,0.55)',
+                  fontSize: 'var(--text-sm)',
+                  fontWeight: active ? 'var(--weight-black)' : 'var(--weight-semibold)',
+                  cursor: 'pointer',
+                  textAlign: 'left',
+                  transition: 'background var(--transition-base), color var(--transition-base)',
+                  position: 'relative',
+                }}
+                onMouseEnter={e => { if (!active) { e.currentTarget.style.background = 'rgba(255,255,255,0.06)'; e.currentTarget.style.color = 'var(--color-white)' }}}
+                onMouseLeave={e => { if (!active) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'rgba(255,255,255,0.55)' }}}
+              >
+                {/* Active left bar */}
+                {active && (
+                  <div style={{
+                    position: 'absolute', left: 0, top: 0, bottom: 0,
+                    width: 3, background: 'var(--color-black)',
+                  }} />
+                )}
+                <span className="icon-outlined" style={{ fontSize: 20, flexShrink: 0 }}>{item.icon}</span>
+                <span style={{ letterSpacing: active ? 'var(--tracking-tight)' : 'var(--tracking-normal)', fontVariationSettings: "'wdth' 100, 'opsz' 14" }}>
+                  {item.label}
+                </span>
+                {item.path === '/admin/kyb' && <KYBBadge />}
+              </button>
+            )
+          })}
         </nav>
 
-        {/* Admin user + sign out */}
-        <div className="px-4 py-4 border-t" style={{ borderColor: 'rgba(255,255,255,0.1)' }}>
-          <div className="flex items-center gap-2 mb-3">
-            <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0"
-              style={{ background: ADMIN_GOLD, color: ADMIN_PRIMARY }}>
+        {/* Admin footer */}
+        <div style={{
+          borderTop: '1px solid rgba(255,255,255,0.08)',
+          padding: 'var(--space-4) var(--space-3)',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', marginBottom: 'var(--space-3)' }}>
+            <div style={{
+              width: 32, height: 32,
+              background: 'var(--color-primary)',
+              border: '1.5px solid rgba(255,255,255,0.2)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontWeight: 'var(--weight-black)',
+              fontSize: 'var(--text-xs)',
+              color: 'var(--color-black)',
+              flexShrink: 0,
+            }}>
               {admin?.email?.[0]?.toUpperCase() || 'A'}
             </div>
-            <div className="flex-1 min-w-0">
-              <div className="text-xs font-semibold text-white truncate">
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{
+                color: 'var(--color-white)',
+                fontSize: 'var(--text-sm)',
+                fontWeight: 'var(--weight-bold)',
+                whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+              }}>
                 {admin?.email || 'Admin'}
               </div>
-              <div className="text-xs" style={{ color: 'rgba(255,255,255,0.4)' }}>
+              <div style={{
+                fontSize: 'var(--text-xs)',
+                color: 'rgba(255,255,255,0.35)',
+                fontWeight: 'var(--weight-bold)',
+                letterSpacing: 'var(--tracking-wide)',
+                textTransform: 'uppercase',
+              }}>
                 Super Admin
               </div>
             </div>
           </div>
+
           <button
             onClick={() => { signOut(); navigate('/admin/login') }}
-            className="w-full py-2 rounded-xl text-xs font-semibold"
-            style={{ background: 'rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.6)' }}>
+            style={{
+              width: '100%',
+              display: 'flex', alignItems: 'center', justifyContent: 'flex-start',
+              gap: 'var(--space-2)',
+              padding: 'var(--space-2) var(--space-3)',
+              background: 'rgba(255,255,255,0.06)',
+              border: '1px solid rgba(255,255,255,0.1)',
+              color: 'rgba(255,255,255,0.55)',
+              fontSize: 'var(--text-xs)',
+              fontWeight: 'var(--weight-bold)',
+              letterSpacing: 'var(--tracking-wide)',
+              textTransform: 'uppercase',
+              cursor: 'pointer',
+              transition: 'background var(--transition-base), color var(--transition-base)',
+            }}
+            onMouseEnter={e => { e.currentTarget.style.background = 'var(--color-red)'; e.currentTarget.style.color = 'var(--color-black)' }}
+            onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.06)'; e.currentTarget.style.color = 'rgba(255,255,255,0.55)' }}
+          >
+            <span className="icon-outlined" style={{ fontSize: 16 }}>logout</span>
             Sign out
           </button>
         </div>
       </aside>
 
-      {/* ── Main content ── */}
-      <div className="flex-1 flex flex-col min-w-0">
+      {/* ── Main ── */}
+      <div className="app-main">
 
-        {/* Top bar */}
-        <header className="flex items-center justify-between px-6 py-4 border-b"
-          style={{ background: '#fff', borderColor: 'rgba(0,0,0,0.08)' }}>
-          <div className="text-sm font-bold" style={{ color: ADMIN_PRIMARY }}>
-            {NAV_ITEMS.find(n => isActive(n.path))?.label || 'Admin'}
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="text-xs px-3 py-1.5 rounded-lg font-semibold"
-              style={{ background: 'rgba(27,79,114,0.08)', color: ADMIN_PRIMARY }}>
-              Partna Internal
-            </div>
+        {/* Topbar */}
+        <header style={{
+          height: 'var(--topbar-height)',
+          background: 'var(--color-white)',
+          borderBottom: 'var(--border)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          padding: '0 var(--space-6)',
+          position: 'sticky',
+          top: 0,
+          zIndex: 'var(--z-sticky)',
+        }}>
+          <h1 style={{
+            fontSize: 'var(--text-lg)',
+            fontWeight: 'var(--weight-black)',
+            letterSpacing: 'var(--tracking-tight)',
+            fontVariationSettings: "'wdth' 100, 'opsz' 20",
+            color: 'var(--color-black)',
+          }}>
+            {activeLabel}
+          </h1>
+          <div style={{
+            padding: '4px var(--space-3)',
+            background: 'var(--color-black)',
+            border: '1.5px solid var(--color-primary)',
+            fontSize: 'var(--text-xs)',
+            fontWeight: 'var(--weight-black)',
+            letterSpacing: 'var(--tracking-widest)',
+            textTransform: 'uppercase',
+            color: 'var(--color-primary)',
+          }}>
+            Partna Internal
           </div>
         </header>
 
-        {/* Page content */}
-        <main className="flex-1 p-6 overflow-auto">
+        <main style={{ flex: 1, padding: 'var(--space-6)', overflowY: 'auto' }}>
           {children}
         </main>
       </div>
     </div>
   )
-}
-
-// Small badge showing pending KYB count
-function KYBBadge() {
-  return null // Will be wired up when KYBQueue is built
 }

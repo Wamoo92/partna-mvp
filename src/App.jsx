@@ -23,8 +23,8 @@ import AdminApp from './pages/admin/AdminApp'
 
 function PortalGuard({ customer, loading, children }) {
   if (loading) return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50">
-      <div className="w-8 h-8 border-4 border-[#1B4F72] border-t-transparent rounded-full animate-spin" />
+    <div className="loading-screen">
+      <div className="spinner spinner-lg spinner-purple" />
     </div>
   )
   if (!customer) return <Navigate to="/portal" replace />
@@ -35,8 +35,8 @@ function PortalGuard({ customer, loading, children }) {
 // Uses enrollments array from useAuth instead of the old single campaign_id
 function HomeGuard({ customer, enrollments, loading, children }) {
   if (loading) return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50">
-      <div className="w-8 h-8 border-4 border-[#1B4F72] border-t-transparent rounded-full animate-spin" />
+    <div className="loading-screen">
+      <div className="spinner spinner-lg spinner-purple" />
     </div>
   )
 

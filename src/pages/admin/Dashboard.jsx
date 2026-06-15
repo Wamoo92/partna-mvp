@@ -2,106 +2,129 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../supabase'
 
-const ADMIN_PRIMARY = '#1B4F72'
-const ADMIN_GOLD = '#D4AF37'
+// ── Helpers ────────────────────────────────────────────────────────────────
+
+function formatUGX(n) {
+  if (n >= 1000000) return 'UGX ' + (n / 1000000).toFixed(1) + 'M'
+  if (n >= 1000)    return 'UGX ' + (n / 1000).toFixed(0) + 'K'
+  return 'UGX ' + Number(n).toLocaleString('en-UG', { maximumFractionDigits: 0 })
+}
+
+function txAccent(type) {
+  switch (type) {
+    case 'deposit':    return 'var(--color-green)'
+    case 'withdrawal': return 'var(--color-yellow)'
+    case 'payment':    return 'var(--color-primary)'
+    default:           return 'var(--color-grey-light)'
+  }
+}
+function txIcon(type) {
+  switch (type) {
+    case 'deposit':    return 'south'
+    case 'withdrawal': return 'north'
+    case 'payment':    return 'north'
+    default:           return 'swap_vert'
+  }
+}
+function txLabel(type) {
+  if (type === 'deposit')    return 'Deposit'
+  if (type === 'withdrawal') return 'Withdrawal'
+  if (type === 'payment')    return 'Fee payment'
+  return type
+}
+function txAmountColor(type) { return type === 'deposit' ? '#2D8B45' : '#C0392B' }
+
+function buildPath(data, key, max, width, height) {
+  if (data.length === 0) return ''
+  const step = width / (data.length - 1 || 1)
+  return data.map((d, i) => {
+    const x = i * step
+    const y = height - (d[key] / max) * height
+    return (i === 0 ? 'M' : 'L') + x.toFixed(1) + ',' + y.toFixed(1)
+  }).join(' ')
+}
 
 const CHART_FILTERS = [
-  { label: '7 days', days: 7 },
-  { label: '30 days', days: 30 },
-  { label: '1 year', days: 365 },
+  { label: '7d',  days: 7   },
+  { label: '30d', days: 30  },
+  { label: '1yr', days: 365 },
 ]
 
-function StatCard({ label, value, sub, color, icon }) {
+// ── Stat card ──────────────────────────────────────────────────────────────
+function StatCard({ label, value, sub, accent, onClick }) {
   return (
-    <div className="rounded-2xl p-5 flex flex-col gap-2" style={{ background: '#fff' }}>
-      <div className="flex items-center justify-between">
-        <div className="text-xs font-semibold" style={{ color: 'rgba(0,0,0,0.4)' }}>{label}</div>
-        <span className="text-lg">{icon}</span>
+    <div
+      onClick={onClick}
+      style={{
+        background: 'var(--color-white)',
+        border: 'var(--border)',
+        boxShadow: 'var(--shadow-sm)',
+        padding: 'var(--space-5)',
+        cursor: onClick ? 'pointer' : 'default',
+        transition: onClick ? 'box-shadow var(--transition-base), transform var(--transition-fast)' : 'none',
+      }}
+      onMouseEnter={e => { if (onClick) { e.currentTarget.style.boxShadow = 'var(--shadow-md)'; e.currentTarget.style.transform = 'translate(-2px,-2px)' }}}
+      onMouseLeave={e => { if (onClick) { e.currentTarget.style.boxShadow = 'var(--shadow-sm)'; e.currentTarget.style.transform = 'translate(0,0)' }}}
+    >
+      {accent && <div style={{ height: 3, background: accent, marginBottom: 'var(--space-3)' }} />}
+      <div style={{
+        fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-black)',
+        letterSpacing: 'var(--tracking-widest)', textTransform: 'uppercase',
+        color: 'var(--color-grey)', marginBottom: 'var(--space-2)',
+      }}>
+        {label}
       </div>
-      <div className="text-2xl font-bold" style={{ color: color || ADMIN_PRIMARY }}>{value}</div>
-      {sub && <div className="text-xs" style={{ color: 'rgba(0,0,0,0.35)' }}>{sub}</div>}
+      <div style={{
+        fontSize: 'var(--text-2xl)', fontWeight: 'var(--weight-black)',
+        letterSpacing: 'var(--tracking-tight)', fontVariationSettings: "'wdth' 105, 'opsz' 30",
+        color: 'var(--color-black)', lineHeight: 1, marginBottom: sub ? 'var(--space-1)' : 0,
+      }}>
+        {value}
+      </div>
+      {sub && <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-grey)' }}>{sub}</div>}
     </div>
   )
 }
 
+// ── Main ───────────────────────────────────────────────────────────────────
 export default function Dashboard() {
   const navigate = useNavigate()
-  const [loading, setLoading] = useState(true)
-  const [stats, setStats] = useState({
-    totalBusinesses: 0,
-    totalCustomers: 0,
-    totalAUM: 0,
-    totalVolume: 0,
-    totalRevenue: 0,
-    pendingKYB: 0,
-  })
+  const [loading, setLoading]       = useState(true)
+  const [stats, setStats]           = useState({ totalBusinesses: 0, totalCustomers: 0, totalAUM: 0, totalVolume: 0, totalRevenue: 0, pendingKYB: 0 })
   const [recentTxns, setRecentTxns] = useState([])
-  const [chartData, setChartData] = useState([])
+  const [chartData, setChartData]   = useState([])
   const [chartFilter, setChartFilter] = useState(7)
-  const [chartType, setChartType] = useState('bar')
-  const [allTxns, setAllTxns] = useState([])
+  const [chartType, setChartType]   = useState('bar')
+  const [allTxns, setAllTxns]       = useState([])
 
-  useEffect(() => {
-    loadData()
-  }, [])
-
-  useEffect(() => {
-    if (allTxns.length > 0 || !loading) buildChartData(allTxns, chartFilter)
-  }, [chartFilter, allTxns])
+  useEffect(() => { loadData() }, [])
+  useEffect(() => { if (allTxns.length > 0 || !loading) buildChartData(allTxns, chartFilter) }, [chartFilter, allTxns])
 
   async function loadData() {
     setLoading(true)
     try {
-      // Total businesses
-      const { count: bizCount } = await supabase
-        .from('businesses')
-        .select('*', { count: 'exact', head: true })
-
-      // Total customers
-      const { count: custCount } = await supabase
-        .from('customers')
-        .select('*', { count: 'exact', head: true })
-
-      // Total AUM — sum of all wallet balances
-      const { data: wallets } = await supabase
-        .from('wallets')
-        .select('balance')
+      const { count: bizCount  } = await supabase.from('businesses').select('*', { count: 'exact', head: true })
+      const { count: custCount } = await supabase.from('customers').select('*', { count: 'exact', head: true })
+      const { data: wallets    } = await supabase.from('wallets').select('balance')
       const totalAUM = wallets?.reduce((s, w) => s + Number(w.balance), 0) || 0
 
-      // Total transaction volume — all completed transactions
       const { data: allTxnData } = await supabase
         .from('transactions')
         .select('*, customers(first_name, last_name, business_id), businesses:customers(business_id(name))')
         .eq('status', 'completed')
         .order('created_at', { ascending: false })
-
       const txns = allTxnData || []
       const totalVolume = txns.reduce((s, t) => s + Number(t.amount), 0)
 
-      // Total revenue — sum of all transaction fees
-      const { data: fees } = await supabase
-        .from('transaction_fees')
-        .select('total_fees')
+      const { data: fees } = await supabase.from('transaction_fees').select('total_fees')
       const totalRevenue = fees?.reduce((s, f) => s + Number(f.total_fees), 0) || 0
 
-      // Pending KYB
-      const { count: kybCount } = await supabase
-        .from('businesses')
-        .select('*', { count: 'exact', head: true })
-        .eq('kyb_status', 'pending')
+      const { count: kybCount } = await supabase.from('businesses').select('*', { count: 'exact', head: true }).eq('kyb_status', 'pending')
 
       setAllTxns(txns)
       setRecentTxns(txns.slice(0, 10))
       buildChartData(txns, chartFilter)
-
-      setStats({
-        totalBusinesses: bizCount || 0,
-        totalCustomers: custCount || 0,
-        totalAUM,
-        totalVolume,
-        totalRevenue,
-        pendingKYB: kybCount || 0,
-      })
+      setStats({ totalBusinesses: bizCount || 0, totalCustomers: custCount || 0, totalAUM, totalVolume, totalRevenue, pendingKYB: kybCount || 0 })
     } catch (e) {
       console.error('Dashboard load error:', e)
     }
@@ -109,167 +132,135 @@ export default function Dashboard() {
   }
 
   function buildChartData(txns, days) {
-    const points = []
-    for (let i = days - 1; i >= 0; i--) {
-      const date = new Date()
-      date.setDate(date.getDate() - i)
-      date.setHours(0, 0, 0, 0)
-      let label = ''
-      if (days === 7) {
-        label = date.toLocaleDateString('en-UG', { weekday: 'short' })
-      } else if (days === 30) {
-        label = date.toLocaleDateString('en-UG', { day: 'numeric', month: 'short' })
-      } else {
-        label = date.toLocaleDateString('en-UG', { month: 'short' })
-      }
-      points.push({ label, date: date.toDateString(), deposits: 0, withdrawals: 0 })
-    }
-
     if (days === 365) {
       const monthMap = {}
-      points.forEach(p => { if (!monthMap[p.label]) monthMap[p.label] = { label: p.label, deposits: 0, withdrawals: 0 } })
+      for (let i = 11; i >= 0; i--) {
+        const d = new Date(); d.setMonth(d.getMonth() - i)
+        const key = d.toLocaleDateString('en-UG', { month: 'short' })
+        if (!monthMap[key]) monthMap[key] = { label: key, deposits: 0, withdrawals: 0 }
+      }
+      const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - days)
       txns.forEach(txn => {
-        const d = new Date(txn.created_at)
-        const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - days)
-        if (d < cutoff) return
+        const d = new Date(txn.created_at); if (d < cutoff) return
         const key = d.toLocaleDateString('en-UG', { month: 'short' })
         if (monthMap[key]) {
-          if (txn.type === 'deposit') monthMap[key].deposits += Number(txn.amount)
-          else if (txn.type === 'withdrawal') monthMap[key].withdrawals += Number(txn.amount)
+          if (txn.type === 'deposit')    monthMap[key].deposits    += Number(txn.amount)
+          if (txn.type === 'withdrawal') monthMap[key].withdrawals += Number(txn.amount)
         }
       })
-      setChartData(Object.values(monthMap))
-      return
+      setChartData(Object.values(monthMap)); return
     }
-
+    const points = []
+    for (let i = days - 1; i >= 0; i--) {
+      const date = new Date(); date.setDate(date.getDate() - i); date.setHours(0, 0, 0, 0)
+      const label = days === 7
+        ? date.toLocaleDateString('en-UG', { weekday: 'short' })
+        : date.toLocaleDateString('en-UG', { day: 'numeric', month: 'short' })
+      points.push({ label, date: date.toDateString(), deposits: 0, withdrawals: 0 })
+    }
+    const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - days)
     txns.forEach(txn => {
-      const d = new Date(txn.created_at)
-      const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - days)
-      if (d < cutoff) return
-      const dateStr = d.toDateString()
-      const point = points.find(p => p.date === dateStr)
+      const d = new Date(txn.created_at); if (d < cutoff) return
+      const point = points.find(p => p.date === d.toDateString())
       if (point) {
-        if (txn.type === 'deposit') point.deposits += Number(txn.amount)
-        else if (txn.type === 'withdrawal') point.withdrawals += Number(txn.amount)
+        if (txn.type === 'deposit')    point.deposits    += Number(txn.amount)
+        if (txn.type === 'withdrawal') point.withdrawals += Number(txn.amount)
       }
     })
     setChartData(points)
   }
 
-  function formatUGX(n) {
-    if (n >= 1000000) return 'UGX ' + (n / 1000000).toFixed(1) + 'M'
-    if (n >= 1000) return 'UGX ' + (n / 1000).toFixed(0) + 'K'
-    return 'UGX ' + Number(n).toLocaleString('en-UG', { maximumFractionDigits: 0 })
-  }
-
-  function txColor(type) { return type === 'deposit' ? '#16A34A' : type === 'withdrawal' ? '#DC2626' : '#D97706' }
-  function txIcon(type) { return type === 'deposit' ? '↓' : type === 'withdrawal' ? '↑' : '→' }
-  function txLabel(type) {
-    if (type === 'deposit') return 'Deposit'
-    if (type === 'withdrawal') return 'Withdrawal'
-    if (type === 'payment') return 'Fee payment'
-    return type
-  }
-
   const chartMax = Math.max(...chartData.map(d => Math.max(d.deposits, d.withdrawals)), 1)
-  const hasData = chartData.some(d => d.deposits > 0 || d.withdrawals > 0)
-
-  function buildPath(data, key, max, width, height) {
-    if (data.length === 0) return ''
-    const step = width / (data.length - 1 || 1)
-    return data.map((d, i) => {
-      const x = i * step
-      const y = height - (d[key] / max) * height
-      return (i === 0 ? 'M' : 'L') + x.toFixed(1) + ',' + y.toFixed(1)
-    }).join(' ')
-  }
+  const hasData  = chartData.some(d => d.deposits > 0 || d.withdrawals > 0)
 
   if (loading) return (
-    <div className="flex items-center justify-center py-20">
-      <div className="w-8 h-8 border-4 rounded-full animate-spin"
-        style={{ borderColor: ADMIN_PRIMARY, borderTopColor: 'transparent' }} />
+    <div style={{ display: 'flex', justifyContent: 'center', padding: 'var(--space-20)' }}>
+      <div className="spinner spinner-lg spinner-purple" />
     </div>
   )
 
   return (
-    <div className="flex flex-col gap-6">
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>
 
-      {/* KYB alert banner */}
+      {/* ── KYB alert ── */}
       {stats.pendingKYB > 0 && (
-        <div className="flex items-center justify-between px-5 py-3 rounded-2xl"
-          style={{ background: 'rgba(217,119,6,0.1)', border: '1px solid rgba(217,119,6,0.25)' }}>
-          <div className="flex items-center gap-3">
-            <span className="text-lg">📋</span>
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: 'var(--space-4) var(--space-5)',
+          background: 'var(--color-yellow)',
+          border: 'var(--border)',
+          boxShadow: 'var(--shadow-sm)',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
+            <span className="icon-outlined" style={{ fontSize: 22, flexShrink: 0 }}>verified_user</span>
             <div>
-              <div className="text-sm font-bold" style={{ color: '#92400e' }}>
+              <div style={{ fontWeight: 'var(--weight-bold)', fontSize: 'var(--text-sm)' }}>
                 {stats.pendingKYB} business{stats.pendingKYB > 1 ? 'es' : ''} awaiting KYB review
               </div>
-              <div className="text-xs" style={{ color: '#b45309' }}>
+              <div style={{ fontSize: 'var(--text-xs)', color: 'rgba(0,0,0,0.55)' }}>
                 Review and approve or reject KYB submissions
               </div>
             </div>
           </div>
-          <button
-            onClick={() => navigate('/admin/kyb')}
-            className="text-xs font-bold px-4 py-2 rounded-xl"
-            style={{ background: '#D97706', color: '#fff' }}>
+          <button onClick={() => navigate('/admin/kyb')} className="btn btn-sm btn-black">
+            <span className="icon-outlined icon-xs">arrow_forward</span>
             Review now
           </button>
         </div>
       )}
 
-      {/* Stats row */}
-      <div className="grid grid-cols-3 gap-4">
-        <StatCard label="Total Businesses" value={stats.totalBusinesses} sub="Registered on platform" icon="🏢" />
-        <StatCard label="Total Customers" value={stats.totalCustomers} sub="Across all businesses" icon="👤" />
-        <StatCard label="Total AUM" value={formatUGX(stats.totalAUM)} sub="All wallet balances" icon="💰" color="#16A34A" />
-        <StatCard label="Transaction Volume" value={formatUGX(stats.totalVolume)} sub="All completed transactions" icon="↕" />
-        <StatCard label="Partna Revenue" value={formatUGX(stats.totalRevenue)} sub="Fees collected" icon="📈" color={ADMIN_GOLD} />
-        <StatCard label="Pending KYB" value={stats.pendingKYB} sub="Awaiting review" icon="📋"
-          color={stats.pendingKYB > 0 ? '#D97706' : ADMIN_PRIMARY} />
+      {/* ── Stat cards ── */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 'var(--space-4)' }}>
+        <StatCard label="Total businesses"      value={stats.totalBusinesses}          sub="Registered on platform"       accent="var(--color-primary)" onClick={() => navigate('/admin/businesses')} />
+        <StatCard label="Total customers"       value={stats.totalCustomers}           sub="Across all businesses"        accent="var(--color-yellow)"  onClick={() => navigate('/admin/customers')} />
+        <StatCard label="Total AUM"             value={formatUGX(stats.totalAUM)}      sub="All wallet balances"          accent="var(--color-green)"   />
+        <StatCard label="Transaction volume"    value={formatUGX(stats.totalVolume)}   sub="All completed transactions"   accent="var(--color-primary)" onClick={() => navigate('/admin/transactions')} />
+        <StatCard label="Partna revenue"        value={formatUGX(stats.totalRevenue)}  sub="Fees collected"               accent="var(--color-yellow)"  onClick={() => navigate('/admin/revenue')} />
+        <StatCard label="Pending KYB"           value={stats.pendingKYB}               sub="Awaiting review"
+          accent={stats.pendingKYB > 0 ? 'var(--color-red)' : 'var(--color-grey-light)'}
+          onClick={() => navigate('/admin/kyb')} />
       </div>
 
-      {/* Chart + Recent activity */}
-      <div className="grid grid-cols-3 gap-4">
+      {/* ── Chart + recent activity ── */}
+      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 'var(--space-4)' }}>
 
         {/* Chart */}
-        <div className="col-span-2 rounded-2xl p-5" style={{ background: '#fff' }}>
-          <div className="flex items-center justify-between mb-4">
-            <div className="text-sm font-bold" style={{ color: ADMIN_PRIMARY }}>
-              Platform Deposits & Withdrawals
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="flex items-center gap-3 mr-2">
-                <div className="flex items-center gap-1.5">
-                  <div className="w-3 h-3 rounded-full" style={{ background: '#16A34A' }} />
-                  <span className="text-xs" style={{ color: 'rgba(0,0,0,0.4)' }}>Deposits</span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <div className="w-3 h-3 rounded-full" style={{ background: '#DC2626' }} />
-                  <span className="text-xs" style={{ color: 'rgba(0,0,0,0.4)' }}>Withdrawals</span>
-                </div>
+        <div style={{ background: 'var(--color-white)', border: 'var(--border)', boxShadow: 'var(--shadow-sm)', padding: 'var(--space-5)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 'var(--space-4)' }}>
+            <span style={{ fontWeight: 'var(--weight-black)', fontSize: 'var(--text-sm)', letterSpacing: 'var(--tracking-tight)' }}>
+              Platform deposits & withdrawals
+            </span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
+              {/* Legend */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-4)' }}>
+                {[{ color: 'var(--color-green)', label: 'Deposits' }, { color: '#C0392B', label: 'Withdrawals' }].map(({ color, label }) => (
+                  <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-1)' }}>
+                    <div style={{ width: 10, height: 10, background: color, border: '1.5px solid var(--color-black)' }} />
+                    <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-grey)', fontWeight: 'var(--weight-bold)' }}>{label}</span>
+                  </div>
+                ))}
               </div>
-              <div className="flex rounded-lg overflow-hidden border" style={{ borderColor: 'rgba(27,79,114,0.15)' }}>
-                <button onClick={() => setChartType('bar')}
-                  className="px-2 py-1.5 text-xs font-semibold"
-                  style={{ background: chartType === 'bar' ? ADMIN_PRIMARY : '#fff', color: chartType === 'bar' ? '#fff' : 'rgba(0,0,0,0.4)' }}>
-                  ▦ Bar
-                </button>
-                <button onClick={() => setChartType('line')}
-                  className="px-2 py-1.5 text-xs font-semibold"
-                  style={{ background: chartType === 'line' ? ADMIN_PRIMARY : '#fff', color: chartType === 'line' ? '#fff' : 'rgba(0,0,0,0.4)', borderLeft: '1px solid rgba(27,79,114,0.15)' }}>
-                  ↗ Line
-                </button>
+              {/* Chart type */}
+              <div style={{ display: 'flex', border: 'var(--border)', overflow: 'hidden' }}>
+                {[{ id: 'bar', icon: 'bar_chart' }, { id: 'line', icon: 'show_chart' }].map((t, i) => (
+                  <button key={t.id} onClick={() => setChartType(t.id)} style={{
+                    padding: '4px var(--space-2)', background: chartType === t.id ? 'var(--color-black)' : 'var(--color-white)',
+                    border: 'none', borderLeft: i > 0 ? '1.5px solid var(--color-grey-light)' : 'none', cursor: 'pointer',
+                  }}>
+                    <span className="icon-outlined" style={{ fontSize: 16, color: chartType === t.id ? 'var(--color-white)' : 'var(--color-grey)' }}>{t.icon}</span>
+                  </button>
+                ))}
               </div>
-              <div className="flex rounded-lg overflow-hidden border" style={{ borderColor: 'rgba(27,79,114,0.15)' }}>
+              {/* Time filter */}
+              <div style={{ display: 'flex', border: 'var(--border)', overflow: 'hidden' }}>
                 {CHART_FILTERS.map((f, i) => (
-                  <button key={f.days} onClick={() => setChartFilter(f.days)}
-                    className="px-2.5 py-1.5 text-xs font-semibold"
-                    style={{
-                      background: chartFilter === f.days ? ADMIN_PRIMARY : '#fff',
-                      color: chartFilter === f.days ? '#fff' : 'rgba(0,0,0,0.4)',
-                      borderLeft: i > 0 ? '1px solid rgba(27,79,114,0.15)' : 'none',
-                    }}>
+                  <button key={f.days} onClick={() => setChartFilter(f.days)} style={{
+                    padding: '4px var(--space-3)', background: chartFilter === f.days ? 'var(--color-black)' : 'var(--color-white)',
+                    border: 'none', borderLeft: i > 0 ? '1.5px solid var(--color-grey-light)' : 'none', cursor: 'pointer',
+                    fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-black)',
+                    color: chartFilter === f.days ? 'var(--color-white)' : 'var(--color-grey)',
+                    letterSpacing: 'var(--tracking-wide)',
+                  }}>
                     {f.label}
                   </button>
                 ))}
@@ -278,49 +269,49 @@ export default function Dashboard() {
           </div>
 
           {!hasData ? (
-            <div className="flex items-center justify-center h-40">
-              <div className="text-sm text-center" style={{ color: 'rgba(0,0,0,0.3)' }}>No transaction data yet</div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 160 }}>
+              <div className="empty-state" style={{ padding: 'var(--space-6)' }}>
+                <span className="icon-outlined" style={{ fontSize: 36, color: 'var(--color-grey-mid)', display: 'block', marginBottom: 'var(--space-2)' }}>bar_chart</span>
+                <div style={{ fontSize: 'var(--text-sm)', color: 'var(--color-grey)' }}>No transaction data yet</div>
+              </div>
             </div>
           ) : chartType === 'bar' ? (
-            <div className="flex items-end gap-1 h-40">
+            <div style={{ display: 'flex', alignItems: 'flex-end', gap: 3, height: 160, paddingBottom: 20, position: 'relative' }}>
+              {[0, 0.25, 0.5, 0.75, 1].map((pct, i) => (
+                <div key={i} style={{ position: 'absolute', left: 0, right: 0, bottom: 20 + pct * 140, height: 1, background: 'var(--color-grey-light)' }} />
+              ))}
               {chartData.map((day, i) => (
-                <div key={i} className="flex-1 flex flex-col items-center gap-1">
-                  <div className="w-full flex gap-0.5 items-end" style={{ height: '120px' }}>
-                    <div className="flex-1 rounded-t-sm transition-all"
-                      style={{ height: `${(day.deposits / chartMax) * 100}%`, background: '#16A34A', minHeight: day.deposits > 0 ? '2px' : '0' }} />
-                    <div className="flex-1 rounded-t-sm transition-all"
-                      style={{ height: `${(day.withdrawals / chartMax) * 100}%`, background: '#DC2626', minHeight: day.withdrawals > 0 ? '2px' : '0' }} />
+                <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, height: '100%', justifyContent: 'flex-end' }}>
+                  <div style={{ width: '100%', display: 'flex', gap: 1, alignItems: 'flex-end', height: 140 }}>
+                    <div style={{ flex: 1, height: `${(day.deposits / chartMax) * 100}%`, background: 'var(--color-green)', border: day.deposits > 0 ? '1px solid var(--color-black)' : 'none', minHeight: day.deposits > 0 ? 2 : 0, transition: 'height var(--transition-slow)' }} />
+                    <div style={{ flex: 1, height: `${(day.withdrawals / chartMax) * 100}%`, background: '#C0392B', border: day.withdrawals > 0 ? '1px solid var(--color-black)' : 'none', minHeight: day.withdrawals > 0 ? 2 : 0, transition: 'height var(--transition-slow)' }} />
                   </div>
                   {(chartFilter === 7 || i % Math.ceil(chartData.length / 10) === 0) && (
-                    <div className="text-center" style={{ color: 'rgba(0,0,0,0.3)', fontSize: '9px' }}>{day.label}</div>
+                    <div style={{ fontSize: 9, color: 'var(--color-grey)', fontWeight: 'var(--weight-bold)', marginTop: 3 }}>{day.label}</div>
                   )}
                 </div>
               ))}
             </div>
           ) : (
-            <div style={{ height: '160px', position: 'relative' }}>
+            <div style={{ height: 160 }}>
               <svg width="100%" height="140" viewBox="0 0 600 140" preserveAspectRatio="none" style={{ display: 'block' }}>
                 {[0, 0.25, 0.5, 0.75, 1].map((pct, i) => (
-                  <line key={i} x1="0" y1={140 * pct} x2="600" y2={140 * pct} stroke="rgba(0,0,0,0.05)" strokeWidth="1" />
+                  <line key={i} x1="0" y1={140 * pct} x2="600" y2={140 * pct} stroke="var(--color-grey-light)" strokeWidth="1" />
                 ))}
-                <path d={buildPath(chartData, 'deposits', chartMax, 600, 130)}
-                  fill="none" stroke="#16A34A" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
-                <path d={buildPath(chartData, 'withdrawals', chartMax, 600, 130)}
-                  fill="none" stroke="#DC2626" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+                <path d={buildPath(chartData, 'deposits', chartMax, 600, 130)} fill="none" stroke="var(--color-green)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+                <path d={buildPath(chartData, 'withdrawals', chartMax, 600, 130)} fill="none" stroke="#C0392B" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
                 {chartData.map((d, i) => {
                   const x = (i / (chartData.length - 1 || 1)) * 600
-                  const y = 130 - (d.deposits / chartMax) * 130
-                  return d.deposits > 0 ? <circle key={`dep-${i}`} cx={x} cy={y} r="3" fill="#16A34A" /> : null
+                  return d.deposits > 0 ? <circle key={`dep-${i}`} cx={x} cy={130 - (d.deposits / chartMax) * 130} r="3.5" fill="var(--color-green)" stroke="var(--color-black)" strokeWidth="1.5" /> : null
                 })}
                 {chartData.map((d, i) => {
                   const x = (i / (chartData.length - 1 || 1)) * 600
-                  const y = 130 - (d.withdrawals / chartMax) * 130
-                  return d.withdrawals > 0 ? <circle key={`wdr-${i}`} cx={x} cy={y} r="3" fill="#DC2626" /> : null
+                  return d.withdrawals > 0 ? <circle key={`wdr-${i}`} cx={x} cy={130 - (d.withdrawals / chartMax) * 130} r="3.5" fill="#C0392B" stroke="var(--color-black)" strokeWidth="1.5" /> : null
                 })}
               </svg>
-              <div className="flex justify-between mt-1">
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4 }}>
                 {chartData.filter((_, i) => chartFilter === 7 || i % Math.ceil(chartData.length / 7) === 0).map((d, i) => (
-                  <span key={i} style={{ color: 'rgba(0,0,0,0.3)', fontSize: '9px' }}>{d.label}</span>
+                  <span key={i} style={{ fontSize: 9, color: 'var(--color-grey)', fontWeight: 'var(--weight-bold)' }}>{d.label}</span>
                 ))}
               </div>
             </div>
@@ -328,34 +319,36 @@ export default function Dashboard() {
         </div>
 
         {/* Recent activity */}
-        <div className="rounded-2xl p-5" style={{ background: '#fff' }}>
-          <div className="flex items-center justify-between mb-4">
-            <div className="text-sm font-bold" style={{ color: ADMIN_PRIMARY }}>Recent Activity</div>
-            <button onClick={() => navigate('/admin/transactions')}
-              className="text-xs font-semibold" style={{ color: ADMIN_GOLD }}>See all</button>
+        <div style={{ background: 'var(--color-white)', border: 'var(--border)', boxShadow: 'var(--shadow-sm)', padding: 'var(--space-5)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 'var(--space-4)' }}>
+            <span style={{ fontWeight: 'var(--weight-black)', fontSize: 'var(--text-sm)', letterSpacing: 'var(--tracking-tight)' }}>
+              Recent activity
+            </span>
+            <button onClick={() => navigate('/admin/transactions')} style={{ background: 'none', border: 'none', fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-bold)', color: 'var(--color-primary)', cursor: 'pointer', textDecoration: 'underline', textUnderlineOffset: 3 }}>
+              See all
+            </button>
           </div>
+
           {recentTxns.length === 0 ? (
-            <div className="flex items-center justify-center h-32">
-              <div className="text-xs text-center" style={{ color: 'rgba(0,0,0,0.3)' }}>No activity yet</div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 120, fontSize: 'var(--text-sm)', color: 'var(--color-grey)' }}>
+              No activity yet
             </div>
           ) : (
-            <div className="flex flex-col gap-2">
+            <div style={{ display: 'flex', flexDirection: 'column' }}>
               {recentTxns.slice(0, 8).map((txn, i) => (
-                <div key={txn.id} className="flex items-center gap-2 py-1.5"
-                  style={{ borderBottom: i < 7 ? '1px solid rgba(0,0,0,0.05)' : 'none' }}>
-                  <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0"
-                    style={{ background: `${txColor(txn.type)}15`, color: txColor(txn.type) }}>
-                    {txIcon(txn.type)}
+                <div key={txn.id} style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', padding: 'var(--space-2) 0', borderBottom: i < 7 ? '1.5px solid var(--color-grey-light)' : 'none' }}>
+                  <div style={{ width: 28, height: 28, background: txAccent(txn.type), border: 'var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    <span className="icon-outlined" style={{ fontSize: 14, color: 'var(--color-black)' }}>{txIcon(txn.type)}</span>
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="text-xs font-semibold truncate" style={{ color: '#333' }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 'var(--weight-semibold)', fontSize: 'var(--text-xs)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                       {txn.customers?.first_name} {txn.customers?.last_name}
                     </div>
-                    <div className="text-xs" style={{ color: 'rgba(0,0,0,0.35)', fontSize: '10px' }}>
+                    <div style={{ fontSize: 10, color: 'var(--color-grey)', fontWeight: 'var(--weight-bold)', letterSpacing: 'var(--tracking-wide)', textTransform: 'uppercase' }}>
                       {txLabel(txn.type)}
                     </div>
                   </div>
-                  <div className="text-xs font-bold flex-shrink-0" style={{ color: txColor(txn.type) }}>
+                  <div style={{ fontWeight: 'var(--weight-black)', fontSize: 'var(--text-xs)', color: txAmountColor(txn.type), flexShrink: 0 }}>
                     {txn.type === 'deposit' ? '+' : '-'}{formatUGX(txn.amount)}
                   </div>
                 </div>
@@ -365,29 +358,43 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* Quick links */}
-      <div className="grid grid-cols-4 gap-4">
+      {/* ── Quick links ── */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 'var(--space-4)' }}>
         {[
-          { label: 'Manage Businesses', sub: 'View, approve, suspend', path: '/admin/businesses', icon: '🏢' },
-          { label: 'Review KYB', sub: 'Pending submissions', path: '/admin/kyb', icon: '📋', alert: stats.pendingKYB > 0 },
-          { label: 'All Transactions', sub: 'Full platform ledger', path: '/admin/transactions', icon: '↕' },
-          { label: 'Voucher Library', sub: 'Create & manage vouchers', path: '/admin/vouchers', icon: '🎫' },
+          { label: 'Manage businesses', sub: 'View, approve, suspend',   path: '/admin/businesses',   icon: 'business',          accent: 'var(--color-primary)' },
+          { label: 'Review KYB',        sub: 'Pending submissions',       path: '/admin/kyb',          icon: 'verified_user',     accent: stats.pendingKYB > 0 ? 'var(--color-yellow)' : 'var(--color-grey-light)', alert: stats.pendingKYB > 0 },
+          { label: 'All transactions',  sub: 'Full platform ledger',      path: '/admin/transactions', icon: 'swap_vert',         accent: 'var(--color-primary)' },
+          { label: 'Voucher library',   sub: 'Create & manage vouchers',  path: '/admin/vouchers',     icon: 'confirmation_number', accent: 'var(--color-green)' },
         ].map(item => (
-          <button key={item.path} onClick={() => navigate(item.path)}
-            className="rounded-2xl p-4 text-left flex items-start gap-3"
+          <button
+            key={item.path}
+            onClick={() => navigate(item.path)}
             style={{
-              background: '#fff',
-              border: item.alert ? '1.5px solid #D97706' : '1.5px solid rgba(0,0,0,0.06)',
-            }}>
-            <span className="text-2xl">{item.icon}</span>
-            <div>
-              <div className="text-xs font-bold mb-0.5" style={{ color: ADMIN_PRIMARY }}>{item.label}</div>
-              <div className="text-xs" style={{ color: 'rgba(0,0,0,0.4)' }}>{item.sub}</div>
+              background: 'var(--color-white)',
+              border: item.alert ? '2px solid var(--color-yellow)' : 'var(--border)',
+              boxShadow: item.alert ? 'var(--shadow-sm)' : 'none',
+              padding: 'var(--space-4)',
+              textAlign: 'left',
+              cursor: 'pointer',
+              display: 'flex', flexDirection: 'column', gap: 'var(--space-3)',
+              transition: 'box-shadow var(--transition-base), transform var(--transition-fast)',
+            }}
+            onMouseEnter={e => { e.currentTarget.style.boxShadow = 'var(--shadow-md)'; e.currentTarget.style.transform = 'translate(-2px,-2px)' }}
+            onMouseLeave={e => { e.currentTarget.style.boxShadow = item.alert ? 'var(--shadow-sm)' : 'none'; e.currentTarget.style.transform = 'translate(0,0)' }}
+          >
+            <div style={{ height: 3, background: item.accent }} />
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 'var(--space-3)' }}>
+              <div style={{ width: 36, height: 36, background: 'var(--color-black)', border: 'var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <span className="icon-outlined" style={{ fontSize: 18, color: 'var(--color-white)' }}>{item.icon}</span>
+              </div>
+              <div>
+                <div style={{ fontWeight: 'var(--weight-bold)', fontSize: 'var(--text-sm)', marginBottom: 3 }}>{item.label}</div>
+                <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-grey)' }}>{item.sub}</div>
+              </div>
             </div>
           </button>
         ))}
       </div>
-
     </div>
   )
 }

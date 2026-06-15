@@ -1,15 +1,12 @@
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../../supabase'
 
-const PARTNA_PRIMARY = '#1B4F72'
-const PARTNA_GOLD = '#D4AF37'
+// ── Helpers ────────────────────────────────────────────────────────────────
 
 function generateProductCode() {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
   let code = 'PRD-'
-  for (let i = 0; i < 6; i++) {
-    code += chars[Math.floor(Math.random() * chars.length)]
-  }
+  for (let i = 0; i < 6; i++) code += chars[Math.floor(Math.random() * chars.length)]
   return code
 }
 
@@ -18,46 +15,39 @@ function formatUGX(n) {
 }
 
 function formatAmountInput(val) {
-  const digits = val.replace(/\D/g, '')
-  return digits.replace(/\B(?=(\d{3})+(?!\d))/g, ',')
+  return val.replace(/\D/g, '').replace(/\B(?=(\d{3})+(?!\d))/g, ',')
 }
 
 export default function Products({ admin, business }) {
-  const [products, setProducts] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [showAddModal, setShowAddModal] = useState(false)
+  const [products, setProducts]       = useState([])
+  const [loading, setLoading]         = useState(true)
+  const [showAddModal, setShowAddModal]   = useState(false)
   const [showBulkModal, setShowBulkModal] = useState(false)
+  const [searchQuery, setSearchQuery]     = useState('')
+  const [success, setSuccess]         = useState('')
 
   // Single product form
-  const [name, setName] = useState('')
+  const [name, setName]               = useState('')
   const [description, setDescription] = useState('')
-  const [price, setPrice] = useState('')
-  const [saving, setSaving] = useState(false)
-  const [error, setError] = useState('')
-  const [success, setSuccess] = useState('')
+  const [price, setPrice]             = useState('')
+  const [saving, setSaving]           = useState(false)
+  const [error, setError]             = useState('')
 
   // Bulk upload
-  const [bulkFile, setBulkFile] = useState(null)
-  const [bulkParsed, setBulkParsed] = useState([])
-  const [bulkErrors, setBulkErrors] = useState([])
+  const [bulkFile, setBulkFile]           = useState(null)
+  const [bulkParsed, setBulkParsed]       = useState([])
+  const [bulkErrors, setBulkErrors]       = useState([])
   const [bulkUploading, setBulkUploading] = useState(false)
-  const [bulkResult, setBulkResult] = useState(null)
+  const [bulkResult, setBulkResult]       = useState(null)
   const fileInputRef = useRef()
 
-  // Search / filter
-  const [searchQuery, setSearchQuery] = useState('')
-
-  useEffect(() => {
-    if (business) loadProducts()
-  }, [business])
+  useEffect(() => { if (business) loadProducts() }, [business])
 
   async function loadProducts() {
     setLoading(true)
     const { data } = await supabase
-      .from('products')
-      .select('*')
-      .eq('business_id', business.id)
-      .eq('is_active', true)
+      .from('products').select('*')
+      .eq('business_id', business.id).eq('is_active', true)
       .order('created_at', { ascending: false })
     setProducts(data || [])
     setLoading(false)
@@ -66,30 +56,23 @@ export default function Products({ admin, business }) {
   async function handleAddProduct() {
     setError('')
     const parsedPrice = parseInt(price.replace(/,/g, ''), 10)
-    if (!name.trim()) { setError('Product name is required.'); return }
+    if (!name.trim())                 { setError('Product name is required.'); return }
     if (!parsedPrice || parsedPrice < 1) { setError('Please enter a valid price.'); return }
 
     setSaving(true)
     try {
-      // Generate unique product code
       let code = generateProductCode()
-      // Ensure uniqueness (retry if collision)
-      const { data: existing } = await supabase
-        .from('products').select('id').eq('product_code', code)
-      if (existing && existing.length > 0) code = generateProductCode()
+      const { data: existing } = await supabase.from('products').select('id').eq('product_code', code)
+      if (existing?.length > 0) code = generateProductCode()
 
       const { error: insertError } = await supabase.from('products').insert({
-        business_id: business.id,
-        name: name.trim(),
+        business_id: business.id, name: name.trim(),
         description: description.trim() || null,
-        price: parsedPrice,
-        product_code: code,
-        is_active: true,
+        price: parsedPrice, product_code: code, is_active: true,
       })
-
       if (insertError) throw insertError
 
-      setSuccess('Product added successfully. Code: ' + code)
+      setSuccess('Product added — code: ' + code)
       setName(''); setDescription(''); setPrice('')
       setShowAddModal(false)
       await loadProducts()
@@ -105,50 +88,34 @@ export default function Products({ admin, business }) {
     await loadProducts()
   }
 
-  // ── CSV template download ──
   function downloadTemplate() {
     const csv = 'product name,description (optional),price\nExample Product,A great product,150000\nAnother Product,,75000'
     const blob = new Blob([csv], { type: 'text/csv' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
-    a.href = url
-    a.download = 'partna_products_template.csv'
-    a.click()
+    a.href = url; a.download = 'partna_products_template.csv'; a.click()
     URL.revokeObjectURL(url)
   }
 
-  // ── CSV parsing ──
   function handleBulkFileSelect(e) {
     const file = e.target.files[0]
     if (!file) return
-    setBulkFile(file)
-    setBulkErrors([])
-    setBulkParsed([])
-    setBulkResult(null)
+    setBulkFile(file); setBulkErrors([]); setBulkParsed([]); setBulkResult(null)
 
     const reader = new FileReader()
     reader.onload = ev => {
-      const text = ev.target.result
-      const lines = text.split('\n').map(l => l.trim()).filter(Boolean)
+      const lines = ev.target.result.split('\n').map(l => l.trim()).filter(Boolean)
       if (lines.length < 2) { setBulkErrors(['CSV file is empty or has no data rows.']); return }
 
-      const rows = []
-      const errors = []
-
-      // Skip header row (index 0)
+      const rows = []; const errors = []
       for (let i = 1; i < lines.length; i++) {
-        const cols = lines[i].split(',').map(c => c.trim().replace(/^"|"$/g, ''))
-        const [pName, pDesc, pPrice] = cols
+        const [pName, pDesc, pPrice] = lines[i].split(',').map(c => c.trim().replace(/^"|"$/g, ''))
         const parsedPrice = parseInt((pPrice || '').replace(/[^0-9]/g, ''), 10)
-
-        if (!pName) { errors.push(`Row ${i + 1}: Product name is required.`); continue }
+        if (!pName)                        { errors.push(`Row ${i + 1}: Product name is required.`); continue }
         if (!parsedPrice || parsedPrice < 1) { errors.push(`Row ${i + 1}: Invalid price "${pPrice}".`); continue }
-
         rows.push({ name: pName, description: pDesc || null, price: parsedPrice })
       }
-
-      setBulkParsed(rows)
-      setBulkErrors(errors)
+      setBulkParsed(rows); setBulkErrors(errors)
     }
     reader.readAsText(file)
   }
@@ -156,30 +123,21 @@ export default function Products({ admin, business }) {
   async function handleBulkUpload() {
     if (bulkParsed.length === 0) return
     setBulkUploading(true)
-    let imported = 0
-    let failed = 0
+    let imported = 0; let failed = 0
 
     for (const row of bulkParsed) {
       try {
         let code = generateProductCode()
-        const { data: existing } = await supabase
-          .from('products').select('id').eq('product_code', code)
-        if (existing && existing.length > 0) code = generateProductCode()
-
+        const { data: existing } = await supabase.from('products').select('id').eq('product_code', code)
+        if (existing?.length > 0) code = generateProductCode()
         const { error } = await supabase.from('products').insert({
-          business_id: business.id,
-          name: row.name,
+          business_id: business.id, name: row.name,
           description: row.description || null,
-          price: row.price,
-          product_code: code,
-          is_active: true,
+          price: row.price, product_code: code, is_active: true,
         })
-
         if (error) { failed++; continue }
         imported++
-      } catch (e) {
-        failed++
-      }
+      } catch { failed++ }
     }
 
     setBulkResult({ imported, failed })
@@ -193,183 +151,201 @@ export default function Products({ admin, business }) {
   )
 
   return (
-    <div className="flex flex-col gap-6">
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>
 
-      {/* Success message */}
+      {/* ── Success toast ── */}
       {success && (
-        <div className="px-4 py-3 rounded-xl text-xs font-semibold"
-          style={{ background: 'rgba(22,163,74,0.1)', color: '#16A34A', border: '1px solid rgba(22,163,74,0.2)' }}>
-          ✓ {success}
+        <div className="alert alert-success">
+          <span className="icon-outlined alert-icon">check_circle</span>
+          <div className="alert-content">{success}</div>
         </div>
       )}
 
-      {/* Header row */}
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-3 flex-1">
-          <input
-            type="text"
-            placeholder="Search products or codes..."
-            value={searchQuery}
-            onChange={e => setSearchQuery(e.target.value)}
-            className="px-4 py-2.5 rounded-xl text-sm outline-none flex-1 max-w-xs"
-            style={{ background: '#fff', border: '1.5px solid rgba(27,79,114,0.15)', color: '#333' }}
-          />
-          <div className="text-xs" style={{ color: 'rgba(0,0,0,0.4)' }}>
-            {filteredProducts.length} product{filteredProducts.length !== 1 ? 's' : ''}
+      {/* ── Toolbar ── */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--space-3)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', flex: 1 }}>
+          <div className="search-wrapper" style={{ maxWidth: 320 }}>
+            <span className="icon-outlined search-icon">search</span>
+            <input
+              type="text"
+              className="input search-input"
+              placeholder="Search products or codes…"
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+            />
+            {searchQuery && (
+              <button className="search-clear" onClick={() => setSearchQuery('')}>
+                <span className="icon-outlined" style={{ fontSize: 16 }}>close</span>
+              </button>
+            )}
           </div>
+          <span style={{
+            fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-black)',
+            letterSpacing: 'var(--tracking-widest)', textTransform: 'uppercase',
+            color: 'var(--color-grey)',
+          }}>
+            {filteredProducts.length} product{filteredProducts.length !== 1 ? 's' : ''}
+          </span>
         </div>
-        <div className="flex items-center gap-2">
-          <button onClick={() => { setShowBulkModal(true); setBulkFile(null); setBulkParsed([]); setBulkErrors([]); setBulkResult(null) }}
-            className="px-4 py-2.5 rounded-xl text-xs font-semibold"
-            style={{ background: '#fff', color: PARTNA_PRIMARY, border: `1.5px solid rgba(27,79,114,0.2)` }}>
-            📤 Bulk add
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+          <button
+            onClick={() => { setShowBulkModal(true); setBulkFile(null); setBulkParsed([]); setBulkErrors([]); setBulkResult(null) }}
+            className="btn btn-secondary btn-sm"
+          >
+            <span className="icon-outlined icon-xs">upload</span>
+            Bulk add
           </button>
-          <button onClick={() => { setShowAddModal(true); setError(''); setName(''); setDescription(''); setPrice('') }}
-            className="px-5 py-2.5 rounded-xl text-sm font-bold"
-            style={{ background: PARTNA_PRIMARY, color: '#fff' }}>
-            + Add product
+          <button
+            onClick={() => { setShowAddModal(true); setError(''); setName(''); setDescription(''); setPrice('') }}
+            className="btn btn-primary"
+          >
+            <span className="icon-outlined icon-sm">add</span>
+            Add product
           </button>
         </div>
       </div>
 
-      {/* Products table */}
+      {/* ── Products table ── */}
       {loading ? (
-        <div className="flex items-center justify-center py-16">
-          <div className="w-8 h-8 border-4 rounded-full animate-spin"
-            style={{ borderColor: PARTNA_PRIMARY, borderTopColor: 'transparent' }} />
+        <div style={{ display: 'flex', justifyContent: 'center', padding: 'var(--space-16)' }}>
+          <div className="spinner spinner-lg spinner-purple" />
         </div>
       ) : filteredProducts.length === 0 ? (
-        <div className="rounded-2xl p-12 text-center" style={{ background: '#fff' }}>
-          <div className="text-4xl mb-3">🛍️</div>
-          <div className="text-sm font-bold mb-1" style={{ color: PARTNA_PRIMARY }}>
+        <div style={{ background: 'var(--color-white)', border: 'var(--border)', boxShadow: 'var(--shadow-sm)', padding: 'var(--space-16)', textAlign: 'center' }}>
+          <span className="icon-outlined" style={{ fontSize: 40, color: 'var(--color-grey-mid)', display: 'block', marginBottom: 'var(--space-3)' }}>
+            inventory_2
+          </span>
+          <div style={{ fontWeight: 'var(--weight-bold)', fontSize: 'var(--text-base)', marginBottom: 'var(--space-2)' }}>
             {searchQuery ? 'No products match your search' : 'No products yet'}
           </div>
-          <div className="text-xs mb-4" style={{ color: 'rgba(0,0,0,0.4)' }}>
+          <div style={{ fontSize: 'var(--text-sm)', color: 'var(--color-grey)', marginBottom: 'var(--space-5)' }}>
             {searchQuery
-              ? 'Try a different search term'
-              : 'Add your first product to create savings campaigns for your customers'}
+              ? 'Try a different search term.'
+              : 'Add your first product to create savings campaigns for your customers.'}
           </div>
           {!searchQuery && (
-            <button onClick={() => setShowAddModal(true)}
-              className="px-6 py-2.5 rounded-xl text-sm font-bold"
-              style={{ background: PARTNA_PRIMARY, color: '#fff' }}>
+            <button onClick={() => setShowAddModal(true)} className="btn btn-primary btn-lg">
+              <span className="icon-outlined icon-sm">add</span>
               Add first product
             </button>
           )}
         </div>
       ) : (
-        <div className="rounded-2xl overflow-hidden" style={{ background: '#fff' }}>
-          <div className="grid px-5 py-3 text-xs font-bold"
-            style={{
-              gridTemplateColumns: '2fr 3fr 1.5fr 1fr auto',
-              color: 'rgba(0,0,0,0.35)',
-              borderBottom: '1px solid rgba(0,0,0,0.06)',
-              background: '#fafafa',
-            }}>
-            <span>Product</span>
-            <span>Description</span>
-            <span>Price</span>
-            <span>Code</span>
-            <span></span>
-          </div>
-          {filteredProducts.map((p, i) => (
-            <div key={p.id} className="grid items-center px-5 py-3"
-              style={{
-                gridTemplateColumns: '2fr 3fr 1.5fr 1fr auto',
-                borderBottom: i < filteredProducts.length - 1 ? '1px solid rgba(0,0,0,0.05)' : 'none',
-              }}>
-              <div className="text-xs font-semibold" style={{ color: PARTNA_PRIMARY }}>{p.name}</div>
-              <div className="text-xs truncate pr-4" style={{ color: 'rgba(0,0,0,0.4)' }}>
-                {p.description || '—'}
-              </div>
-              <div className="text-xs font-semibold" style={{ color: PARTNA_PRIMARY }}>
-                {formatUGX(p.price)}
-              </div>
-              <div className="text-xs font-mono font-bold" style={{ color: PARTNA_GOLD }}>
-                {p.product_code}
-              </div>
-              <button onClick={() => handleDeactivate(p.id)}
-                className="text-xs font-semibold px-2 py-1 rounded-lg"
-                style={{ background: '#FEE2E2', color: '#DC2626' }}>
-                Remove
-              </button>
-            </div>
-          ))}
+        <div className="table-wrapper">
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Product</th>
+                <th>Description</th>
+                <th>Price</th>
+                <th>Code</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredProducts.map(p => (
+                <tr key={p.id}>
+                  <td style={{ fontWeight: 'var(--weight-semibold)' }}>{p.name}</td>
+                  <td>
+                    <span style={{ color: 'var(--color-grey)', fontStyle: p.description ? 'normal' : 'italic' }}>
+                      {p.description || '—'}
+                    </span>
+                  </td>
+                  <td style={{ fontWeight: 'var(--weight-bold)' }}>{formatUGX(p.price)}</td>
+                  <td>
+                    <span style={{
+                      fontFamily: 'monospace',
+                      fontWeight: 'var(--weight-black)',
+                      fontSize: 'var(--text-xs)',
+                      background: 'var(--color-black)',
+                      color: 'var(--color-primary)',
+                      padding: '3px var(--space-3)',
+                      border: 'var(--border)',
+                      letterSpacing: '0.08em',
+                    }}>
+                      {p.product_code}
+                    </span>
+                  </td>
+                  <td>
+                    <button onClick={() => handleDeactivate(p.id)} className="btn btn-sm btn-danger">
+                      Remove
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
 
       {/* ── ADD PRODUCT MODAL ── */}
       {showAddModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center"
-          style={{ background: 'rgba(0,0,0,0.5)' }}>
-          <div className="w-full max-w-md rounded-2xl p-6" style={{ background: '#fff' }}>
-            <div className="flex items-center justify-between mb-5">
-              <div className="text-base font-bold" style={{ color: PARTNA_PRIMARY }}>Add product</div>
-              <button onClick={() => setShowAddModal(false)}
-                className="text-xl" style={{ color: 'rgba(0,0,0,0.3)' }}>✕</button>
+        <div className="modal-backdrop">
+          <div className="modal modal-sm">
+            <div className="modal-header">
+              <span className="modal-title">Add product</span>
+              <button onClick={() => setShowAddModal(false)} className="modal-close">
+                <span className="icon-outlined icon-sm">close</span>
+              </button>
             </div>
+            <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
 
-            <div className="flex flex-col gap-4 mb-4">
-              <div className="flex flex-col gap-1">
-                <label className="text-xs font-semibold" style={{ color: PARTNA_PRIMARY }}>
-                  Product name *
-                </label>
-                <input type="text" value={name} onChange={e => setName(e.target.value)}
-                  placeholder="e.g. Samsung Galaxy A55"
-                  className="w-full px-4 py-3 rounded-xl text-sm outline-none"
-                  style={{ background: '#f0f2f5', border: 'none', color: '#333' }} />
+              <div className="input-group">
+                <label className="input-label">Product name <span className="required">*</span></label>
+                <input type="text" className="input" value={name} onChange={e => setName(e.target.value)}
+                  placeholder="e.g. Samsung Galaxy A55" />
               </div>
 
-              <div className="flex flex-col gap-1">
-                <label className="text-xs font-semibold" style={{ color: PARTNA_PRIMARY }}>
-                  Description <span style={{ color: 'rgba(0,0,0,0.35)' }}>(optional)</span>
+              <div className="input-group">
+                <label className="input-label">
+                  Description{' '}
+                  <span style={{ textTransform: 'none', letterSpacing: 0, fontWeight: 'var(--weight-regular)', color: 'var(--color-grey)' }}>
+                    (optional)
+                  </span>
                 </label>
-                <textarea value={description} onChange={e => setDescription(e.target.value)}
-                  rows={2} placeholder="Brief description of the product"
-                  className="w-full px-4 py-3 rounded-xl text-sm outline-none resize-none"
-                  style={{ background: '#f0f2f5', border: 'none', color: '#333' }} />
+                <textarea className="input" value={description} onChange={e => setDescription(e.target.value)}
+                  rows={2} placeholder="Brief description of the product" />
               </div>
 
-              <div className="flex flex-col gap-1">
-                <label className="text-xs font-semibold" style={{ color: PARTNA_PRIMARY }}>
-                  Price (UGX) *
-                </label>
-                <div className="relative">
-                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-semibold"
-                    style={{ color: 'rgba(0,0,0,0.35)' }}>UGX</span>
-                  <input type="text" inputMode="numeric" value={price}
+              <div className="input-group">
+                <label className="input-label">Price (UGX) <span className="required">*</span></label>
+                <div className="input-wrapper">
+                  <span style={{
+                    position: 'absolute', left: 'var(--space-4)',
+                    fontWeight: 'var(--weight-bold)', fontSize: 'var(--text-sm)',
+                    color: 'var(--color-grey)', pointerEvents: 'none', zIndex: 1,
+                  }}>UGX</span>
+                  <input type="text" inputMode="numeric" className="input" value={price}
                     onChange={e => setPrice(formatAmountInput(e.target.value))}
-                    placeholder="0"
-                    className="w-full pl-14 pr-4 py-3 rounded-xl text-sm outline-none"
-                    style={{ background: '#f0f2f5', border: 'none', color: '#333' }} />
+                    placeholder="0" style={{ paddingLeft: 56 }} />
                 </div>
-                <div className="text-xs" style={{ color: 'rgba(0,0,0,0.35)' }}>
-                  This will be the savings target for customers
+                <span className="input-hint">This will be the savings target for customers.</span>
+              </div>
+
+              <div className="alert alert-info">
+                <span className="icon-outlined alert-icon">info</span>
+                <div className="alert-content">
+                  A unique product code (e.g. <strong>PRD-A1B2C3</strong>) will be automatically generated.
                 </div>
               </div>
+
+              {error && (
+                <div className="alert alert-danger">
+                  <span className="icon-outlined alert-icon">error_outline</span>
+                  <div className="alert-content">{error}</div>
+                </div>
+              )}
             </div>
-
-            <div className="px-4 py-3 rounded-xl mb-4 text-xs"
-              style={{ background: 'rgba(27,79,114,0.06)', color: PARTNA_PRIMARY }}>
-              A unique product code (e.g. <strong>PRD-A1B2C3</strong>) will be automatically generated.
-            </div>
-
-            {error && (
-              <div className="text-xs px-4 py-3 rounded-xl mb-4" style={{ background: '#FEE2E2', color: '#991B1B' }}>
-                {error}
-              </div>
-            )}
-
-            <div className="flex gap-3">
-              <button onClick={() => setShowAddModal(false)}
-                className="flex-1 py-2.5 rounded-xl text-sm font-semibold"
-                style={{ background: '#f0f2f5', color: PARTNA_PRIMARY }}>
+            <div className="modal-footer">
+              <button onClick={() => setShowAddModal(false)} className="btn btn-secondary" style={{ flex: 1 }}>
                 Cancel
               </button>
-              <button onClick={handleAddProduct} disabled={saving}
-                className="flex-1 py-2.5 rounded-xl text-sm font-bold"
-                style={{ background: saving ? 'rgba(27,79,114,0.3)' : PARTNA_PRIMARY, color: '#fff' }}>
-                {saving ? 'Adding...' : 'Add product'}
+              <button onClick={handleAddProduct} disabled={saving} className="btn btn-primary" style={{ flex: 1 }}>
+                {saving
+                  ? <><div className="spinner spinner-sm" style={{ borderTopColor: 'var(--color-black)' }} /> Adding…</>
+                  : <><span className="icon-outlined icon-sm">add</span> Add product</>
+                }
               </button>
             </div>
           </div>
@@ -378,122 +354,160 @@ export default function Products({ admin, business }) {
 
       {/* ── BULK UPLOAD MODAL ── */}
       {showBulkModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center"
-          style={{ background: 'rgba(0,0,0,0.5)' }}>
-          <div className="w-full max-w-lg rounded-2xl p-6 overflow-y-auto"
-            style={{ background: '#fff', maxHeight: '90vh' }}>
-            <div className="flex items-center justify-between mb-5">
-              <div className="text-base font-bold" style={{ color: PARTNA_PRIMARY }}>Bulk add products</div>
-              <button onClick={() => setShowBulkModal(false)}
-                className="text-xl" style={{ color: 'rgba(0,0,0,0.3)' }}>✕</button>
-            </div>
-
-            {/* Template download */}
-            <div className="px-4 py-3 rounded-xl mb-4"
-              style={{ background: 'rgba(27,79,114,0.06)', border: '1px solid rgba(27,79,114,0.12)' }}>
-              <div className="text-xs font-semibold mb-1" style={{ color: PARTNA_PRIMARY }}>
-                CSV format required
-              </div>
-              <div className="text-xs mb-2" style={{ color: 'rgba(0,0,0,0.5)' }}>
-                Your CSV must have columns: <strong>product name</strong>, <strong>description (optional)</strong>, <strong>price</strong>
-              </div>
-              <button onClick={downloadTemplate}
-                className="text-xs font-semibold underline" style={{ color: PARTNA_PRIMARY }}>
-                Download CSV template
+        <div className="modal-backdrop">
+          <div className="modal" style={{ maxWidth: 520 }}>
+            <div className="modal-header">
+              <span className="modal-title">Bulk add products</span>
+              <button onClick={() => setShowBulkModal(false)} className="modal-close">
+                <span className="icon-outlined icon-sm">close</span>
               </button>
             </div>
+            <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)', maxHeight: '65vh', overflowY: 'auto' }}>
 
-            {/* File upload area */}
-            {!bulkResult && (
-              <>
-                <label className="cursor-pointer flex flex-col items-center justify-center rounded-xl py-8 mb-4"
-                  style={{ border: '2px dashed rgba(27,79,114,0.25)', background: '#f8f9fa' }}>
-                  <span className="text-2xl mb-2">📄</span>
-                  <span className="text-sm font-semibold" style={{ color: PARTNA_PRIMARY }}>
-                    {bulkFile ? bulkFile.name : 'Click to upload CSV'}
-                  </span>
-                  <span className="text-xs mt-1" style={{ color: 'rgba(0,0,0,0.4)' }}>
-                    {bulkFile ? `${bulkParsed.length} valid rows, ${bulkErrors.length} errors` : 'CSV files only'}
-                  </span>
-                  <input ref={fileInputRef} type="file" accept=".csv" className="hidden"
-                    onChange={handleBulkFileSelect} />
-                </label>
-
-                {/* Parse errors */}
-                {bulkErrors.length > 0 && (
-                  <div className="rounded-xl px-4 py-3 mb-4"
-                    style={{ background: '#FEF2F2', border: '1px solid #FECACA' }}>
-                    <div className="text-xs font-bold mb-2" style={{ color: '#991B1B' }}>
-                      {bulkErrors.length} error{bulkErrors.length !== 1 ? 's' : ''} found:
-                    </div>
-                    {bulkErrors.map((e, i) => (
-                      <div key={i} className="text-xs" style={{ color: '#DC2626' }}>{e}</div>
-                    ))}
-                  </div>
-                )}
-
-                {/* Preview */}
-                {bulkParsed.length > 0 && (
-                  <div className="rounded-xl overflow-hidden mb-4" style={{ border: '1px solid rgba(0,0,0,0.08)' }}>
-                    <div className="px-4 py-2 text-xs font-bold"
-                      style={{ background: '#fafafa', color: 'rgba(0,0,0,0.35)', borderBottom: '1px solid rgba(0,0,0,0.06)' }}>
-                      PREVIEW — {bulkParsed.length} product{bulkParsed.length !== 1 ? 's' : ''} ready to import
-                    </div>
-                    {bulkParsed.slice(0, 5).map((row, i) => (
-                      <div key={i} className="flex justify-between items-center px-4 py-2.5"
-                        style={{ borderBottom: i < Math.min(bulkParsed.length, 5) - 1 ? '1px solid rgba(0,0,0,0.05)' : 'none' }}>
-                        <div>
-                          <div className="text-xs font-semibold" style={{ color: PARTNA_PRIMARY }}>{row.name}</div>
-                          {row.description && (
-                            <div className="text-xs" style={{ color: 'rgba(0,0,0,0.4)' }}>{row.description}</div>
-                          )}
-                        </div>
-                        <div className="text-xs font-semibold" style={{ color: PARTNA_PRIMARY }}>
-                          {formatUGX(row.price)}
-                        </div>
-                      </div>
-                    ))}
-                    {bulkParsed.length > 5 && (
-                      <div className="px-4 py-2 text-xs text-center" style={{ color: 'rgba(0,0,0,0.35)' }}>
-                        + {bulkParsed.length - 5} more
-                      </div>
-                    )}
-                  </div>
-                )}
-              </>
-            )}
-
-            {/* Result */}
-            {bulkResult && (
-              <div className="rounded-xl p-5 mb-4 text-center"
-                style={{ background: 'rgba(22,163,74,0.06)', border: '1px solid rgba(22,163,74,0.2)' }}>
-                <div className="text-2xl mb-2">✅</div>
-                <div className="text-sm font-bold mb-1" style={{ color: '#16A34A' }}>Import complete</div>
-                <div className="text-xs" style={{ color: 'rgba(0,0,0,0.5)' }}>
-                  {bulkResult.imported} product{bulkResult.imported !== 1 ? 's' : ''} imported successfully
-                  {bulkResult.failed > 0 && ` · ${bulkResult.failed} failed`}
+              {/* CSV format info */}
+              <div className="alert alert-info">
+                <span className="icon-outlined alert-icon">table_chart</span>
+                <div className="alert-content">
+                  <div className="alert-title">CSV format required</div>
+                  Columns: <strong>product name</strong>, <strong>description (optional)</strong>, <strong>price</strong>
+                  <br />
+                  <button onClick={downloadTemplate} style={{
+                    background: 'none', border: 'none', padding: 0, marginTop: 'var(--space-1)',
+                    fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-bold)',
+                    color: 'var(--color-black)', cursor: 'pointer',
+                    textDecoration: 'underline', textUnderlineOffset: 3,
+                  }}>
+                    Download CSV template
+                  </button>
                 </div>
               </div>
-            )}
 
-            <div className="flex gap-3">
-              <button onClick={() => setShowBulkModal(false)}
-                className="flex-1 py-2.5 rounded-xl text-sm font-semibold"
-                style={{ background: '#f0f2f5', color: PARTNA_PRIMARY }}>
+              {!bulkResult && (
+                <>
+                  {/* Drop zone */}
+                  <label style={{
+                    display: 'flex', flexDirection: 'column', alignItems: 'center',
+                    justifyContent: 'center', gap: 'var(--space-3)',
+                    padding: 'var(--space-8)',
+                    border: bulkFile ? 'var(--border-thick)' : '2px dashed var(--color-grey-mid)',
+                    background: bulkFile ? 'var(--color-bg)' : 'var(--color-white)',
+                    cursor: 'pointer',
+                    transition: 'all var(--transition-base)',
+                  }}>
+                    <div style={{
+                      width: 48, height: 48,
+                      background: bulkFile ? 'var(--color-green)' : 'var(--color-grey-light)',
+                      border: 'var(--border)',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    }}>
+                      <span className="icon-outlined" style={{ fontSize: 24 }}>
+                        {bulkFile ? 'check' : 'upload_file'}
+                      </span>
+                    </div>
+                    <div style={{ textAlign: 'center' }}>
+                      <div style={{ fontWeight: 'var(--weight-bold)', fontSize: 'var(--text-sm)', marginBottom: 4 }}>
+                        {bulkFile ? bulkFile.name : 'Click to upload CSV'}
+                      </div>
+                      <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-grey)' }}>
+                        {bulkFile
+                          ? `${bulkParsed.length} valid rows · ${bulkErrors.length} errors`
+                          : 'CSV files only'}
+                      </div>
+                    </div>
+                    <input ref={fileInputRef} type="file" accept=".csv" style={{ display: 'none' }}
+                      onChange={handleBulkFileSelect} />
+                  </label>
+
+                  {/* Parse errors */}
+                  {bulkErrors.length > 0 && (
+                    <div className="alert alert-danger">
+                      <span className="icon-outlined alert-icon">error_outline</span>
+                      <div className="alert-content">
+                        <div className="alert-title">{bulkErrors.length} error{bulkErrors.length !== 1 ? 's' : ''} found</div>
+                        {bulkErrors.map((e, i) => (
+                          <div key={i} style={{ marginTop: 2 }}>{e}</div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Preview */}
+                  {bulkParsed.length > 0 && (
+                    <div style={{ border: 'var(--border)', overflow: 'hidden' }}>
+                      <div style={{
+                        padding: 'var(--space-2) var(--space-4)',
+                        background: 'var(--color-black)',
+                        fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-black)',
+                        letterSpacing: 'var(--tracking-widest)', textTransform: 'uppercase',
+                        color: 'var(--color-white)',
+                      }}>
+                        Preview — {bulkParsed.length} product{bulkParsed.length !== 1 ? 's' : ''} ready to import
+                      </div>
+                      {bulkParsed.slice(0, 5).map((row, i) => (
+                        <div key={i} style={{
+                          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                          padding: 'var(--space-3) var(--space-4)',
+                          borderBottom: i < Math.min(bulkParsed.length, 5) - 1 ? '1.5px solid var(--color-grey-light)' : 'none',
+                          background: i % 2 === 0 ? 'var(--color-white)' : 'var(--color-bg)',
+                        }}>
+                          <div>
+                            <div style={{ fontWeight: 'var(--weight-semibold)', fontSize: 'var(--text-sm)' }}>{row.name}</div>
+                            {row.description && (
+                              <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-grey)', marginTop: 2 }}>{row.description}</div>
+                            )}
+                          </div>
+                          <div style={{ fontWeight: 'var(--weight-bold)', fontSize: 'var(--text-sm)', flexShrink: 0, marginLeft: 'var(--space-4)' }}>
+                            {formatUGX(row.price)}
+                          </div>
+                        </div>
+                      ))}
+                      {bulkParsed.length > 5 && (
+                        <div style={{ padding: 'var(--space-2) var(--space-4)', fontSize: 'var(--text-xs)', color: 'var(--color-grey)', textAlign: 'center', background: 'var(--color-bg)' }}>
+                          + {bulkParsed.length - 5} more
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </>
+              )}
+
+              {/* Result */}
+              {bulkResult && (
+                <div style={{ background: 'var(--color-green)', border: 'var(--border)', padding: 'var(--space-6)', textAlign: 'center' }}>
+                  <div style={{
+                    width: 56, height: 56, background: 'var(--color-black)', border: 'var(--border)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    margin: '0 auto var(--space-3)',
+                  }}>
+                    <span className="icon-outlined" style={{ fontSize: 28, color: 'var(--color-white)' }}>check</span>
+                  </div>
+                  <div style={{ fontWeight: 'var(--weight-bold)', fontSize: 'var(--text-base)', marginBottom: 'var(--space-2)' }}>
+                    Import complete
+                  </div>
+                  <div style={{ fontSize: 'var(--text-sm)', color: 'rgba(0,0,0,0.6)' }}>
+                    <strong>{bulkResult.imported}</strong> product{bulkResult.imported !== 1 ? 's' : ''} imported successfully
+                    {bulkResult.failed > 0 && ` · ${bulkResult.failed} failed`}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="modal-footer">
+              <button onClick={() => setShowBulkModal(false)} className="btn btn-secondary" style={{ flex: 1 }}>
                 {bulkResult ? 'Close' : 'Cancel'}
               </button>
               {!bulkResult && bulkParsed.length > 0 && (
-                <button onClick={handleBulkUpload} disabled={bulkUploading}
-                  className="flex-1 py-2.5 rounded-xl text-sm font-bold"
-                  style={{ background: bulkUploading ? 'rgba(27,79,114,0.3)' : PARTNA_PRIMARY, color: '#fff' }}>
-                  {bulkUploading ? 'Importing...' : `Import ${bulkParsed.length} product${bulkParsed.length !== 1 ? 's' : ''}`}
+                <button onClick={handleBulkUpload} disabled={bulkUploading} className="btn btn-primary" style={{ flex: 1 }}>
+                  {bulkUploading
+                    ? <><div className="spinner spinner-sm" style={{ borderTopColor: 'var(--color-black)' }} /> Importing…</>
+                    : <><span className="icon-outlined icon-sm">upload</span> Import {bulkParsed.length} product{bulkParsed.length !== 1 ? 's' : ''}</>
+                  }
                 </button>
               )}
             </div>
           </div>
         </div>
       )}
-
     </div>
   )
 }

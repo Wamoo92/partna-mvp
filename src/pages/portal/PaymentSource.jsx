@@ -4,12 +4,13 @@ import { supabase } from '../../supabase'
 import { useBrand } from '../../lib/BrandContext'
 
 export default function PaymentSource({ customer, fromProfile = false }) {
-  const brand = useBrand()
+  const brand    = useBrand()
   const navigate = useNavigate()
+
   const [network, setNetwork] = useState(customer?.payment_network || 'mtn')
-  const [number, setNumber] = useState(customer?.payment_number || '')
+  const [number, setNumber]   = useState(customer?.payment_number  || '')
   const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
+  const [error, setError]     = useState('')
 
   async function handleSave() {
     setError('')
@@ -27,7 +28,6 @@ export default function PaymentSource({ customer, fromProfile = false }) {
         .eq('id', customer.id)
 
       if (updateError) {
-        console.error('Payment source error:', updateError)
         setError('Could not save payment source. Please try again.')
         setLoading(false)
         return
@@ -45,111 +45,206 @@ export default function PaymentSource({ customer, fromProfile = false }) {
     setLoading(false)
   }
 
-  function handleSkip() {
-    navigate('/portal/home', { replace: true })
+  function handleBack() {
+    if (fromProfile) navigate('/portal/profile')
+    else navigate('/portal/home')
   }
 
   return (
-    <div className="min-h-screen flex flex-col" style={{ background: '#f0f2f5' }}>
+    <div style={{ minHeight: '100vh', background: 'var(--color-bg)', display: 'flex', flexDirection: 'column' }}>
 
-      <header className="flex items-center px-4 py-3 gap-3" style={{ background: brand.primaryColor }}>
+      {/* ── Header ── */}
+      <header style={{
+        background: 'var(--color-black)',
+        borderBottom: 'var(--border)',
+        padding: 'var(--space-4) var(--space-5)',
+        display: 'flex',
+        alignItems: 'center',
+        gap: 'var(--space-4)',
+      }}>
         <button
-          onClick={() => fromProfile ? navigate('/portal/profile') : navigate('/portal/home')}
-          className="text-white text-xl leading-none">
-          ←
+          onClick={handleBack}
+          style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            width: 36, height: 36,
+            border: '2px solid rgba(255,255,255,0.25)',
+            background: 'transparent',
+            color: 'var(--color-white)',
+            cursor: 'pointer', flexShrink: 0,
+          }}
+          onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--color-primary)'}
+          onMouseLeave={e => e.currentTarget.style.borderColor = 'rgba(255,255,255,0.25)'}
+        >
+          <span className="icon-outlined icon-sm">arrow_back</span>
         </button>
-        <div className="flex items-center gap-2">
-          <img src={brand.logoUrl} alt="" className="w-8 h-8 object-contain" style={{ mixBlendMode: 'screen' }} />
-          <div className="text-white text-xs font-semibold">Payment Source</div>
+        <div style={{ color: 'var(--color-white)', fontWeight: 'var(--weight-bold)', fontSize: 'var(--text-sm)' }}>
+          Payment Source
         </div>
       </header>
 
-      <div className="px-5 pt-8 pb-10 text-center" style={{ background: brand.primaryColor }}>
-        <div className="text-4xl mb-3">📱</div>
-        <h1 className="text-white text-xl font-bold mb-1">Add your mobile money</h1>
-        <p className="text-xs" style={{ color: 'rgba(255,255,255,0.65)' }}>
-          Link your mobile money account for faster deposits and withdrawals
+      {/* ── Title banner ── */}
+      <div style={{
+        background: 'var(--color-black)',
+        borderBottom: '3px solid var(--color-primary)',
+        padding: 'var(--space-6) var(--space-5) var(--space-8)',
+      }}>
+        <div style={{
+          display: 'inline-block',
+          background: 'var(--color-primary)',
+          border: 'var(--border)',
+          padding: '3px var(--space-3)',
+          fontSize: 'var(--text-xs)',
+          fontWeight: 'var(--weight-black)',
+          letterSpacing: 'var(--tracking-widest)',
+          textTransform: 'uppercase',
+          color: 'var(--color-black)',
+          marginBottom: 'var(--space-3)',
+        }}>
+          {fromProfile ? 'Edit' : 'Setup'}
+        </div>
+        <h1 style={{
+          color: 'var(--color-white)',
+          fontSize: 'var(--text-2xl)',
+          fontWeight: 'var(--weight-black)',
+          letterSpacing: 'var(--tracking-tight)',
+          fontVariationSettings: "'wdth' 110, 'opsz' 30",
+          marginBottom: 'var(--space-2)',
+        }}>
+          {fromProfile ? 'Update mobile money' : 'Add your mobile money'}
+        </h1>
+        <p style={{ color: 'rgba(255,255,255,0.55)', fontSize: 'var(--text-sm)' }}>
+          Link your mobile money account for faster deposits and withdrawals.
         </p>
       </div>
 
-      <div className="rounded-t-3xl flex-1 flex flex-col px-5 py-6 gap-4"
-        style={{ background: '#f0f2f5', marginTop: '-16px' }}>
+      {/* ── Body ── */}
+      <div style={{
+        flex: 1,
+        padding: 'var(--space-5)',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 'var(--space-4)',
+      }}>
 
+        {/* Network selector */}
         <div>
-          <label className="text-xs font-semibold mb-2 block" style={{ color: brand.primaryColor }}>
-            Select your mobile money network
+          <label className="input-label" style={{ display: 'block', marginBottom: 'var(--space-3)' }}>
+            Select network
           </label>
-          <div className="flex gap-3">
+          <div style={{ display: 'flex', gap: 'var(--space-3)' }}>
             {[
-              { id: 'mtn', logo: '/mtn-logo.svg', label: 'MTN MoMo' },
+              { id: 'mtn',    logo: '/mtn-logo.svg',    label: 'MTN MoMo'     },
               { id: 'airtel', logo: '/airtel-logo.svg', label: 'Airtel Money' },
             ].map(net => (
-              <button key={net.id} onClick={() => setNetwork(net.id)}
-                className="flex-1 rounded-2xl p-3 flex flex-col items-center gap-2"
+              <button
+                key={net.id}
+                onClick={() => setNetwork(net.id)}
                 style={{
-                  background: '#fff',
-                  border: network === net.id ? `2px solid ${brand.secondaryColor}` : '2px solid rgba(0,0,0,0.06)',
+                  flex: 1,
+                  padding: 'var(--space-4)',
+                  display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 'var(--space-2)',
+                  background: network === net.id ? 'var(--color-black)' : 'var(--color-white)',
+                  border: network === net.id ? '3px solid var(--color-black)' : 'var(--border)',
+                  boxShadow: network === net.id ? 'var(--shadow-sm)' : 'none',
+                  cursor: 'pointer',
+                  transition: 'all var(--transition-base)',
+                }}
+              >
+                <img src={net.logo} alt={net.label} style={{ width: 48, height: 48, objectFit: 'contain' }} />
+                <span style={{
+                  fontSize: 'var(--text-xs)',
+                  fontWeight: 'var(--weight-black)',
+                  letterSpacing: 'var(--tracking-wide)',
+                  textTransform: 'uppercase',
+                  color: network === net.id ? 'var(--color-white)' : 'var(--color-black)',
                 }}>
-                <img src={net.logo} alt={net.label} className="w-12 h-12 object-contain rounded-xl" />
-                <span className="text-xs font-semibold" style={{ color: brand.primaryColor }}>{net.label}</span>
+                  {net.label}
+                </span>
               </button>
             ))}
           </div>
         </div>
 
-        <div className="flex flex-col gap-1">
-          <label className="text-xs font-semibold" style={{ color: brand.primaryColor }}>
-            Mobile money number
-          </label>
-          <input type="tel" placeholder="+256 7XX XXX XXX" value={number}
-            onChange={e => setNumber(e.target.value)}
-            className="w-full px-4 py-3 rounded-xl text-sm outline-none"
-            style={{ background: '#fff', border: '1.5px solid rgba(27,79,114,0.15)', color: '#333' }} />
-          <div className="text-xs" style={{ color: 'rgba(0,0,0,0.35)' }}>
-            Only this number will be able to add or receive funds from your wallet
+        {/* Phone input */}
+        <div className="input-group">
+          <label className="input-label">Mobile money number</label>
+          <div className="input-wrapper">
+            <span className="icon-outlined input-icon-left">phone</span>
+            <input
+              type="tel"
+              className="input"
+              placeholder="+256 7XX XXX XXX"
+              value={number}
+              onChange={e => setNumber(e.target.value)}
+            />
           </div>
+          <span className="input-hint">
+            Only this number will be able to add or receive funds from your wallet.
+          </span>
         </div>
 
-        <div className="rounded-2xl px-4 py-3"
-          style={{ background: 'rgba(27,79,114,0.06)', border: '1px solid rgba(27,79,114,0.12)' }}>
-          <div className="text-xs leading-relaxed" style={{ color: brand.primaryColor }}>
-            In the full version, your mobile money number will be verified against your identity to ensure only your number can transact on your account.
+        {/* Info notice */}
+        <div className="alert alert-info">
+          <span className="icon-outlined alert-icon">verified_user</span>
+          <div className="alert-content">
+            In the full version, your mobile money number will be verified against your identity
+            to ensure only your number can transact on your account.
           </div>
         </div>
 
         {error && (
-          <div className="text-xs px-4 py-3 rounded-xl" style={{ background: '#FEE2E2', color: '#991B1B' }}>
-            {error}
+          <div className="alert alert-danger">
+            <span className="icon-outlined alert-icon">error_outline</span>
+            <div className="alert-content">{error}</div>
           </div>
         )}
 
-        <button onClick={handleSave} disabled={loading}
-          className="w-full py-3 rounded-xl text-sm font-bold"
-          style={{ background: loading ? 'rgba(27,79,114,0.3)' : brand.primaryColor, color: '#fff' }}>
-          {loading ? 'Saving...' : fromProfile ? 'Save changes' : 'Save and continue'}
+        <button
+          onClick={handleSave}
+          disabled={loading}
+          className="btn btn-primary btn-full btn-lg"
+          style={{ marginTop: 'var(--space-2)' }}
+        >
+          {loading
+            ? <><div className="spinner spinner-sm" style={{ borderTopColor: 'var(--color-black)' }} /> Saving…</>
+            : <><span className="icon-outlined icon-sm">{fromProfile ? 'save' : 'arrow_forward'}</span> {fromProfile ? 'Save changes' : 'Save and continue'}</>
+          }
         </button>
 
         {!fromProfile && (
-          <button onClick={handleSkip}
-            className="w-full py-3 rounded-xl text-sm font-semibold"
-            style={{ background: 'transparent', color: 'rgba(0,0,0,0.4)', border: '1.5px solid rgba(0,0,0,0.12)' }}>
-            Skip for now
-          </button>
+          <>
+            <button
+              onClick={() => navigate('/portal/home', { replace: true })}
+              className="btn btn-secondary btn-full"
+            >
+              Skip for now
+            </button>
+            <p style={{
+              textAlign: 'center',
+              fontSize: 'var(--text-xs)',
+              color: 'var(--color-grey)',
+              fontWeight: 'var(--weight-medium)',
+            }}>
+              You can add your payment source later from your Profile.
+            </p>
+          </>
         )}
-
-        {!fromProfile && (
-          <div className="text-center text-xs px-4" style={{ color: 'rgba(0,0,0,0.35)' }}>
-            You can add your payment source later from your Profile
-          </div>
-        )}
-
       </div>
 
-      <footer className="text-center py-4" style={{ background: '#f0f2f5' }}>
-        <div className="flex items-center justify-center gap-1.5">
-          <img src="/partna-icon.svg" alt="Partna" className="w-5 h-5" />
-          <span className="text-xs" style={{ color: 'rgba(0,0,0,0.3)' }}>Powered by Partna</span>
-        </div>
+      {/* ── Footer ── */}
+      <footer style={{
+        padding: 'var(--space-4) var(--space-5)',
+        borderTop: '1.5px solid var(--color-grey-light)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 'var(--space-2)',
+      }}>
+        <img src="/partna-icon.svg" alt="Partna" style={{ width: 18, height: 18, opacity: 0.4 }} />
+        <span style={{
+          fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-bold)',
+          letterSpacing: 'var(--tracking-wider)', textTransform: 'uppercase',
+          color: 'var(--color-grey)',
+        }}>
+          Powered by Partna
+        </span>
       </footer>
 
     </div>

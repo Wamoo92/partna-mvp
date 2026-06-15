@@ -47,7 +47,6 @@ export default function Register() {
       const cleanPhone = phone.replace(/\s+/g, '')
       const cleanEmail = email.toLowerCase().trim()
 
-      // Resolve business from portal context
       const { data: bizData } = await supabase
         .from('businesses')
         .select('id')
@@ -57,7 +56,6 @@ export default function Register() {
 
       const resolvedBusinessId = bizData?.id || null
 
-      // Check phone is not already registered for this business
       const { data: existingPhone } = await supabase
         .from('customers')
         .select('id')
@@ -71,7 +69,6 @@ export default function Register() {
         return
       }
 
-      // Check email is not already registered
       const { data: existingEmail } = await supabase
         .from('customers')
         .select('id')
@@ -84,7 +81,6 @@ export default function Register() {
         return
       }
 
-      // Check or create Partna identity (cross-business identity tracking)
       let partnaIdentityId = null
       const { data: existingIdentity } = await supabase
         .from('partna_identities')
@@ -97,11 +93,7 @@ export default function Register() {
       } else {
         const { data: newIdentity, error: identityError } = await supabase
           .from('partna_identities')
-          .insert({
-            phone: cleanPhone,
-            first_name: firstName,
-            last_name: lastName,
-          })
+          .insert({ phone: cleanPhone, first_name: firstName, last_name: lastName })
           .select()
           .single()
 
@@ -110,8 +102,6 @@ export default function Register() {
         }
       }
 
-      // Create customer record — no campaign_id or draw_code here,
-      // those live on customer_campaigns now
       const { data: customer, error: customerError } = await supabase
         .from('customers')
         .insert({
@@ -138,18 +128,12 @@ export default function Register() {
 
       setCustomerId(customer.id)
 
-      // Generate and send OTP
       const otpCode = Math.floor(10000 + Math.random() * 90000).toString()
       const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString()
 
       const { data: otpRecord, error: otpError } = await supabase
         .from('otp_verifications')
-        .insert({
-          phone: cleanPhone,
-          otp_code: otpCode,
-          status: 'pending',
-          expires_at: expiresAt,
-        })
+        .insert({ phone: cleanPhone, otp_code: otpCode, status: 'pending', expires_at: expiresAt })
         .select()
         .single()
 
@@ -179,7 +163,6 @@ export default function Register() {
       }
 
       setStep(2)
-
     } catch (err) {
       console.error('Unexpected error:', err)
       setError('Something went wrong. Please try again.')
@@ -205,13 +188,11 @@ export default function Register() {
         setLoading(false)
         return
       }
-
       if (new Date(otpRecord.expires_at) < new Date()) {
         setError('OTP has expired. Please go back and request a new one.')
         setLoading(false)
         return
       }
-
       if (otpRecord.otp_code !== otp) {
         setError('Incorrect OTP. Please check and try again.')
         setLoading(false)
@@ -266,11 +247,9 @@ export default function Register() {
 
       await supabase.auth.signInWithPassword({ email: cleanEmail, password })
 
-      // Go to SelectCampaign — campaign enrollment creates the wallet
       setTimeout(() => {
         navigate('/portal/select-campaign', { replace: true })
       }, 500)
-
     } catch (err) {
       console.error('Step 3 error:', err)
       setError('Something went wrong. Please try again.')
@@ -279,208 +258,422 @@ export default function Register() {
     }
   }
 
-  return (
-    <div className="min-h-screen flex flex-col" style={{ background: '#f0f2f5' }}>
+  const stepLabels = ['Personal details', 'Verify phone', 'Set PIN']
+  const stepTitles = ['Create your account', 'Verify your phone', 'Set your PIN']
+  const stepSubs   = ['Step 1 of 3 — Personal details', 'Step 2 of 3 — Phone verification', 'Step 3 of 3 — Security PIN']
 
-      <header className="flex items-center px-4 py-3 gap-3" style={{ background: brand.primaryColor }}>
+  return (
+    <div style={{ minHeight: '100vh', background: 'var(--color-bg)', display: 'flex', flexDirection: 'column' }}>
+
+      {/* ── Header ── */}
+      <header style={{
+        background: 'var(--color-black)',
+        borderBottom: 'var(--border)',
+        padding: 'var(--space-4) var(--space-5)',
+        display: 'flex',
+        alignItems: 'center',
+        gap: 'var(--space-4)',
+      }}>
         <button
           onClick={() => step === 1 ? navigate('/portal') : setStep(step - 1)}
-          className="text-white text-xl leading-none">
-          ←
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            width: 36,
+            height: 36,
+            border: '2px solid rgba(255,255,255,0.25)',
+            background: 'transparent',
+            color: 'var(--color-white)',
+            cursor: 'pointer',
+            flexShrink: 0,
+            transition: 'border-color var(--transition-base)',
+          }}
+          onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--color-primary)'}
+          onMouseLeave={e => e.currentTarget.style.borderColor = 'rgba(255,255,255,0.25)'}
+        >
+          <span className="icon-outlined icon-sm">arrow_back</span>
         </button>
-        <div className="flex items-center gap-2">
-          <img src={brand.logoUrl} alt={brand.businessName}
-            className="w-8 h-8 object-contain" style={{ mixBlendMode: 'screen' }} />
-          <div className="text-white text-xs font-semibold tracking-wide">
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
+          {brand.logoUrl && (
+            <div style={{
+              width: 32, height: 32,
+              border: '2px solid var(--color-primary)',
+              background: 'var(--color-primary)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              flexShrink: 0,
+            }}>
+              <img src={brand.logoUrl} alt={brand.businessName}
+                style={{ width: 22, height: 22, objectFit: 'contain' }} />
+            </div>
+          )}
+          <span style={{
+            color: 'var(--color-white)',
+            fontWeight: 'var(--weight-bold)',
+            fontSize: 'var(--text-sm)',
+            letterSpacing: 'var(--tracking-tight)',
+          }}>
             {brand.businessName}
-          </div>
+          </span>
         </div>
       </header>
 
-      <div className="px-5 pt-5 pb-8 text-center" style={{ background: brand.primaryColor }}>
-        <div className="flex items-center justify-center gap-2 mb-3">
-          {[1, 2, 3].map((s) => (
-            <div key={s} className="rounded-full transition-all"
-              style={{
-                width: s === step ? '24px' : '8px',
-                height: '8px',
-                background: s === step
-                  ? brand.secondaryColor
-                  : s < step
-                  ? 'rgba(212,175,55,0.5)'
-                  : 'rgba(255,255,255,0.25)',
-              }} />
+      {/* ── Step banner ── */}
+      <div style={{
+        background: 'var(--color-black)',
+        borderBottom: '3px solid var(--color-primary)',
+        padding: 'var(--space-6) var(--space-5) var(--space-8)',
+      }}>
+        {/* Step tracker */}
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 0,
+          marginBottom: 'var(--space-5)',
+        }}>
+          {[1, 2, 3].map((s, i) => (
+            <div key={s} style={{ display: 'flex', alignItems: 'center', flex: s < 3 ? 1 : 0 }}>
+              {/* Circle */}
+              <div style={{
+                width: 28,
+                height: 28,
+                border: s <= step ? '2px solid var(--color-primary)' : '2px solid rgba(255,255,255,0.2)',
+                background: s < step
+                  ? 'var(--color-primary)'
+                  : s === step
+                  ? 'var(--color-black)'
+                  : 'transparent',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0,
+                transition: 'all var(--transition-base)',
+              }}>
+                {s < step
+                  ? <span className="icon-outlined" style={{ fontSize: 14, color: 'var(--color-black)' }}>check</span>
+                  : <span style={{
+                      fontSize: 'var(--text-xs)',
+                      fontWeight: 'var(--weight-black)',
+                      color: s === step ? 'var(--color-primary)' : 'rgba(255,255,255,0.3)',
+                    }}>{s}</span>
+                }
+              </div>
+              {/* Connector line */}
+              {s < 3 && (
+                <div style={{
+                  flex: 1,
+                  height: 2,
+                  background: s < step ? 'var(--color-primary)' : 'rgba(255,255,255,0.15)',
+                  transition: 'background var(--transition-slow)',
+                }} />
+              )}
+            </div>
           ))}
         </div>
-        <h1 className="text-white text-lg font-bold mb-1">
-          {step === 1 && 'Create your account'}
-          {step === 2 && 'Verify your phone'}
-          {step === 3 && 'Set your PIN'}
+
+        {/* Step label pill */}
+        <div style={{
+          display: 'inline-block',
+          background: 'var(--color-primary)',
+          border: 'var(--border)',
+          padding: '3px var(--space-3)',
+          fontSize: 'var(--text-xs)',
+          fontWeight: 'var(--weight-black)',
+          letterSpacing: 'var(--tracking-widest)',
+          textTransform: 'uppercase',
+          color: 'var(--color-black)',
+          marginBottom: 'var(--space-3)',
+        }}>
+          {stepSubs[step - 1]}
+        </div>
+
+        <h1 style={{
+          color: 'var(--color-white)',
+          fontSize: 'var(--text-2xl)',
+          fontWeight: 'var(--weight-black)',
+          lineHeight: 'var(--leading-tight)',
+          letterSpacing: 'var(--tracking-tight)',
+          fontVariationSettings: "'wdth' 110, 'opsz' 30",
+        }}>
+          {stepTitles[step - 1]}
         </h1>
-        <p className="text-xs" style={{ color: 'rgba(255,255,255,0.65)' }}>
-          {step === 1 && 'Step 1 of 3 — Personal details'}
-          {step === 2 && 'Step 2 of 3 — Phone verification'}
-          {step === 3 && 'Step 3 of 3 — Security PIN'}
-        </p>
       </div>
 
-      <div className="rounded-t-3xl flex-1 flex flex-col px-5 py-6 gap-4"
-        style={{ background: '#f0f2f5', marginTop: '-16px' }}>
+      {/* ── Form area ── */}
+      <div style={{
+        flex: 1,
+        padding: 'var(--space-6) var(--space-5)',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 'var(--space-4)',
+      }}>
 
+        {/* ── STEP 1 — Personal details ── */}
         {step === 1 && (
           <>
-            <div className="flex gap-3">
-              <div className="flex flex-col gap-1 flex-1">
-                <label className="text-xs font-semibold" style={{ color: brand.primaryColor }}>First name *</label>
-                <input type="text" placeholder="Grace" value={firstName}
-                  onChange={e => setFirstName(e.target.value)}
-                  className="w-full px-4 py-3 rounded-xl text-sm outline-none"
-                  style={{ background: '#fff', border: '1.5px solid rgba(27,79,114,0.15)', color: '#333' }} />
-              </div>
-              <div className="flex flex-col gap-1 flex-1">
-                <label className="text-xs font-semibold" style={{ color: brand.primaryColor }}>Last name *</label>
-                <input type="text" placeholder="Nakamya" value={lastName}
-                  onChange={e => setLastName(e.target.value)}
-                  className="w-full px-4 py-3 rounded-xl text-sm outline-none"
-                  style={{ background: '#fff', border: '1.5px solid rgba(27,79,114,0.15)', color: '#333' }} />
-              </div>
-            </div>
-
-            <div className="flex flex-col gap-1">
-              <label className="text-xs font-semibold" style={{ color: brand.primaryColor }}>
-                Other names <span style={{ color: 'rgba(0,0,0,0.35)' }}>(optional)</span>
-              </label>
-              <input type="text" placeholder="Middle name" value={otherNames}
-                onChange={e => setOtherNames(e.target.value)}
-                className="w-full px-4 py-3 rounded-xl text-sm outline-none"
-                style={{ background: '#fff', border: '1.5px solid rgba(27,79,114,0.15)', color: '#333' }} />
-            </div>
-
-            <div className="flex flex-col gap-1">
-              <label className="text-xs font-semibold" style={{ color: brand.primaryColor }}>Phone number *</label>
-              <input type="tel" placeholder="+256 7XX XXX XXX" value={phone}
-                onChange={e => setPhone(e.target.value)}
-                className="w-full px-4 py-3 rounded-xl text-sm outline-none"
-                style={{ background: '#fff', border: '1.5px solid rgba(27,79,114,0.15)', color: '#333' }} />
-            </div>
-
-            <div className="flex flex-col gap-1">
-              <label className="text-xs font-semibold" style={{ color: brand.primaryColor }}>Email address *</label>
-              <input type="email" placeholder="grace@email.com" value={email}
-                onChange={e => setEmail(e.target.value)}
-                className="w-full px-4 py-3 rounded-xl text-sm outline-none"
-                style={{ background: '#fff', border: '1.5px solid rgba(27,79,114,0.15)', color: '#333' }} />
-              <div className="text-xs" style={{ color: 'rgba(0,0,0,0.35)' }}>
-                Used for account recovery if you forget your PIN
-              </div>
-            </div>
-
             {error && (
-              <div className="text-xs px-4 py-3 rounded-xl" style={{ background: '#FEE2E2', color: '#991B1B' }}>
-                {error}
+              <div className="alert alert-danger">
+                <span className="icon-outlined alert-icon">error_outline</span>
+                <div className="alert-content">{error}</div>
               </div>
             )}
 
-            <button onClick={handleStep1} disabled={loading}
-              className="w-full py-3 rounded-xl text-sm font-bold mt-1"
-              style={{ background: loading ? 'rgba(27,79,114,0.4)' : brand.primaryColor, color: '#fff', border: 'none' }}>
-              {loading ? 'Sending OTP...' : 'Continue'}
+            <div style={{ display: 'flex', gap: 'var(--space-3)' }}>
+              <div className="input-group" style={{ flex: 1 }}>
+                <label className="input-label">
+                  First name <span className="required">*</span>
+                </label>
+                <input type="text" className="input" placeholder="Grace"
+                  value={firstName} onChange={e => setFirstName(e.target.value)} />
+              </div>
+              <div className="input-group" style={{ flex: 1 }}>
+                <label className="input-label">
+                  Last name <span className="required">*</span>
+                </label>
+                <input type="text" className="input" placeholder="Nakamya"
+                  value={lastName} onChange={e => setLastName(e.target.value)} />
+              </div>
+            </div>
+
+            <div className="input-group">
+              <label className="input-label">
+                Other names{' '}
+                <span style={{ textTransform: 'none', letterSpacing: 0, fontWeight: 'var(--weight-regular)', color: 'var(--color-grey)' }}>
+                  (optional)
+                </span>
+              </label>
+              <input type="text" className="input" placeholder="Middle name"
+                value={otherNames} onChange={e => setOtherNames(e.target.value)} />
+            </div>
+
+            <div className="input-group">
+              <label className="input-label">
+                Phone number <span className="required">*</span>
+              </label>
+              <div className="input-wrapper">
+                <span className="icon-outlined input-icon-left">phone</span>
+                <input type="tel" className="input" placeholder="+256 7XX XXX XXX"
+                  value={phone} onChange={e => setPhone(e.target.value)} />
+              </div>
+            </div>
+
+            <div className="input-group">
+              <label className="input-label">
+                Email address <span className="required">*</span>
+              </label>
+              <div className="input-wrapper">
+                <span className="icon-outlined input-icon-left">mail</span>
+                <input type="email" className="input" placeholder="grace@email.com"
+                  value={email} onChange={e => setEmail(e.target.value)} />
+              </div>
+              <span className="input-hint">Used for account recovery if you forget your PIN.</span>
+            </div>
+
+            <button
+              onClick={handleStep1}
+              disabled={loading}
+              className="btn btn-primary btn-full btn-lg"
+              style={{ marginTop: 'var(--space-2)' }}
+            >
+              {loading
+                ? <><div className="spinner spinner-sm" style={{ borderTopColor: 'var(--color-black)' }} /> Sending OTP…</>
+                : <><span className="icon-outlined icon-sm">arrow_forward</span> Continue</>
+              }
             </button>
 
-            <div className="text-center">
-              <span className="text-xs" style={{ color: 'rgba(0,0,0,0.4)' }}>Already have an account? </span>
-              <button onClick={() => navigate('/portal/login')}
-                className="text-xs font-semibold" style={{ color: brand.primaryColor }}>
+            <div style={{ textAlign: 'center' }}>
+              <span style={{ fontSize: 'var(--text-sm)', color: 'var(--color-grey)' }}>
+                Already have an account?{' '}
+              </span>
+              <button
+                onClick={() => navigate('/portal/login')}
+                style={{
+                  background: 'none', border: 'none',
+                  fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-bold)',
+                  color: 'var(--color-black)', cursor: 'pointer',
+                  textDecoration: 'underline', textUnderlineOffset: 3,
+                }}>
                 Log in
               </button>
             </div>
           </>
         )}
 
+        {/* ── STEP 2 — OTP verification ── */}
         {step === 2 && (
           <>
-            <div className="px-4 py-3 rounded-xl text-xs"
-              style={{ background: '#EFF6FF', color: '#1E40AF', border: '1px solid #BFDBFE' }}>
-              A 5-digit OTP has been sent via SMS to <strong>{phone}</strong>. Enter it below to verify your phone number.
+            <div className="alert alert-info" style={{ background: '#E8F4FD' }}>
+              <span className="icon-outlined alert-icon" style={{ color: '#1565C0' }}>sms</span>
+              <div className="alert-content">
+                A 5-digit OTP has been sent via SMS to <strong>{phone}</strong>.
+                Enter it below to verify your number.
+              </div>
             </div>
 
-            <div className="flex flex-col gap-1">
-              <label className="text-xs font-semibold" style={{ color: brand.primaryColor }}>Enter OTP</label>
-              <input type="text" inputMode="numeric" maxLength={5}
-                placeholder="_ _ _ _ _" value={otp}
+            {error && (
+              <div className="alert alert-danger">
+                <span className="icon-outlined alert-icon">error_outline</span>
+                <div className="alert-content">{error}</div>
+              </div>
+            )}
+
+            <div className="input-group">
+              <label className="input-label">Enter OTP</label>
+              <input
+                type="text"
+                inputMode="numeric"
+                maxLength={5}
+                className="input"
+                placeholder="_ _ _ _ _"
+                value={otp}
                 onChange={e => setOtp(e.target.value.replace(/\D/g, '').slice(0, 5))}
-                className="w-full px-4 py-3 rounded-xl text-sm outline-none text-center tracking-widest font-mono"
-                style={{ background: '#fff', border: '1.5px solid rgba(27,79,114,0.15)', color: '#333', fontSize: '20px' }} />
+                style={{
+                  textAlign: 'center',
+                  letterSpacing: '0.4em',
+                  fontSize: 'var(--text-2xl)',
+                  fontWeight: 'var(--weight-black)',
+                  fontVariationSettings: "'wdth' 100, 'opsz' 30",
+                }}
+              />
             </div>
 
-            <div className="text-center">
-              <span className="text-xs" style={{ color: 'rgba(0,0,0,0.4)' }}>Didn't receive it? </span>
-              <button onClick={() => { setStep(1); setOtp('') }}
-                className="text-xs font-semibold" style={{ color: brand.primaryColor }}>
+            <div style={{ textAlign: 'center' }}>
+              <span style={{ fontSize: 'var(--text-sm)', color: 'var(--color-grey)' }}>
+                Didn't receive it?{' '}
+              </span>
+              <button
+                onClick={() => { setStep(1); setOtp('') }}
+                style={{
+                  background: 'none', border: 'none',
+                  fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-bold)',
+                  color: 'var(--color-black)', cursor: 'pointer',
+                  textDecoration: 'underline', textUnderlineOffset: 3,
+                }}>
                 Go back and resend
               </button>
             </div>
 
-            {error && (
-              <div className="text-xs px-4 py-3 rounded-xl" style={{ background: '#FEE2E2', color: '#991B1B' }}>
-                {error}
-              </div>
-            )}
-
-            <button onClick={handleStep2} disabled={loading}
-              className="w-full py-3 rounded-xl text-sm font-bold mt-1"
-              style={{ background: loading ? 'rgba(27,79,114,0.4)' : brand.primaryColor, color: '#fff', border: 'none' }}>
-              {loading ? 'Verifying...' : 'Verify OTP'}
+            <button
+              onClick={handleStep2}
+              disabled={loading}
+              className="btn btn-primary btn-full btn-lg"
+              style={{ marginTop: 'var(--space-2)' }}
+            >
+              {loading
+                ? <><div className="spinner spinner-sm" style={{ borderTopColor: 'var(--color-black)' }} /> Verifying…</>
+                : <><span className="icon-outlined icon-sm">verified</span> Verify OTP</>
+              }
             </button>
           </>
         )}
 
+        {/* ── STEP 3 — Set PIN ── */}
         {step === 3 && (
           <>
-            <div className="px-4 py-3 rounded-xl text-xs"
-              style={{ background: '#F0FDF4', color: '#166534', border: '1px solid #BBF7D0' }}>
-              Phone verified. Create a 4-digit PIN you will use to log in.
-            </div>
-
-            <div className="flex flex-col gap-1">
-              <label className="text-xs font-semibold" style={{ color: brand.primaryColor }}>Create PIN</label>
-              <input type="password" inputMode="numeric" maxLength={4}
-                placeholder="••••" value={pin}
-                onChange={e => setPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
-                className="w-full px-4 py-3 rounded-xl text-sm outline-none tracking-widest text-center"
-                style={{ background: '#fff', border: '1.5px solid rgba(27,79,114,0.15)', color: '#333', fontSize: '20px' }} />
-            </div>
-
-            <div className="flex flex-col gap-1">
-              <label className="text-xs font-semibold" style={{ color: brand.primaryColor }}>Confirm PIN</label>
-              <input type="password" inputMode="numeric" maxLength={4}
-                placeholder="••••" value={confirmPin}
-                onChange={e => setConfirmPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
-                className="w-full px-4 py-3 rounded-xl text-sm outline-none tracking-widest text-center"
-                style={{ background: '#fff', border: '1.5px solid rgba(27,79,114,0.15)', color: '#333', fontSize: '20px' }} />
+            <div className="alert alert-success">
+              <span className="icon-outlined alert-icon">check_circle</span>
+              <div className="alert-content">
+                Phone verified. Create a 4-digit PIN you'll use to log in every time.
+              </div>
             </div>
 
             {error && (
-              <div className="text-xs px-4 py-3 rounded-xl" style={{ background: '#FEE2E2', color: '#991B1B' }}>
-                {error}
+              <div className="alert alert-danger">
+                <span className="icon-outlined alert-icon">error_outline</span>
+                <div className="alert-content">{error}</div>
               </div>
             )}
 
-            <button onClick={handleStep3} disabled={loading}
-              className="w-full py-3 rounded-xl text-sm font-bold mt-1"
-              style={{ background: loading ? 'rgba(212,175,55,0.4)' : brand.secondaryColor, color: brand.primaryColor, border: 'none' }}>
-              {loading ? 'Creating account...' : 'Create account'}
+            <div className="input-group">
+              <label className="input-label">Create PIN</label>
+              <input
+                type="password"
+                inputMode="numeric"
+                maxLength={4}
+                className="input"
+                placeholder="••••"
+                value={pin}
+                onChange={e => setPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                style={{
+                  textAlign: 'center',
+                  letterSpacing: '0.5em',
+                  fontSize: 'var(--text-2xl)',
+                  fontWeight: 'var(--weight-black)',
+                }}
+              />
+            </div>
+
+            <div className="input-group">
+              <label className="input-label">Confirm PIN</label>
+              <input
+                type="password"
+                inputMode="numeric"
+                maxLength={4}
+                className="input"
+                placeholder="••••"
+                value={confirmPin}
+                onChange={e => setConfirmPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                style={{
+                  textAlign: 'center',
+                  letterSpacing: '0.5em',
+                  fontSize: 'var(--text-2xl)',
+                  fontWeight: 'var(--weight-black)',
+                }}
+              />
+            </div>
+
+            {/* PIN match indicator */}
+            {pin.length === 4 && confirmPin.length === 4 && (
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 'var(--space-2)',
+                fontSize: 'var(--text-sm)',
+                fontWeight: 'var(--weight-bold)',
+                color: pin === confirmPin ? '#2D8B45' : '#C0392B',
+              }}>
+                <span className="icon-outlined icon-sm">
+                  {pin === confirmPin ? 'check_circle' : 'cancel'}
+                </span>
+                {pin === confirmPin ? 'PINs match' : 'PINs do not match'}
+              </div>
+            )}
+
+            <button
+              onClick={handleStep3}
+              disabled={loading}
+              className="btn btn-primary btn-full btn-lg"
+              style={{ marginTop: 'var(--space-2)' }}
+            >
+              {loading
+                ? <><div className="spinner spinner-sm" style={{ borderTopColor: 'var(--color-black)' }} /> Creating account…</>
+                : <><span className="icon-outlined icon-sm">person_add</span> Create account</>
+              }
             </button>
           </>
         )}
-
       </div>
 
-      <footer className="text-center py-4" style={{ background: '#f0f2f5' }}>
-        <div className="flex items-center justify-center gap-1.5">
-          <img src="/partna-icon.svg" alt="Partna" className="w-5 h-5" />
-          <span className="text-xs" style={{ color: 'rgba(0,0,0,0.3)' }}>Powered by Partna</span>
-        </div>
+      {/* ── Footer ── */}
+      <footer style={{
+        padding: 'var(--space-4) var(--space-5)',
+        borderTop: '1.5px solid var(--color-grey-light)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 'var(--space-2)',
+      }}>
+        <img src="/partna-icon.svg" alt="Partna" style={{ width: 18, height: 18, opacity: 0.4 }} />
+        <span style={{
+          fontSize: 'var(--text-xs)',
+          fontWeight: 'var(--weight-bold)',
+          letterSpacing: 'var(--tracking-wider)',
+          textTransform: 'uppercase',
+          color: 'var(--color-grey)',
+        }}>
+          Powered by Partna
+        </span>
       </footer>
 
     </div>

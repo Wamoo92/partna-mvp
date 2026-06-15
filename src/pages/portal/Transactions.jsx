@@ -5,34 +5,96 @@ import { useBrand } from '../../lib/BrandContext'
 
 const PAGE_SIZE = 10
 
+function formatUGX(n) {
+  return 'UGX ' + Number(n).toLocaleString('en-UG', { maximumFractionDigits: 0 })
+}
+
+function formatTime(dateStr) {
+  return new Date(dateStr).toLocaleTimeString('en-UG', {
+    hour: '2-digit', minute: '2-digit', hour12: true,
+  })
+}
+
+function formatGroupDate(dateStr) {
+  const date      = new Date(dateStr)
+  const today     = new Date()
+  const yesterday = new Date(); yesterday.setDate(today.getDate() - 1)
+  if (date.toDateString() === today.toDateString())     return 'Today'
+  if (date.toDateString() === yesterday.toDateString()) return 'Yesterday'
+  return date.toLocaleDateString('en-UG', { day: 'numeric', month: 'long', year: 'numeric' })
+}
+
+function txLabel(type) {
+  switch (type) {
+    case 'deposit':    return 'Deposit'
+    case 'payment':    return 'Payment'
+    case 'withdrawal': return 'Withdrawal'
+    default:           return type
+  }
+}
+
+function txIcon(type) {
+  switch (type) {
+    case 'deposit':    return 'south'
+    case 'withdrawal': return 'north'
+    case 'payment':    return 'north'
+    default:           return 'swap_vert'
+  }
+}
+
+function txAccent(type) {
+  switch (type) {
+    case 'deposit':    return 'var(--color-green)'
+    case 'payment':    return 'var(--color-primary)'
+    case 'withdrawal': return 'var(--color-yellow)'
+    default:           return 'var(--color-grey-light)'
+  }
+}
+
+function txAmountColor(type) {
+  return type === 'deposit' ? '#2D8B45' : '#C0392B'
+}
+
+function txSign(type) { return type === 'deposit' ? '+' : '-' }
+
+function groupByDate(txns) {
+  const groups = {}
+  txns.forEach(txn => {
+    const key = new Date(txn.created_at).toDateString()
+    if (!groups[key]) groups[key] = []
+    groups[key].push(txn)
+  })
+  return Object.entries(groups).map(([, items]) => ({
+    label: formatGroupDate(items[0].created_at),
+    items,
+  }))
+}
+
 export default function Transactions({ customer }) {
-  const brand = useBrand()
+  const brand    = useBrand()
   const navigate = useNavigate()
   const location = useLocation()
 
   const enrollmentId = location.state?.enrollmentId || null
 
-  const [enrollments, setEnrollments] = useState([])
+  const [enrollments, setEnrollments]         = useState([])
   const [activeEnrollment, setActiveEnrollment] = useState(null)
-  const [wallet, setWallet] = useState(null)
-  const [campaign, setCampaign] = useState(null)
+  const [wallet, setWallet]                   = useState(null)
+  const [campaign, setCampaign]               = useState(null)
   const [allTransactions, setAllTransactions] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE)
+  const [loading, setLoading]                 = useState(true)
+  const [visibleCount, setVisibleCount]       = useState(PAGE_SIZE)
 
-  const [typeFilter, setTypeFilter] = useState('all')
-  const [dateFrom, setDateFrom] = useState('')
-  const [dateTo, setDateTo] = useState('')
+  const [typeFilter, setTypeFilter]   = useState('all')
+  const [dateFrom, setDateFrom]       = useState('')
+  const [dateTo, setDateTo]           = useState('')
   const [showFilters, setShowFilters] = useState(false)
 
-  useEffect(() => {
-    if (customer) loadData()
-  }, [customer, enrollmentId])
+  useEffect(() => { if (customer) loadData() }, [customer, enrollmentId])
 
   async function loadData() {
     setLoading(true)
     try {
-      // Load all active enrollments for the campaign switcher
       const { data: enrollData } = await supabase
         .from('customer_campaigns')
         .select('*, campaigns(*), wallets(*)')
@@ -42,7 +104,6 @@ export default function Transactions({ customer }) {
 
       setEnrollments(enrollData || [])
 
-      // Pick the active enrollment — prefer the one passed via state
       let active = null
       if (enrollmentId && enrollData) {
         active = enrollData.find(e => e.id === enrollmentId) || enrollData[0]
@@ -100,203 +161,272 @@ export default function Transactions({ customer }) {
     return true
   })
 
-  const visible = filtered.slice(0, visibleCount)
-  const hasMore = filtered.length > visibleCount
+  const visible      = filtered.slice(0, visibleCount)
+  const hasMore      = filtered.length > visibleCount
+  const groups       = groupByDate(visible)
+  const balance      = wallet ? Number(wallet.balance) : 0
+  const hasMultiple  = enrollments.length > 1
+  const filtersActive = typeFilter !== 'all' || dateFrom !== '' || dateTo !== ''
 
   function clearFilters() {
     setTypeFilter('all'); setDateFrom(''); setDateTo(''); setVisibleCount(PAGE_SIZE)
   }
 
-  const filtersActive = typeFilter !== 'all' || dateFrom !== '' || dateTo !== ''
-
-  function formatUGX(n) {
-    return 'UGX ' + Number(n).toLocaleString('en-UG', { maximumFractionDigits: 0 })
-  }
-
-  function formatTime(dateStr) {
-    return new Date(dateStr).toLocaleTimeString('en-UG', { hour: '2-digit', minute: '2-digit', hour12: true })
-  }
-
-  function formatGroupDate(dateStr) {
-    const date = new Date(dateStr)
-    const today = new Date()
-    const yesterday = new Date(); yesterday.setDate(today.getDate() - 1)
-    if (date.toDateString() === today.toDateString()) return 'Today'
-    if (date.toDateString() === yesterday.toDateString()) return 'Yesterday'
-    return date.toLocaleDateString('en-UG', { day: 'numeric', month: 'long', year: 'numeric' })
-  }
-
-  function txLabel(type) {
-    switch (type) {
-      case 'deposit': return 'Deposit'
-      case 'payment': return 'Payment'
-      case 'withdrawal': return 'Withdrawal'
-      default: return type
-    }
-  }
-
-  function txIcon(type) {
-    return type === 'deposit' ? '↓' : '↑'
-  }
-
-  function txColor(type) { return type === 'deposit' ? '#16A34A' : '#DC2626' }
-  function txSign(type) { return type === 'deposit' ? '+' : '-' }
-
-  function groupByDate(txns) {
-    const groups = {}
-    txns.forEach(txn => {
-      const key = new Date(txn.created_at).toDateString()
-      if (!groups[key]) groups[key] = []
-      groups[key].push(txn)
-    })
-    return Object.entries(groups).map(([, items]) => ({
-      label: formatGroupDate(items[0].created_at),
-      items,
-    }))
-  }
-
-  const groups = groupByDate(visible)
-  const balance = wallet ? Number(wallet.balance) : 0
-  const hasMultiple = enrollments.length > 1
-
   if (loading) return (
-    <div className="min-h-screen flex items-center justify-center" style={{ background: '#f0f2f5' }}>
-      <div className="w-8 h-8 border-4 rounded-full animate-spin"
-        style={{ borderColor: brand.primaryColor, borderTopColor: 'transparent' }} />
+    <div className="loading-screen">
+      <div className="spinner spinner-lg spinner-purple" />
     </div>
   )
 
   return (
-    <div className="min-h-screen flex flex-col" style={{ background: '#f0f2f5' }}>
+    <div style={{ minHeight: '100vh', background: 'var(--color-bg)', display: 'flex', flexDirection: 'column', paddingBottom: 80 }}>
 
-      <header className="flex items-center px-4 py-3 gap-3" style={{ background: brand.primaryColor }}>
-        <button onClick={() => navigate('/portal/home')} className="text-white text-xl">&#8592;</button>
-        <div className="flex items-center gap-2">
-          <img src={brand.logoUrl} alt="" className="w-8 h-8 object-contain"
-            style={{ mixBlendMode: 'screen' }} />
-          <div>
-            <div className="text-white text-xs font-semibold">Transaction History</div>
-            {campaign && (
-              <div className="text-xs" style={{ color: 'rgba(255,255,255,0.55)' }}>
-                {campaign.name}
-              </div>
-            )}
+      {/* ── Header ── */}
+      <header style={{
+        background: 'var(--color-black)',
+        borderBottom: 'var(--border)',
+        padding: 'var(--space-4) var(--space-5)',
+        display: 'flex',
+        alignItems: 'center',
+        gap: 'var(--space-4)',
+        position: 'sticky',
+        top: 0,
+        zIndex: 'var(--z-sticky)',
+      }}>
+        <button
+          onClick={() => navigate('/portal/home')}
+          style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            width: 36, height: 36,
+            border: '2px solid rgba(255,255,255,0.25)',
+            background: 'transparent',
+            color: 'var(--color-white)',
+            cursor: 'pointer', flexShrink: 0,
+          }}
+          onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--color-primary)'}
+          onMouseLeave={e => e.currentTarget.style.borderColor = 'rgba(255,255,255,0.25)'}
+        >
+          <span className="icon-outlined icon-sm">arrow_back</span>
+        </button>
+        <div>
+          <div style={{ color: 'var(--color-white)', fontWeight: 'var(--weight-bold)', fontSize: 'var(--text-sm)' }}>
+            Transaction History
           </div>
+          {campaign && (
+            <div style={{ color: 'var(--color-primary)', fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-bold)', letterSpacing: 'var(--tracking-wide)' }}>
+              {campaign.name}
+            </div>
+          )}
         </div>
       </header>
 
-      <div className="px-5 pt-5 pb-10" style={{ background: brand.primaryColor }}>
-        <div className="text-xs mb-1" style={{ color: 'rgba(255,255,255,0.6)' }}>Current balance</div>
-        <div className="text-white text-3xl font-bold mb-0.5">{formatUGX(balance)}</div>
-        <div className="text-xs" style={{ color: 'rgba(255,255,255,0.6)' }}>
-          saved toward {campaign?.name || '—'}
+      {/* ── Balance hero ── */}
+      <div style={{
+        background: 'var(--color-black)',
+        borderBottom: '3px solid var(--color-primary)',
+        padding: 'var(--space-6) var(--space-5) var(--space-8)',
+      }}>
+        <div style={{
+          fontSize: 'var(--text-xs)',
+          fontWeight: 'var(--weight-bold)',
+          letterSpacing: 'var(--tracking-widest)',
+          textTransform: 'uppercase',
+          color: 'rgba(255,255,255,0.4)',
+          marginBottom: 'var(--space-1)',
+        }}>
+          Current balance
+        </div>
+        <div style={{
+          fontSize: 'var(--text-4xl)',
+          fontWeight: 'var(--weight-black)',
+          color: 'var(--color-white)',
+          lineHeight: 1,
+          letterSpacing: 'var(--tracking-tight)',
+          fontVariationSettings: "'wdth' 112, 'opsz' 48",
+          marginBottom: 'var(--space-1)',
+        }}>
+          {formatUGX(balance)}
+        </div>
+        <div style={{
+          fontSize: 'var(--text-xs)',
+          fontWeight: 'var(--weight-bold)',
+          color: 'rgba(255,255,255,0.45)',
+          letterSpacing: 'var(--tracking-wide)',
+          textTransform: 'uppercase',
+        }}>
+          Saved toward {campaign?.name || '—'}
         </div>
       </div>
 
-      <div className="rounded-t-3xl flex-1 px-4 py-5 flex flex-col gap-4"
-        style={{ background: '#f0f2f5', marginTop: '-16px' }}>
+      {/* ── Body ── */}
+      <div style={{
+        flex: 1,
+        padding: 'var(--space-5)',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 'var(--space-4)',
+      }}>
 
-        {/* ── Campaign switcher — only shown when enrolled in multiple ── */}
+        {/* ── Campaign switcher ── */}
         {hasMultiple && (
-          <div className="flex flex-col gap-2">
-            <div className="text-xs font-bold px-1" style={{ color: 'rgba(0,0,0,0.35)' }}>
-              CAMPAIGN
+          <div>
+            <div style={{
+              fontSize: 'var(--text-xs)',
+              fontWeight: 'var(--weight-black)',
+              letterSpacing: 'var(--tracking-widest)',
+              textTransform: 'uppercase',
+              color: 'var(--color-grey)',
+              marginBottom: 'var(--space-2)',
+            }}>
+              Campaign
             </div>
-            <div className="flex gap-2 overflow-x-auto pb-1">
-              {enrollments.map(e => (
-                <button key={e.id}
-                  onClick={() => switchEnrollment(e)}
-                  className="flex-shrink-0 px-4 py-2 rounded-xl text-xs font-semibold"
-                  style={{
-                    background: activeEnrollment?.id === e.id ? brand.primaryColor : '#fff',
-                    color: activeEnrollment?.id === e.id ? '#fff' : brand.primaryColor,
-                    border: `1.5px solid ${activeEnrollment?.id === e.id ? brand.primaryColor : 'rgba(27,79,114,0.2)'}`,
-                  }}>
-                  {e.campaigns?.name || '—'}
-                </button>
-              ))}
+            <div style={{ display: 'flex', gap: 'var(--space-2)', overflowX: 'auto', paddingBottom: 4 }}>
+              {enrollments.map(e => {
+                const active = activeEnrollment?.id === e.id
+                return (
+                  <button
+                    key={e.id}
+                    onClick={() => switchEnrollment(e)}
+                    style={{
+                      flexShrink: 0,
+                      padding: '6px var(--space-4)',
+                      background: active ? 'var(--color-black)' : 'var(--color-white)',
+                      color: active ? 'var(--color-white)' : 'var(--color-black)',
+                      border: active ? '2px solid var(--color-black)' : 'var(--border)',
+                      boxShadow: active ? 'var(--shadow-sm)' : 'none',
+                      fontSize: 'var(--text-xs)',
+                      fontWeight: 'var(--weight-bold)',
+                      letterSpacing: 'var(--tracking-wide)',
+                      textTransform: 'uppercase',
+                      cursor: 'pointer',
+                      transition: 'all var(--transition-base)',
+                    }}
+                  >
+                    {e.campaigns?.name || '—'}
+                  </button>
+                )
+              })}
             </div>
           </div>
         )}
 
-        {/* ── Filters header ── */}
-        <div className="flex items-center justify-between">
-          <div className="text-sm font-bold" style={{ color: brand.primaryColor }}>
-            Transactions
+        {/* ── Filter bar ── */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+            <span style={{
+              fontSize: 'var(--text-xs)',
+              fontWeight: 'var(--weight-black)',
+              letterSpacing: 'var(--tracking-widest)',
+              textTransform: 'uppercase',
+            }}>
+              Transactions
+            </span>
             {filtersActive && (
-              <span className="ml-2 text-xs font-semibold px-2 py-0.5 rounded-full"
-                style={{ background: brand.secondaryColor, color: brand.primaryColor }}>
-                Filtered
-              </span>
+              <span className="badge badge-primary no-dot">Filtered</span>
             )}
           </div>
-          <div className="flex gap-2">
+          <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
             {filtersActive && (
-              <button onClick={clearFilters}
-                className="text-xs font-semibold px-3 py-1.5 rounded-lg"
-                style={{ background: '#FEE2E2', color: '#DC2626' }}>
+              <button onClick={clearFilters} className="btn btn-sm btn-danger">
+                <span className="icon-outlined icon-xs">close</span>
                 Clear
               </button>
             )}
             <button
-              onClick={() => setShowFilters(!showFilters)}
-              className="text-xs font-semibold px-3 py-1.5 rounded-lg"
-              style={{
-                background: showFilters ? brand.primaryColor : '#fff',
-                color: showFilters ? '#fff' : brand.primaryColor,
-                border: `1.5px solid ${brand.primaryColor}`,
-              }}>
-              {showFilters ? 'Hide filters' : 'Filter'}
+              onClick={() => setShowFilters(f => !f)}
+              className={showFilters ? 'btn btn-sm btn-black' : 'btn btn-sm btn-secondary'}
+            >
+              <span className="icon-outlined icon-xs">tune</span>
+              {showFilters ? 'Hide' : 'Filter'}
             </button>
           </div>
         </div>
 
         {/* ── Filter panel ── */}
         {showFilters && (
-          <div className="rounded-2xl p-4 flex flex-col gap-3" style={{ background: '#fff' }}>
+          <div style={{
+            background: 'var(--color-white)',
+            border: 'var(--border)',
+            boxShadow: 'var(--shadow-sm)',
+            padding: 'var(--space-4)',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 'var(--space-4)',
+          }}>
+            {/* Type filter */}
             <div>
-              <div className="text-xs font-semibold mb-2" style={{ color: 'rgba(0,0,0,0.4)' }}>
-                Transaction type
+              <div style={{
+                fontSize: 'var(--text-xs)',
+                fontWeight: 'var(--weight-black)',
+                letterSpacing: 'var(--tracking-widest)',
+                textTransform: 'uppercase',
+                color: 'var(--color-grey)',
+                marginBottom: 'var(--space-2)',
+              }}>
+                Type
               </div>
-              <div className="flex gap-2 flex-wrap">
+              <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
                 {[
-                  { value: 'all', label: 'All' },
-                  { value: 'deposit', label: 'Deposits' },
-                  { value: 'payment', label: 'Payments' },
+                  { value: 'all',        label: 'All' },
+                  { value: 'deposit',    label: 'Deposits' },
+                  { value: 'payment',    label: 'Payments' },
                   { value: 'withdrawal', label: 'Withdrawals' },
                 ].map(opt => (
-                  <button key={opt.value}
+                  <button
+                    key={opt.value}
                     onClick={() => { setTypeFilter(opt.value); setVisibleCount(PAGE_SIZE) }}
-                    className="text-xs font-semibold px-3 py-1.5 rounded-lg"
                     style={{
-                      background: typeFilter === opt.value ? brand.primaryColor : '#f0f2f5',
-                      color: typeFilter === opt.value ? '#fff' : 'rgba(0,0,0,0.5)',
-                    }}>
+                      padding: '5px var(--space-3)',
+                      background: typeFilter === opt.value ? 'var(--color-black)' : 'var(--color-bg)',
+                      color: typeFilter === opt.value ? 'var(--color-white)' : 'var(--color-grey)',
+                      border: typeFilter === opt.value ? '2px solid var(--color-black)' : 'var(--border)',
+                      fontSize: 'var(--text-xs)',
+                      fontWeight: 'var(--weight-bold)',
+                      letterSpacing: 'var(--tracking-wide)',
+                      textTransform: 'uppercase',
+                      cursor: 'pointer',
+                      transition: 'all var(--transition-fast)',
+                    }}
+                  >
                     {opt.label}
                   </button>
                 ))}
               </div>
             </div>
-            <div style={{ height: '1px', background: 'rgba(0,0,0,0.06)' }} />
+
+            <div style={{ height: '1.5px', background: 'var(--color-grey-light)' }} />
+
+            {/* Date range */}
             <div>
-              <div className="text-xs font-semibold mb-2" style={{ color: 'rgba(0,0,0,0.4)' }}>
+              <div style={{
+                fontSize: 'var(--text-xs)',
+                fontWeight: 'var(--weight-black)',
+                letterSpacing: 'var(--tracking-widest)',
+                textTransform: 'uppercase',
+                color: 'var(--color-grey)',
+                marginBottom: 'var(--space-2)',
+              }}>
                 Date range
               </div>
-              <div className="flex gap-2 items-center">
-                <div className="flex flex-col gap-1 flex-1">
-                  <label className="text-xs" style={{ color: 'rgba(0,0,0,0.4)' }}>From</label>
-                  <input type="date" value={dateFrom}
+              <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'flex-end' }}>
+                <div className="input-group" style={{ flex: 1 }}>
+                  <label className="input-label">From</label>
+                  <input
+                    type="date"
+                    className="input input-sm"
+                    value={dateFrom}
                     onChange={e => { setDateFrom(e.target.value); setVisibleCount(PAGE_SIZE) }}
-                    className="w-full px-3 py-2 rounded-xl text-xs outline-none"
-                    style={{ background: '#f0f2f5', color: '#333', border: 'none' }} />
+                  />
                 </div>
-                <div className="text-xs mt-4" style={{ color: 'rgba(0,0,0,0.3)' }}>—</div>
-                <div className="flex flex-col gap-1 flex-1">
-                  <label className="text-xs" style={{ color: 'rgba(0,0,0,0.4)' }}>To</label>
-                  <input type="date" value={dateTo}
+                <span style={{ color: 'var(--color-grey-mid)', fontSize: 'var(--text-lg)', paddingBottom: 'var(--space-2)' }}>—</span>
+                <div className="input-group" style={{ flex: 1 }}>
+                  <label className="input-label">To</label>
+                  <input
+                    type="date"
+                    className="input input-sm"
+                    value={dateTo}
                     onChange={e => { setDateTo(e.target.value); setVisibleCount(PAGE_SIZE) }}
-                    className="w-full px-3 py-2 rounded-xl text-xs outline-none"
-                    style={{ background: '#f0f2f5', color: '#333', border: 'none' }} />
+                  />
                 </div>
               </div>
             </div>
@@ -305,52 +435,110 @@ export default function Transactions({ customer }) {
 
         {/* ── Transaction list ── */}
         {filtered.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-16">
-            <div className="text-3xl mb-3">📋</div>
-            <div className="text-sm font-semibold mb-1" style={{ color: brand.primaryColor }}>
-              No transactions found
-            </div>
-            <div className="text-xs text-center" style={{ color: 'rgba(0,0,0,0.4)' }}>
-              {filtersActive ? 'Try adjusting your filters' : 'Add money to this campaign to get started'}
-            </div>
+          <div className="empty-state">
+            <span className="icon-outlined empty-state-icon">receipt_long</span>
+            <div className="empty-state-title">No transactions found</div>
+            <p className="empty-state-body">
+              {filtersActive
+                ? 'Try adjusting your filters to see more transactions.'
+                : 'Add money to this campaign to get started.'}
+            </p>
+            {filtersActive && (
+              <button onClick={clearFilters} className="btn btn-secondary">
+                <span className="icon-outlined icon-sm">close</span>
+                Clear filters
+              </button>
+            )}
           </div>
         ) : (
-          <div className="flex flex-col gap-4">
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
             {groups.map((group, gi) => (
               <div key={gi}>
-                <div className="text-xs font-bold mb-2 px-1" style={{ color: 'rgba(0,0,0,0.35)' }}>
+                {/* Date group label */}
+                <div style={{
+                  fontSize: 'var(--text-xs)',
+                  fontWeight: 'var(--weight-black)',
+                  letterSpacing: 'var(--tracking-widest)',
+                  textTransform: 'uppercase',
+                  color: 'var(--color-grey)',
+                  marginBottom: 'var(--space-2)',
+                  paddingLeft: 'var(--space-1)',
+                }}>
                   {group.label}
                 </div>
-                <div className="rounded-2xl overflow-hidden" style={{ background: '#fff' }}>
+
+                {/* Group card */}
+                <div style={{
+                  background: 'var(--color-white)',
+                  border: 'var(--border)',
+                  boxShadow: 'var(--shadow-sm)',
+                  overflow: 'hidden',
+                }}>
                   {group.items.map((txn, i) => (
-                    <div key={txn.id} className="flex items-center justify-between px-4 py-3"
-                      style={{ borderBottom: i < group.items.length - 1 ? '1px solid rgba(0,0,0,0.05)' : 'none' }}>
-                      <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0"
-                          style={{ background: `${txColor(txn.type)}15`, color: txColor(txn.type) }}>
-                          {txIcon(txn.type)}
+                    <div
+                      key={txn.id}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        padding: 'var(--space-3) var(--space-4)',
+                        borderTop: i > 0 ? '1.5px solid var(--color-grey-light)' : 'none',
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
+                        {/* Type icon box */}
+                        <div style={{
+                          width: 36, height: 36,
+                          background: txAccent(txn.type),
+                          border: 'var(--border)',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          flexShrink: 0,
+                        }}>
+                          <span className="icon-outlined" style={{ fontSize: 18, color: 'var(--color-black)' }}>
+                            {txIcon(txn.type)}
+                          </span>
                         </div>
+
                         <div>
-                          <div className="text-xs font-semibold" style={{ color: '#333' }}>
+                          <div style={{
+                            fontWeight: 'var(--weight-semibold)',
+                            fontSize: 'var(--text-sm)',
+                            color: 'var(--color-black)',
+                          }}>
                             {txLabel(txn.type)}
                           </div>
                           {txn.notes && (
-                            <div className="text-xs mt-0.5 truncate max-w-48"
-                              style={{ color: 'rgba(0,0,0,0.35)', fontSize: '10px' }}>
+                            <div style={{
+                              fontSize: 'var(--text-xs)',
+                              color: 'var(--color-grey)',
+                              marginTop: 1,
+                              maxWidth: 180,
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              whiteSpace: 'nowrap',
+                            }}>
                               {txn.notes}
                             </div>
                           )}
-                          <div className="text-xs" style={{ color: 'rgba(0,0,0,0.35)' }}>
+                          <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-grey)', marginTop: 1 }}>
                             {formatTime(txn.created_at)}
                           </div>
                         </div>
                       </div>
-                      <div className="text-right">
-                        <div className="text-xs font-bold" style={{ color: txColor(txn.type) }}>
+
+                      <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                        <div style={{
+                          fontWeight: 'var(--weight-black)',
+                          fontSize: 'var(--text-sm)',
+                          color: txAmountColor(txn.type),
+                          fontVariationSettings: "'wdth' 100, 'opsz' 14",
+                        }}>
                           {txSign(txn.type)}{formatUGX(txn.amount)}
                         </div>
                         {txn.status === 'pending' && (
-                          <div className="text-xs mt-0.5" style={{ color: '#D97706' }}>Pending</div>
+                          <span className="badge badge-warning no-dot" style={{ marginTop: 4 }}>
+                            Pending
+                          </span>
                         )}
                       </div>
                     </div>
@@ -359,43 +547,85 @@ export default function Transactions({ customer }) {
               </div>
             ))}
 
+            {/* Load more */}
             {hasMore && (
-              <button onClick={() => setVisibleCount(v => v + PAGE_SIZE)}
-                className="w-full py-3 rounded-2xl text-xs font-semibold"
-                style={{ background: '#fff', color: brand.primaryColor, border: '1.5px solid rgba(27,79,114,0.15)' }}>
+              <button
+                onClick={() => setVisibleCount(v => v + PAGE_SIZE)}
+                className="btn btn-secondary btn-full"
+              >
+                <span className="icon-outlined icon-sm">expand_more</span>
                 Load more ({filtered.length - visibleCount} remaining)
               </button>
             )}
 
-            <div className="text-center text-xs pb-2" style={{ color: 'rgba(0,0,0,0.3)' }}>
-              Showing {Math.min(visibleCount, filtered.length)} of {filtered.length} transactions
+            {/* Count */}
+            <div style={{
+              textAlign: 'center',
+              fontSize: 'var(--text-xs)',
+              color: 'var(--color-grey)',
+              fontWeight: 'var(--weight-bold)',
+              letterSpacing: 'var(--tracking-wide)',
+              textTransform: 'uppercase',
+            }}>
+              Showing {Math.min(visibleCount, filtered.length)} of {filtered.length}
             </div>
           </div>
         )}
       </div>
 
-      <nav className="flex items-center justify-around px-4 py-3 border-t"
-        style={{ background: '#fff', borderColor: 'rgba(0,0,0,0.08)' }}>
+      {/* ── Bottom nav ── */}
+      <nav style={{
+        position: 'fixed',
+        bottom: 0, left: 0, right: 0,
+        background: 'var(--color-white)',
+        borderTop: 'var(--border-thick)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-around',
+        padding: 'var(--space-2) var(--space-4)',
+        zIndex: 'var(--z-sticky)',
+      }}>
         {[
-          { label: 'Home', icon: '⌂', path: '/portal/home' },
-          { label: 'Rewards', icon: '★', path: '/portal/rewards' },
-          { label: 'History', icon: '↕', path: '/portal/transactions' },
-          { label: 'Profile', icon: '◎', path: '/portal/profile' },
-        ].map(item => (
-          <button key={item.path} onClick={() => navigate(item.path)} className="flex flex-col items-center gap-1">
-            <span className="text-lg leading-none"
-              style={{ color: item.path === '/portal/transactions' ? brand.primaryColor : 'rgba(0,0,0,0.3)' }}>
-              {item.icon}
-            </span>
-            <span className="text-xs"
+          { label: 'Home',    icon: 'home',          path: '/portal/home'         },
+          { label: 'Rewards', icon: 'card_giftcard', path: '/portal/rewards'      },
+          { label: 'History', icon: 'receipt_long',  path: '/portal/transactions' },
+          { label: 'Profile', icon: 'person',        path: '/portal/profile'      },
+        ].map(({ label, icon, path }) => {
+          const active = path === '/portal/transactions'
+          return (
+            <button
+              key={path}
+              onClick={() => navigate(path)}
               style={{
-                color: item.path === '/portal/transactions' ? brand.primaryColor : 'rgba(0,0,0,0.3)',
-                fontWeight: item.path === '/portal/transactions' ? 600 : 400,
+                display: 'flex', flexDirection: 'column', alignItems: 'center',
+                gap: 4,
+                background: 'none', border: 'none', cursor: 'pointer',
+                padding: 'var(--space-1) var(--space-3)',
+                color: active ? 'var(--color-black)' : 'var(--color-grey)',
+                position: 'relative',
               }}>
-              {item.label}
-            </span>
-          </button>
-        ))}
+              {active && (
+                <div style={{
+                  position: 'absolute', top: -8, left: '50%',
+                  transform: 'translateX(-50%)',
+                  width: 24, height: 3,
+                  background: 'var(--color-primary)',
+                }} />
+              )}
+              <span className="icon-outlined" style={{ fontSize: 22, color: active ? 'var(--color-black)' : 'var(--color-grey)' }}>
+                {icon}
+              </span>
+              <span style={{
+                fontWeight: active ? 'var(--weight-black)' : 'var(--weight-medium)',
+                letterSpacing: 'var(--tracking-wide)',
+                textTransform: 'uppercase',
+                fontSize: 9,
+              }}>
+                {label}
+              </span>
+            </button>
+          )
+        })}
       </nav>
     </div>
   )
