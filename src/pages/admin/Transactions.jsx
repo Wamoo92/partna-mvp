@@ -1,11 +1,45 @@
 import { useState, useEffect } from 'react'
+import * as XLSX from 'xlsx'
 import { supabase } from '../../supabase'
 
 const ADMIN_PRIMARY = '#1B4F72'
 const ADMIN_GOLD = '#D4AF37'
 
+// ── OpenFloat payment file generator ──
+// Produces an .xlsx matching the Accounts sheet structure exactly
+function downloadOpenFloatFile(rows, filename) {
+  const header = [
+    'Account Type',
+    'Account Name',
+    'Account Number',
+    'Till or Paybill Number',
+    'Till or Paybill Business Name',
+    'Notification Phone Number',
+    'Amount',
+    'Remark',
+  ]
+  const data = [header, ...rows]
+  const ws = XLSX.utils.aoa_to_sheet(data)
+
+  // Column widths
+  ws['!cols'] = [
+    { wch: 40 }, // Account Type
+    { wch: 30 }, // Account Name
+    { wch: 20 }, // Account Number
+    { wch: 25 }, // Till or Paybill Number
+    { wch: 30 }, // Till or Paybill Business Name
+    { wch: 28 }, // Notification Phone Number
+    { wch: 15 }, // Amount
+    { wch: 20 }, // Remark
+  ]
+
+  const wb = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(wb, ws, 'Accounts')
+  XLSX.writeFile(wb, filename)
+}
+
 export default function Transactions() {
-  const [tab, setTab] = useState('customer') // 'customer' | 'business'
+  const [tab, setTab] = useState('customer')
 
   // ── Customer transactions state ──
   const [transactions, setTransactions] = useState([])
@@ -21,6 +55,7 @@ export default function Transactions() {
   const [sortDir, setSortDir] = useState('desc')
   const [markingId, setMarkingId] = useState(null)
   const [confirmId, setConfirmId] = useState(null)
+  const [selectedCust, setSelectedCust] = useState(new Set()) // selected customer txn IDs
 
   // ── Business withdrawals state ──
   const [bizWithdrawals, setBizWithdrawals] = useState([])
@@ -32,19 +67,19 @@ export default function Transactions() {
   const [bizDateTo, setBizDateTo] = useState('')
   const [bizMarkingId, setBizMarkingId] = useState(null)
   const [bizConfirmId, setBizConfirmId] = useState(null)
+  const [selectedBiz, setSelectedBiz] = useState(new Set()) // selected biz txn IDs
 
   useEffect(() => {
     loadCustomer()
     loadBusiness()
   }, [])
 
-  // ── Customer transactions ──
   async function loadCustomer() {
     setLoadingCustomer(true)
     try {
       const { data: txnData } = await supabase
         .from('transactions')
-        .select('*, customers(first_name, last_name, phone, business_id, businesses(name))')
+        .select('*, customers(first_name, last_name, other_names, phone, business_id, businesses(name))')
         .order('created_at', { ascending: false })
       setTransactions(txnData || [])
 
@@ -69,7 +104,6 @@ export default function Transactions() {
     setMarkingId(null)
   }
 
-  // ── Business withdrawals ──
   async function loadBusiness() {
     setLoadingBiz(true)
     try {
@@ -99,7 +133,171 @@ export default function Transactions() {
     setBizMarkingId(null)
   }
 
-  // ── Shared formatting ──
+  // ── Selection helpers ──
+  function toggleCust(id) {
+    setSelectedCust(prev => {
+      const next = new Set(prev)
+      next.has(id) ? next.delete(id) : next.add(id)
+      return next
+    })
+  }
+
+  function toggleAllCust() {
+    const withdrawals = filteredCustomer.filter(t => t.type === 'withdrawal')
+    if (selectedCust.size === withdrawals.length) {
+      setSelectedCust(new Set())
+    } else {
+      setSelectedCust(new Set(withdrawals.map(t => t.id)))
+    }
+  }
+
+  function toggleBiz(id) {
+    setSelectedBiz(prev => {
+      const next = new Set(prev)
+      next.has(id) ? next.delete(id) : next.add(id)
+      return next
+    })
+  }
+
+  function toggleAllBiz() {
+    if (selectedBiz.size === filteredBiz.length) {
+      setSelectedBiz(new Set())
+    } else {
+      setSelectedBiz(new Set(filteredBiz.map(t => t.id)))
+    }
+  }
+
+  // ── OpenFloat export — customer withdrawals ──
+  function exportCustOpenFloat() {
+    const toExport = filteredCustomer.filter(t =>
+      t.type === 'withdrawal' && selectedCust.has(t.id)
+    )
+    const rows = toExport.map(t => {
+      const fullName = [
+        t.customers?.first_name,
+        t.customers?.other_names,
+        t.customers?.last_name,
+      ].filter(Boolean).join(' ')
+
+      return [
+        t.withdrawal_network || t.network || '',   // Account Type — MTN / AirtelMoney
+        fullName,                                   // Account Name
+        t.withdrawal_phone || '',                   // Account Number (mobile number)
+        '',                                         // Till or Paybill Number — blank
+        '',                                         // Till or Paybill Business Name — blank
+        '',                                         // Notification Phone — blank for customers
+        t.amount,                                   // Amount
+        t.reference || t.id.slice(0, 8),           // Remark
+      ]
+    })
+    downloadOpenFloatFile(rows, `partna-customer-withdrawals-${new Date().toISOString().slice(0, 10)}.xlsx`)
+  }
+
+  // ── OpenFloat export — business withdrawals ──
+  function exportBizOpenFloat() {
+    const toExport = filteredBiz.filter(t => selectedBiz.has(t.id))
+    const rows = toExport.map(t => [
+      t.withdrawal_method || '',                  // Account Type — MTN/AirtelMoney/bank name
+      t.withdrawal_account_name || '',            // Account Name
+      t.withdrawal_account_number || '',          // Account Number
+      '',                                         // Till or Paybill Number — blank
+      '',                                         // Till or Paybill Business Name — blank
+      t.withdrawal_notify_phone || '',            // Notification Phone Number
+      t.amount,                                   // Amount
+      t.businesses?.name || '',                   // Remark
+    ])
+    downloadOpenFloatFile(rows, `partna-business-withdrawals-${new Date().toISOString().slice(0, 10)}.xlsx`)
+  }
+
+  // ── Legacy CSV exports (kept for general ledger use) ──
+  function exportCustomerCSV() {
+    const rows = [
+      ['Reference', 'Customer', 'Business', 'Type', 'Amount', 'Status', 'Date'],
+      ...filteredCustomer.map(t => [
+        t.reference || t.id,
+        `${t.customers?.first_name} ${t.customers?.last_name}`,
+        t.customers?.businesses?.name || '',
+        t.type, t.amount, t.status,
+        new Date(t.created_at).toISOString(),
+      ])
+    ]
+    const csv = rows.map(r => r.map(v => `"${v}"`).join(',')).join('\n')
+    const blob = new Blob([csv], { type: 'text/csv' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a'); a.href = url
+    a.download = `partna-customer-transactions-${new Date().toISOString().slice(0, 10)}.csv`
+    a.click(); URL.revokeObjectURL(url)
+  }
+
+  function exportBizCSV() {
+    const rows = [
+      ['Business', 'Method', 'Account Name', 'Account Number', 'Notify Phone', 'Amount', 'Status', 'Date'],
+      ...filteredBiz.map(t => [
+        t.businesses?.name || '',
+        t.withdrawal_method || '',
+        t.withdrawal_account_name || '',
+        t.withdrawal_account_number || '',
+        t.withdrawal_notify_phone || '',
+        t.amount, t.status,
+        new Date(t.created_at).toISOString(),
+      ])
+    ]
+    const csv = rows.map(r => r.map(v => `"${v}"`).join(',')).join('\n')
+    const blob = new Blob([csv], { type: 'text/csv' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a'); a.href = url
+    a.download = `partna-business-withdrawals-${new Date().toISOString().slice(0, 10)}.csv`
+    a.click(); URL.revokeObjectURL(url)
+  }
+
+  // ── Filtering ──
+  const filteredCustomer = transactions
+    .filter(t => {
+      if (search) {
+        const s = search.toLowerCase()
+        const name = `${t.customers?.first_name} ${t.customers?.last_name}`.toLowerCase()
+        if (!name.includes(s) && !t.reference?.toLowerCase().includes(s)) return false
+      }
+      if (filterBusiness && t.customers?.business_id !== filterBusiness) return false
+      if (filterType && t.type !== filterType) return false
+      if (filterStatus && t.status !== filterStatus) return false
+      if (dateFrom && new Date(t.created_at) < new Date(dateFrom)) return false
+      if (dateTo && new Date(t.created_at) > new Date(dateTo + 'T23:59:59')) return false
+      return true
+    })
+    .sort((a, b) => {
+      let av = a[sortBy], bv = b[sortBy]
+      if (sortBy === 'amount') { av = Number(av); bv = Number(bv) }
+      if (av < bv) return sortDir === 'asc' ? -1 : 1
+      if (av > bv) return sortDir === 'asc' ? 1 : -1
+      return 0
+    })
+
+  const filteredBiz = bizWithdrawals.filter(t => {
+    if (bizSearch) {
+      const s = bizSearch.toLowerCase()
+      const biz = t.businesses?.name?.toLowerCase() || ''
+      if (!biz.includes(s) && !t.notes?.toLowerCase().includes(s)) return false
+    }
+    if (bizFilterBusiness && t.business_id !== bizFilterBusiness) return false
+    if (bizFilterStatus && t.status !== bizFilterStatus) return false
+    if (bizDateFrom && new Date(t.created_at) < new Date(bizDateFrom)) return false
+    if (bizDateTo && new Date(t.created_at) > new Date(bizDateTo + 'T23:59:59')) return false
+    return true
+  })
+
+  // Derived stats
+  const totalDeposits = filteredCustomer.filter(t => t.type === 'deposit').reduce((s, t) => s + Number(t.amount), 0)
+  const totalWithdrawals = filteredCustomer.filter(t => t.type === 'withdrawal').reduce((s, t) => s + Number(t.amount), 0)
+  const pendingCustWithdrawals = filteredCustomer.filter(t => t.type === 'withdrawal' && t.status === 'pending')
+  const pendingBizWithdrawals = bizWithdrawals.filter(t => t.status === 'pending')
+  const custWithdrawals = filteredCustomer.filter(t => t.type === 'withdrawal')
+  const allCustWithdrawalsSelected = custWithdrawals.length > 0 && selectedCust.size === custWithdrawals.length
+  const allBizSelected = filteredBiz.length > 0 && selectedBiz.size === filteredBiz.length
+
+  const hasCustomerFilters = search || filterBusiness || filterType || filterStatus || dateFrom || dateTo
+  const hasBizFilters = bizSearch || bizFilterBusiness || bizFilterStatus || bizDateFrom || bizDateTo
+
   function formatUGX(n) {
     if (n >= 1000000) return 'UGX ' + (n / 1000000).toFixed(1) + 'M'
     if (n >= 1000) return 'UGX ' + (n / 1000).toFixed(0) + 'K'
@@ -130,7 +328,6 @@ export default function Transactions() {
     return { bg: 'rgba(220,38,38,0.1)', color: '#DC2626' }
   }
 
-  // ── Customer sort ──
   function handleSort(col) {
     if (sortBy === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
     else { setSortBy(col); setSortDir('desc') }
@@ -141,103 +338,18 @@ export default function Transactions() {
     return <span style={{ color: ADMIN_PRIMARY }}>{sortDir === 'asc' ? '↑' : '↓'}</span>
   }
 
-  // ── Customer CSV export ──
-  function exportCustomerCSV() {
-    const rows = [
-      ['Reference', 'Customer', 'Business', 'Type', 'Amount', 'Status', 'Date'],
-      ...filteredCustomer.map(t => [
-        t.reference || t.id,
-        `${t.customers?.first_name} ${t.customers?.last_name}`,
-        t.customers?.businesses?.name || '',
-        t.type, t.amount, t.status,
-        new Date(t.created_at).toISOString(),
-      ])
-    ]
-    const csv = rows.map(r => r.map(v => `"${v}"`).join(',')).join('\n')
-    const blob = new Blob([csv], { type: 'text/csv' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `partna-customer-transactions-${new Date().toISOString().slice(0, 10)}.csv`
-    a.click()
-    URL.revokeObjectURL(url)
-  }
-
-  // ── Business withdrawals CSV export ──
-  function exportBizCSV() {
-    const rows = [
-      ['Business', 'Method', 'Amount', 'Status', 'Notes', 'Date'],
-      ...filteredBiz.map(t => [
-        t.businesses?.name || '',
-        t.notes?.includes('MoMo') || t.notes?.includes('MTN') || t.notes?.includes('Airtel')
-          ? 'Mobile Money' : 'Bank Transfer',
-        t.amount, t.status, t.notes || '',
-        new Date(t.created_at).toISOString(),
-      ])
-    ]
-    const csv = rows.map(r => r.map(v => `"${v}"`).join(',')).join('\n')
-    const blob = new Blob([csv], { type: 'text/csv' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `partna-business-withdrawals-${new Date().toISOString().slice(0, 10)}.csv`
-    a.click()
-    URL.revokeObjectURL(url)
-  }
-
-  // ── Filtered customer transactions ──
-  const filteredCustomer = transactions
-    .filter(t => {
-      if (search) {
-        const s = search.toLowerCase()
-        const name = `${t.customers?.first_name} ${t.customers?.last_name}`.toLowerCase()
-        if (!name.includes(s) && !t.reference?.toLowerCase().includes(s)) return false
-      }
-      if (filterBusiness && t.customers?.business_id !== filterBusiness) return false
-      if (filterType && t.type !== filterType) return false
-      if (filterStatus && t.status !== filterStatus) return false
-      if (dateFrom && new Date(t.created_at) < new Date(dateFrom)) return false
-      if (dateTo && new Date(t.created_at) > new Date(dateTo + 'T23:59:59')) return false
-      return true
-    })
-    .sort((a, b) => {
-      let av = a[sortBy], bv = b[sortBy]
-      if (sortBy === 'amount') { av = Number(av); bv = Number(bv) }
-      if (av < bv) return sortDir === 'asc' ? -1 : 1
-      if (av > bv) return sortDir === 'asc' ? 1 : -1
-      return 0
-    })
-
-  // ── Filtered business withdrawals ──
-  const filteredBiz = bizWithdrawals.filter(t => {
-    if (bizSearch) {
-      const s = bizSearch.toLowerCase()
-      const biz = t.businesses?.name?.toLowerCase() || ''
-      if (!biz.includes(s) && !t.notes?.toLowerCase().includes(s)) return false
+  function parseWithdrawalMethod(t) {
+    // Prefer structured columns, fall back to notes parsing
+    if (t.withdrawal_method) {
+      if (t.withdrawal_method === 'MTN') return 'MTN MoMo'
+      if (t.withdrawal_method === 'AirtelMoney') return 'Airtel Money'
+      return t.withdrawal_method // bank name
     }
-    if (bizFilterBusiness && t.business_id !== bizFilterBusiness) return false
-    if (bizFilterStatus && t.status !== bizFilterStatus) return false
-    if (bizDateFrom && new Date(t.created_at) < new Date(bizDateFrom)) return false
-    if (bizDateTo && new Date(t.created_at) > new Date(bizDateTo + 'T23:59:59')) return false
-    return true
-  })
-
-  // Derived stats
-  const totalDeposits = filteredCustomer.filter(t => t.type === 'deposit').reduce((s, t) => s + Number(t.amount), 0)
-  const totalWithdrawals = filteredCustomer.filter(t => t.type === 'withdrawal').reduce((s, t) => s + Number(t.amount), 0)
-  const pendingCustWithdrawals = filteredCustomer.filter(t => t.type === 'withdrawal' && t.status === 'pending')
-  const pendingBizWithdrawals = bizWithdrawals.filter(t => t.status === 'pending')
-
-  const hasCustomerFilters = search || filterBusiness || filterType || filterStatus || dateFrom || dateTo
-  const hasBizFilters = bizSearch || bizFilterBusiness || bizFilterStatus || bizDateFrom || bizDateTo
-
-  // ── Parse withdrawal method from notes ──
-  function parseWithdrawalMethod(notes) {
-    if (!notes) return { method: '—', detail: '' }
-    if (notes.includes('MTN')) return { method: 'MTN MoMo', detail: notes }
-    if (notes.includes('Airtel')) return { method: 'Airtel Money', detail: notes }
-    if (notes.includes('Bank:')) return { method: 'Bank Transfer', detail: notes }
-    return { method: 'Mobile Money', detail: notes }
+    const notes = t.notes || ''
+    if (notes.includes('MTN')) return 'MTN MoMo'
+    if (notes.includes('Airtel')) return 'Airtel Money'
+    if (notes.includes('Bank:')) return 'Bank Transfer'
+    return '—'
   }
 
   return (
@@ -247,10 +359,10 @@ export default function Transactions() {
       <div className="flex items-center justify-between">
         <div className="flex gap-2">
           {[
-            { id: 'customer', label: '👤 Customer Transactions' },
+            { id: 'customer', label: 'Customer Transactions' },
             {
               id: 'business',
-              label: `🏢 Business Withdrawals${pendingBizWithdrawals.length > 0 ? ` (${pendingBizWithdrawals.length} pending)` : ''}`,
+              label: `Business Withdrawals${pendingBizWithdrawals.length > 0 ? ` (${pendingBizWithdrawals.length} pending)` : ''}`,
             },
           ].map(t => (
             <button key={t.id} onClick={() => setTab(t.id)}
@@ -266,9 +378,9 @@ export default function Transactions() {
         </div>
         <button
           onClick={tab === 'customer' ? exportCustomerCSV : exportBizCSV}
-          className="text-xs font-semibold px-4 py-2.5 rounded-xl flex items-center gap-2"
-          style={{ background: ADMIN_PRIMARY, color: '#fff' }}>
-          ↓ Export CSV
+          className="text-xs font-semibold px-4 py-2.5 rounded-xl"
+          style={{ background: '#f0f2f5', color: ADMIN_PRIMARY, border: `1.5px solid rgba(27,79,114,0.2)` }}>
+          Export CSV
         </button>
       </div>
 
@@ -284,7 +396,6 @@ export default function Transactions() {
             </div>
           ) : (
             <>
-              {/* Stats */}
               <div className="grid grid-cols-4 gap-4">
                 {[
                   { label: 'Shown transactions', value: filteredCustomer.length, color: ADMIN_PRIMARY },
@@ -299,14 +410,13 @@ export default function Transactions() {
                 ))}
               </div>
 
-              {/* Pending alert */}
               {pendingCustWithdrawals.length > 0 && !filterStatus && (
                 <div className="flex items-center justify-between px-5 py-3 rounded-2xl"
                   style={{ background: 'rgba(217,119,6,0.08)', border: '1px solid rgba(217,119,6,0.2)' }}>
                   <div className="text-xs font-semibold" style={{ color: '#92400e' }}>
-                    ⏳ {pendingCustWithdrawals.length} pending customer withdrawal{pendingCustWithdrawals.length > 1 ? 's' : ''} require processing
+                    {pendingCustWithdrawals.length} pending customer withdrawal{pendingCustWithdrawals.length > 1 ? 's' : ''} require processing
                   </div>
-                  <button onClick={() => setFilterStatus('pending')}
+                  <button onClick={() => { setFilterStatus('pending'); setFilterType('withdrawal') }}
                     className="text-xs font-bold px-3 py-1.5 rounded-lg"
                     style={{ background: '#D97706', color: '#fff' }}>
                     Show pending
@@ -314,7 +424,28 @@ export default function Transactions() {
                 </div>
               )}
 
-              {/* Filters */}
+              {/* OpenFloat download bar — appears when withdrawals are selected */}
+              {selectedCust.size > 0 && (
+                <div className="flex items-center justify-between px-5 py-3 rounded-2xl"
+                  style={{ background: 'rgba(27,79,114,0.06)', border: `1.5px solid ${ADMIN_PRIMARY}` }}>
+                  <div className="text-xs font-semibold" style={{ color: ADMIN_PRIMARY }}>
+                    {selectedCust.size} withdrawal{selectedCust.size > 1 ? 's' : ''} selected
+                  </div>
+                  <div className="flex gap-2">
+                    <button onClick={() => setSelectedCust(new Set())}
+                      className="text-xs font-semibold px-3 py-1.5 rounded-lg"
+                      style={{ background: '#f0f2f5', color: 'rgba(0,0,0,0.5)' }}>
+                      Clear
+                    </button>
+                    <button onClick={exportCustOpenFloat}
+                      className="text-xs font-bold px-4 py-1.5 rounded-lg"
+                      style={{ background: ADMIN_PRIMARY, color: '#fff' }}>
+                      Download OpenFloat file
+                    </button>
+                  </div>
+                </div>
+              )}
+
               <div className="flex flex-wrap gap-3">
                 <input type="text" placeholder="Search by name or reference..."
                   value={search} onChange={e => setSearch(e.target.value)}
@@ -360,12 +491,10 @@ export default function Transactions() {
                 )}
               </div>
 
-              {/* Confirm modal */}
               {confirmId && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center px-4"
                   style={{ background: 'rgba(0,0,0,0.4)' }}>
-                  <div className="w-full max-w-sm rounded-2xl p-6 flex flex-col gap-4"
-                    style={{ background: '#fff' }}>
+                  <div className="w-full max-w-sm rounded-2xl p-6 flex flex-col gap-4" style={{ background: '#fff' }}>
                     <div className="text-sm font-bold" style={{ color: ADMIN_PRIMARY }}>
                       Mark withdrawal as completed?
                     </div>
@@ -375,9 +504,7 @@ export default function Transactions() {
                     <div className="flex gap-3">
                       <button onClick={() => setConfirmId(null)}
                         className="flex-1 py-2.5 rounded-xl text-xs font-semibold"
-                        style={{ background: '#f0f2f5', color: 'rgba(0,0,0,0.5)' }}>
-                        Cancel
-                      </button>
+                        style={{ background: '#f0f2f5', color: 'rgba(0,0,0,0.5)' }}>Cancel</button>
                       <button onClick={() => handleMarkCompleted(confirmId)}
                         disabled={markingId === confirmId}
                         className="flex-1 py-2.5 rounded-xl text-xs font-bold"
@@ -389,12 +516,19 @@ export default function Transactions() {
                 </div>
               )}
 
-              {/* Customer transactions table */}
               <div className="rounded-2xl overflow-hidden" style={{ background: '#fff' }}>
                 <div className="overflow-x-auto">
                   <table className="w-full">
                     <thead>
-                      <tr style={{ borderBottom: '1px solid rgba(0,0,0,0.06)' }}>
+                      <tr style={{ borderBottom: '1px solid rgba(0,0,0,0.06)', background: '#f8f9fa' }}>
+                        {/* Checkbox header — only shown for withdrawal rows */}
+                        <th className="px-4 py-3 w-10">
+                          <input type="checkbox"
+                            checked={allCustWithdrawalsSelected}
+                            onChange={toggleAllCust}
+                            title="Select all withdrawals"
+                            className="cursor-pointer" />
+                        </th>
                         {[
                           { label: 'Reference', col: 'reference' },
                           { label: 'Customer', col: 'customer' },
@@ -405,8 +539,7 @@ export default function Transactions() {
                           { label: 'Date', col: 'created_at' },
                         ].map(col => (
                           <th key={col.col} onClick={() => handleSort(col.col)}
-                            className="px-4 py-3 text-left cursor-pointer select-none"
-                            style={{ background: '#f8f9fa' }}>
+                            className="px-4 py-3 text-left cursor-pointer select-none">
                             <div className="flex items-center gap-1">
                               <span className="text-xs font-bold" style={{ color: 'rgba(0,0,0,0.5)' }}>
                                 {col.label}
@@ -415,74 +548,86 @@ export default function Transactions() {
                             </div>
                           </th>
                         ))}
-                        <th className="px-4 py-3" style={{ background: '#f8f9fa' }} />
+                        <th className="px-4 py-3" />
                       </tr>
                     </thead>
                     <tbody>
                       {filteredCustomer.length === 0 ? (
                         <tr>
-                          <td colSpan={8} className="px-4 py-12 text-center text-sm"
+                          <td colSpan={9} className="px-4 py-12 text-center text-sm"
                             style={{ color: 'rgba(0,0,0,0.3)' }}>
                             No transactions found
                           </td>
                         </tr>
-                      ) : filteredCustomer.map((t, i) => (
-                        <tr key={t.id}
-                          style={{ borderBottom: i < filteredCustomer.length - 1 ? '1px solid rgba(0,0,0,0.05)' : 'none' }}>
-                          <td className="px-4 py-3">
-                            <span className="text-xs font-mono" style={{ color: 'rgba(0,0,0,0.5)' }}>
-                              {t.reference || t.id.slice(0, 8)}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3">
-                            <div className="text-xs font-semibold" style={{ color: ADMIN_PRIMARY }}>
-                              {t.customers?.first_name} {t.customers?.last_name}
-                            </div>
-                            <div className="text-xs" style={{ color: 'rgba(0,0,0,0.4)' }}>
-                              {t.customers?.phone}
-                            </div>
-                          </td>
-                          <td className="px-4 py-3">
-                            <span className="text-xs" style={{ color: '#333' }}>
-                              {t.customers?.businesses?.name || '—'}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3">
-                            <span className="text-xs font-semibold capitalize"
-                              style={{ color: txColor(t.type) }}>
-                              {t.type}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3">
-                            <span className="text-xs font-bold" style={{ color: txColor(t.type) }}>
-                              {t.type === 'deposit' ? '+' : '-'}{formatUGX(t.amount)}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3">
-                            <span className="text-xs font-semibold px-2 py-1 rounded-full capitalize"
-                              style={{
-                                background: statusStyle(t.status).bg,
-                                color: statusStyle(t.status).color,
-                              }}>
-                              {t.status}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3">
-                            <span className="text-xs" style={{ color: 'rgba(0,0,0,0.4)' }}>
-                              {formatDateTime(t.created_at)}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3">
-                            {t.type === 'withdrawal' && t.status === 'pending' && (
-                              <button onClick={() => setConfirmId(t.id)}
-                                className="text-xs font-bold px-3 py-1.5 rounded-lg whitespace-nowrap"
-                                style={{ background: 'rgba(22,163,74,0.1)', color: '#16A34A' }}>
-                                Mark completed
-                              </button>
-                            )}
-                          </td>
-                        </tr>
-                      ))}
+                      ) : filteredCustomer.map((t, i) => {
+                        const isWithdrawal = t.type === 'withdrawal'
+                        const isSelected = selectedCust.has(t.id)
+                        return (
+                          <tr key={t.id}
+                            style={{
+                              borderBottom: i < filteredCustomer.length - 1 ? '1px solid rgba(0,0,0,0.05)' : 'none',
+                              background: isSelected ? 'rgba(27,79,114,0.04)' : 'transparent',
+                            }}>
+                            <td className="px-4 py-3">
+                              {isWithdrawal && (
+                                <input type="checkbox"
+                                  checked={isSelected}
+                                  onChange={() => toggleCust(t.id)}
+                                  className="cursor-pointer" />
+                              )}
+                            </td>
+                            <td className="px-4 py-3">
+                              <span className="text-xs font-mono" style={{ color: 'rgba(0,0,0,0.5)' }}>
+                                {t.reference || t.id.slice(0, 8)}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3">
+                              <div className="text-xs font-semibold" style={{ color: ADMIN_PRIMARY }}>
+                                {t.customers?.first_name} {t.customers?.last_name}
+                              </div>
+                              <div className="text-xs" style={{ color: 'rgba(0,0,0,0.4)' }}>
+                                {t.customers?.phone}
+                              </div>
+                            </td>
+                            <td className="px-4 py-3">
+                              <span className="text-xs" style={{ color: '#333' }}>
+                                {t.customers?.businesses?.name || '—'}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3">
+                              <span className="text-xs font-semibold capitalize"
+                                style={{ color: txColor(t.type) }}>
+                                {t.type}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3">
+                              <span className="text-xs font-bold" style={{ color: txColor(t.type) }}>
+                                {t.type === 'deposit' ? '+' : '-'}{formatUGX(t.amount)}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3">
+                              <span className="text-xs font-semibold px-2 py-1 rounded-full capitalize"
+                                style={{ background: statusStyle(t.status).bg, color: statusStyle(t.status).color }}>
+                                {t.status}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3">
+                              <span className="text-xs" style={{ color: 'rgba(0,0,0,0.4)' }}>
+                                {formatDateTime(t.created_at)}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3">
+                              {t.type === 'withdrawal' && t.status === 'pending' && (
+                                <button onClick={() => setConfirmId(t.id)}
+                                  className="text-xs font-bold px-3 py-1.5 rounded-lg whitespace-nowrap"
+                                  style={{ background: 'rgba(22,163,74,0.1)', color: '#16A34A' }}>
+                                  Mark completed
+                                </button>
+                              )}
+                            </td>
+                          </tr>
+                        )
+                      })}
                     </tbody>
                   </table>
                 </div>
@@ -504,20 +649,11 @@ export default function Transactions() {
             </div>
           ) : (
             <>
-              {/* Stats */}
               <div className="grid grid-cols-4 gap-4">
                 {[
                   { label: 'Total requests', value: bizWithdrawals.length, color: ADMIN_PRIMARY },
-                  {
-                    label: 'Total requested',
-                    value: formatUGX(bizWithdrawals.reduce((s, t) => s + Number(t.amount), 0)),
-                    color: '#DC2626',
-                  },
-                  {
-                    label: 'Total completed',
-                    value: formatUGX(bizWithdrawals.filter(t => t.status === 'completed').reduce((s, t) => s + Number(t.amount), 0)),
-                    color: '#16A34A',
-                  },
+                  { label: 'Total requested', value: formatUGX(bizWithdrawals.reduce((s, t) => s + Number(t.amount), 0)), color: '#DC2626' },
+                  { label: 'Total completed', value: formatUGX(bizWithdrawals.filter(t => t.status === 'completed').reduce((s, t) => s + Number(t.amount), 0)), color: '#16A34A' },
                   { label: 'Pending', value: pendingBizWithdrawals.length, color: '#D97706' },
                 ].map(stat => (
                   <div key={stat.label} className="rounded-2xl p-4" style={{ background: '#fff' }}>
@@ -527,12 +663,11 @@ export default function Transactions() {
                 ))}
               </div>
 
-              {/* Pending alert */}
               {pendingBizWithdrawals.length > 0 && !bizFilterStatus && (
                 <div className="flex items-center justify-between px-5 py-3 rounded-2xl"
                   style={{ background: 'rgba(217,119,6,0.08)', border: '1px solid rgba(217,119,6,0.2)' }}>
                   <div className="text-xs font-semibold" style={{ color: '#92400e' }}>
-                    ⏳ {pendingBizWithdrawals.length} business withdrawal{pendingBizWithdrawals.length > 1 ? 's' : ''} pending processing
+                    {pendingBizWithdrawals.length} business withdrawal{pendingBizWithdrawals.length > 1 ? 's' : ''} pending processing
                   </div>
                   <button onClick={() => setBizFilterStatus('pending')}
                     className="text-xs font-bold px-3 py-1.5 rounded-lg"
@@ -542,7 +677,28 @@ export default function Transactions() {
                 </div>
               )}
 
-              {/* Filters */}
+              {/* OpenFloat download bar */}
+              {selectedBiz.size > 0 && (
+                <div className="flex items-center justify-between px-5 py-3 rounded-2xl"
+                  style={{ background: 'rgba(27,79,114,0.06)', border: `1.5px solid ${ADMIN_PRIMARY}` }}>
+                  <div className="text-xs font-semibold" style={{ color: ADMIN_PRIMARY }}>
+                    {selectedBiz.size} withdrawal{selectedBiz.size > 1 ? 's' : ''} selected
+                  </div>
+                  <div className="flex gap-2">
+                    <button onClick={() => setSelectedBiz(new Set())}
+                      className="text-xs font-semibold px-3 py-1.5 rounded-lg"
+                      style={{ background: '#f0f2f5', color: 'rgba(0,0,0,0.5)' }}>
+                      Clear
+                    </button>
+                    <button onClick={exportBizOpenFloat}
+                      className="text-xs font-bold px-4 py-1.5 rounded-lg"
+                      style={{ background: ADMIN_PRIMARY, color: '#fff' }}>
+                      Download OpenFloat file
+                    </button>
+                  </div>
+                </div>
+              )}
+
               <div className="flex flex-wrap gap-3">
                 <input type="text" placeholder="Search by business or notes..."
                   value={bizSearch} onChange={e => setBizSearch(e.target.value)}
@@ -579,56 +735,45 @@ export default function Transactions() {
                 )}
               </div>
 
-              {/* Confirm modal */}
               {bizConfirmId && (() => {
                 const w = bizWithdrawals.find(t => t.id === bizConfirmId)
-                const { method, detail } = parseWithdrawalMethod(w?.notes)
+                const method = parseWithdrawalMethod(w)
                 return (
                   <div className="fixed inset-0 z-50 flex items-center justify-center px-4"
                     style={{ background: 'rgba(0,0,0,0.4)' }}>
-                    <div className="w-full max-w-sm rounded-2xl p-6 flex flex-col gap-4"
-                      style={{ background: '#fff' }}>
+                    <div className="w-full max-w-sm rounded-2xl p-6 flex flex-col gap-4" style={{ background: '#fff' }}>
                       <div className="text-sm font-bold" style={{ color: ADMIN_PRIMARY }}>
                         Mark withdrawal as processed?
                       </div>
-                      <div className="rounded-xl p-4 flex flex-col gap-2"
-                        style={{ background: '#f0f2f5' }}>
-                        <div className="flex justify-between">
-                          <span className="text-xs" style={{ color: 'rgba(0,0,0,0.4)' }}>Business</span>
-                          <span className="text-xs font-semibold" style={{ color: ADMIN_PRIMARY }}>
-                            {w?.businesses?.name}
-                          </span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-xs" style={{ color: 'rgba(0,0,0,0.4)' }}>Amount</span>
-                          <span className="text-xs font-bold" style={{ color: '#DC2626' }}>
-                            {formatUGXFull(w?.amount)}
-                          </span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-xs" style={{ color: 'rgba(0,0,0,0.4)' }}>Method</span>
-                          <span className="text-xs font-semibold" style={{ color: '#333' }}>{method}</span>
-                        </div>
-                        <div className="text-xs mt-1 leading-relaxed"
-                          style={{ color: 'rgba(0,0,0,0.45)', borderTop: '1px solid rgba(0,0,0,0.06)', paddingTop: '8px' }}>
-                          {detail}
-                        </div>
+                      <div className="rounded-xl p-4 flex flex-col gap-2" style={{ background: '#f0f2f5' }}>
+                        {[
+                          { label: 'Business', value: w?.businesses?.name },
+                          { label: 'Amount', value: formatUGXFull(w?.amount), color: '#DC2626' },
+                          { label: 'Method', value: method },
+                          { label: 'Account name', value: w?.withdrawal_account_name || '—' },
+                          { label: 'Account number', value: w?.withdrawal_account_number || '—' },
+                          ...(w?.withdrawal_notify_phone ? [{ label: 'Notify', value: w.withdrawal_notify_phone }] : []),
+                        ].map((row, i) => (
+                          <div key={i} className="flex justify-between items-center">
+                            <span className="text-xs" style={{ color: 'rgba(0,0,0,0.4)' }}>{row.label}</span>
+                            <span className="text-xs font-semibold" style={{ color: row.color || ADMIN_PRIMARY }}>
+                              {row.value}
+                            </span>
+                          </div>
+                        ))}
                       </div>
                       <div className="text-xs" style={{ color: 'rgba(0,0,0,0.5)' }}>
-                        Confirm that payment has been sent to the business via {method}.
-                        This action cannot be undone.
+                        Confirm that payment has been sent. This action cannot be undone.
                       </div>
                       <div className="flex gap-3">
                         <button onClick={() => setBizConfirmId(null)}
                           className="flex-1 py-2.5 rounded-xl text-xs font-semibold"
-                          style={{ background: '#f0f2f5', color: 'rgba(0,0,0,0.5)' }}>
-                          Cancel
-                        </button>
+                          style={{ background: '#f0f2f5', color: 'rgba(0,0,0,0.5)' }}>Cancel</button>
                         <button onClick={() => handleBizMarkCompleted(bizConfirmId)}
                           disabled={bizMarkingId === bizConfirmId}
                           className="flex-1 py-2.5 rounded-xl text-xs font-bold"
                           style={{ background: '#16A34A', color: '#fff' }}>
-                          {bizMarkingId === bizConfirmId ? 'Saving...' : '✓ Mark processed'}
+                          {bizMarkingId === bizConfirmId ? 'Saving...' : 'Mark processed'}
                         </button>
                       </div>
                     </div>
@@ -636,34 +781,51 @@ export default function Transactions() {
                 )
               })()}
 
-              {/* Business withdrawals table */}
               <div className="rounded-2xl overflow-hidden" style={{ background: '#fff' }}>
                 <div className="overflow-x-auto">
                   <table className="w-full">
                     <thead>
                       <tr style={{ borderBottom: '1px solid rgba(0,0,0,0.06)', background: '#f8f9fa' }}>
-                        {['Business', 'Amount', 'Method', 'Details', 'Status', 'Requested'].map(h => (
+                        <th className="px-4 py-3 w-10">
+                          <input type="checkbox"
+                            checked={allBizSelected}
+                            onChange={toggleAllBiz}
+                            title="Select all"
+                            className="cursor-pointer" />
+                        </th>
+                        {['Business', 'Amount', 'Method', 'Account details', 'Status', 'Requested'].map(h => (
                           <th key={h} className="px-4 py-3 text-left">
                             <span className="text-xs font-bold" style={{ color: 'rgba(0,0,0,0.5)' }}>{h}</span>
                           </th>
                         ))}
-                        <th className="px-4 py-3" style={{ background: '#f8f9fa' }} />
+                        <th className="px-4 py-3" />
                       </tr>
                     </thead>
                     <tbody>
                       {filteredBiz.length === 0 ? (
                         <tr>
-                          <td colSpan={7} className="px-4 py-12 text-center text-sm"
+                          <td colSpan={8} className="px-4 py-12 text-center text-sm"
                             style={{ color: 'rgba(0,0,0,0.3)' }}>
                             No withdrawal requests found
                           </td>
                         </tr>
                       ) : filteredBiz.map((t, i) => {
-                        const { method, detail } = parseWithdrawalMethod(t.notes)
+                        const method = parseWithdrawalMethod(t)
                         const ss = statusStyle(t.status)
+                        const isSelected = selectedBiz.has(t.id)
+                        const isMobile = method === 'MTN MoMo' || method === 'Airtel Money'
                         return (
                           <tr key={t.id}
-                            style={{ borderBottom: i < filteredBiz.length - 1 ? '1px solid rgba(0,0,0,0.05)' : 'none' }}>
+                            style={{
+                              borderBottom: i < filteredBiz.length - 1 ? '1px solid rgba(0,0,0,0.05)' : 'none',
+                              background: isSelected ? 'rgba(27,79,114,0.04)' : 'transparent',
+                            }}>
+                            <td className="px-4 py-3">
+                              <input type="checkbox"
+                                checked={isSelected}
+                                onChange={() => toggleBiz(t.id)}
+                                className="cursor-pointer" />
+                            </td>
                             <td className="px-4 py-3">
                               <div className="text-xs font-semibold" style={{ color: ADMIN_PRIMARY }}>
                                 {t.businesses?.name || '—'}
@@ -677,24 +839,24 @@ export default function Transactions() {
                             <td className="px-4 py-3">
                               <span className="text-xs font-semibold px-2 py-1 rounded-full"
                                 style={{
-                                  background: method.includes('Bank')
-                                    ? 'rgba(27,79,114,0.08)'
-                                    : 'rgba(212,175,55,0.12)',
-                                  color: method.includes('Bank') ? ADMIN_PRIMARY : '#92400e',
+                                  background: isMobile ? 'rgba(212,175,55,0.12)' : 'rgba(27,79,114,0.08)',
+                                  color: isMobile ? '#92400e' : ADMIN_PRIMARY,
                                 }}>
-                                {method.includes('Bank') ? '🏦' : '📱'} {method}
+                                {method}
                               </span>
                             </td>
-                            <td className="px-4 py-3 max-w-xs">
-                              <div className="text-xs leading-relaxed truncate"
-                                style={{ color: 'rgba(0,0,0,0.45)' }}>
-                                {detail}
+                            <td className="px-4 py-3">
+                              <div className="text-xs font-semibold" style={{ color: '#333' }}>
+                                {t.withdrawal_account_name || '—'}
+                              </div>
+                              <div className="text-xs" style={{ color: 'rgba(0,0,0,0.4)' }}>
+                                {t.withdrawal_account_number || ''}
                               </div>
                             </td>
                             <td className="px-4 py-3">
-                              <span className="text-xs font-semibold px-2 py-1 rounded-full capitalize"
+                              <span className="text-xs font-semibold px-2 py-1 rounded-full"
                                 style={{ background: ss.bg, color: ss.color }}>
-                                {t.status === 'completed' ? '✓ Processed' : '⏳ Pending'}
+                                {t.status === 'completed' ? 'Processed' : 'Pending'}
                               </span>
                             </td>
                             <td className="px-4 py-3">
