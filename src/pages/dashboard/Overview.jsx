@@ -5,34 +5,35 @@ import { supabase } from '../../supabase'
 const PARTNA_PRIMARY = '#1B4F72'
 const PARTNA_GOLD = '#D4AF37'
 
+// Bank names must match OpenFloat Allowed Types exactly
 const UGANDA_BANKS = [
   'ABSA Uganda',
-  'Bank of Africa (Uganda)',
+  'Bank Of Africa (Uganda)',
   'Bank of Baroda',
   'Cairo Bank Uganda',
-  'Centenary Rural Development Bank (UG)',
+  'Centenary Rural Development Bank LTD (UG)',
   'DFCU Uganda',
-  'Diamond Trust Bank Uganda',
-  'Ecobank Uganda',
+  'Diamond Trust Bank Uganda Limited',
+  'Ecobank Uganda Limited',
   'Equity Bank Uganda',
-  'Exim Bank',
-  'Finance Trust Bank',
+  'Exim bank',
+  'Finance Trust',
   'Guaranty Trust Bank Uganda (GT Bank)',
   'Housing Finance Bank',
   'I & M Bank Uganda (Orient)',
-  'KCB Bank Uganda',
-  'NCBA Bank Uganda',
-  'Opportunity Bank Uganda',
+  'KCB Bank Uganda Limited',
+  'NCBA Bank Uganda Limited',
+  'Opportunity Bank',
   'Post Bank Uganda',
   'Stanbic Bank Uganda',
-  'Standard Chartered Bank Uganda',
+  'Standard Chartered Bank Uganda Limited',
   'Tropical Bank Uganda',
-  'United Bank for Africa Uganda (UBA)',
+  'United Bank for Africa Uganda Limited (UBA)',
 ]
 
 function StatCard({ label, value, sub, color, onClick }) {
   return (
-    <div className="rounded-2xl p-5 cursor-default"
+    <div className="rounded-2xl p-5"
       style={{ background: '#fff', cursor: onClick ? 'pointer' : 'default' }}
       onClick={onClick}>
       <div className="text-xs font-semibold mb-1" style={{ color: 'rgba(0,0,0,0.4)' }}>{label}</div>
@@ -62,7 +63,7 @@ export default function Overview({ admin, business }) {
 
   // Withdrawal modal
   const [showWithdraw, setShowWithdraw] = useState(false)
-  const [withdrawTab, setWithdrawTab] = useState('mobilemoney') // 'mobilemoney' | 'bank'
+  const [withdrawTab, setWithdrawTab] = useState('mobilemoney')
   const [withdrawAmount, setWithdrawAmount] = useState('')
   const [withdrawLoading, setWithdrawLoading] = useState(false)
   const [withdrawSuccess, setWithdrawSuccess] = useState(false)
@@ -120,7 +121,6 @@ export default function Overview({ admin, business }) {
         txns = allTxnData || []
       }
 
-      // Business wallet balance
       const { data: bizWallet } = await supabase
         .from('business_wallets').select('*').eq('business_id', business.id).maybeSingle()
       setBusinessWallet(bizWallet)
@@ -129,11 +129,7 @@ export default function Overview({ admin, business }) {
       setRecentActivity(txns.slice(0, 10))
       buildChartData(txns, chartFilter)
 
-      setStats({
-        totalSavings,
-        activeCustomers: customers?.length || 0,
-        totalPayments,
-      })
+      setStats({ totalSavings, activeCustomers: customers?.length || 0, totalPayments })
     } catch (e) {
       console.error('Overview load error:', e)
     }
@@ -228,14 +224,8 @@ export default function Overview({ admin, business }) {
     const amount = parseInt(withdrawAmount.replace(/,/g, ''), 10)
     const balance = businessWallet ? Number(businessWallet.balance) : 0
 
-    if (!amount || amount < 1000) {
-      setWithdrawError('Minimum withdrawal is UGX 1,000.')
-      return
-    }
-    if (amount > balance) {
-      setWithdrawError('Amount exceeds your available balance.')
-      return
-    }
+    if (!amount || amount < 1000) { setWithdrawError('Minimum withdrawal is UGX 1,000.'); return }
+    if (amount > balance) { setWithdrawError('Amount exceeds your available balance.'); return }
 
     if (withdrawTab === 'mobilemoney') {
       if (!mmRecipientName.trim()) { setWithdrawError("Recipient's name is required."); return }
@@ -248,17 +238,37 @@ export default function Overview({ admin, business }) {
 
     setWithdrawLoading(true)
     try {
-      const notes = withdrawTab === 'mobilemoney'
-        ? `${mmNetwork} MoMo · ${mmRecipientName} · ${mmPhone}${mmNotifyPhone ? ` · Notify: ${mmNotifyPhone}` : ''}`
+      // ── Structured withdrawal data for OpenFloat CSV export ──
+      // withdrawal_method = exact OpenFloat Account Type value
+      // withdrawal_account_name = Account Name column
+      // withdrawal_account_number = Account Number column
+      // withdrawal_notify_phone = Notification Phone Number column
+      const isMobileMoney = withdrawTab === 'mobilemoney'
+      const openFloatMethod = isMobileMoney
+        ? (mmNetwork === 'MTN' ? 'MTN' : 'AirtelMoney')
+        : bankName  // bank name already matches OpenFloat exactly from UGANDA_BANKS list
+
+      const structuredData = {
+        withdrawal_method: openFloatMethod,
+        withdrawal_account_name: isMobileMoney ? mmRecipientName.trim() : bankAccountName.trim(),
+        withdrawal_account_number: isMobileMoney ? mmPhone.trim() : bankAccountNumber.trim(),
+        withdrawal_notify_phone: isMobileMoney
+          ? (mmNotifyPhone.trim() || null)
+          : (bankNotifyPhone.trim() || null),
+      }
+
+      // Keep human-readable notes for display in the admin panel
+      const notes = isMobileMoney
+        ? `${mmNetwork === 'MTN' ? 'MTN MoMo' : 'Airtel Money'} · ${mmRecipientName} · ${mmPhone}${mmNotifyPhone ? ` · Notify: ${mmNotifyPhone}` : ''}`
         : `Bank: ${bankName} · ${bankAccountName} · ${bankAccountNumber}${bankNotifyPhone ? ` · Notify: ${bankNotifyPhone}` : ''}`
 
-      // Record as pending business transaction — admin processes manually
       await supabase.from('business_transactions').insert({
         business_id: business.id,
         type: 'withdrawal',
         amount,
         status: 'pending',
         notes,
+        ...structuredData,
       })
 
       // Deduct from business wallet immediately to prevent double withdrawal
@@ -314,15 +324,13 @@ export default function Overview({ admin, business }) {
                   Available: {formatUGXFull(bizBalance)}
                 </div>
               </div>
-              <button
-                onClick={() => { setShowWithdraw(false); resetWithdrawForm() }}
+              <button onClick={() => { setShowWithdraw(false); resetWithdrawForm() }}
                 className="text-white text-xl opacity-70">✕</button>
             </div>
 
             <div className="p-6 flex flex-col gap-4 overflow-y-auto" style={{ maxHeight: '75vh' }}>
               {withdrawSuccess ? (
                 <div className="flex flex-col items-center gap-4 py-4">
-                  <div className="text-4xl">✅</div>
                   <div className="text-center">
                     <div className="text-sm font-bold mb-1" style={{ color: PARTNA_PRIMARY }}>
                       Withdrawal request submitted
@@ -332,8 +340,7 @@ export default function Overview({ admin, business }) {
                       Funds will be transferred within 1–2 business days.
                     </div>
                   </div>
-                  <button
-                    onClick={() => { setShowWithdraw(false); resetWithdrawForm() }}
+                  <button onClick={() => { setShowWithdraw(false); resetWithdrawForm() }}
                     className="w-full py-3 rounded-xl text-sm font-bold"
                     style={{ background: PARTNA_PRIMARY, color: '#fff' }}>
                     Done
@@ -344,10 +351,11 @@ export default function Overview({ admin, business }) {
                   {/* Method tabs */}
                   <div className="flex gap-1 p-1 rounded-xl" style={{ background: '#f0f2f5' }}>
                     {[
-                      { id: 'mobilemoney', label: '📱 Mobile Money' },
-                      { id: 'bank', label: '🏦 Bank Transfer' },
+                      { id: 'mobilemoney', label: 'Mobile Money' },
+                      { id: 'bank', label: 'Bank Transfer' },
                     ].map(tab => (
-                      <button key={tab.id} onClick={() => { setWithdrawTab(tab.id); setWithdrawError('') }}
+                      <button key={tab.id}
+                        onClick={() => { setWithdrawTab(tab.id); setWithdrawError('') }}
                         className="flex-1 py-2 rounded-lg text-xs font-semibold"
                         style={{
                           background: withdrawTab === tab.id ? '#fff' : 'transparent',
@@ -392,7 +400,7 @@ export default function Overview({ admin, business }) {
                                 background: mmNetwork === net ? PARTNA_PRIMARY : '#f0f2f5',
                                 color: mmNetwork === net ? '#fff' : 'rgba(0,0,0,0.5)',
                               }}>
-                              {net === 'MTN' ? '📲 MTN MoMo' : '📲 Airtel Money'}
+                              {net === 'MTN' ? 'MTN MoMo' : 'Airtel Money'}
                             </button>
                           ))}
                         </div>
@@ -452,7 +460,7 @@ export default function Overview({ admin, business }) {
 
                   <div className="px-3 py-2.5 rounded-xl text-xs"
                     style={{ background: 'rgba(27,79,114,0.05)', color: 'rgba(0,0,0,0.5)' }}>
-                    ℹ️ Withdrawals are processed within 1–2 business days by the Partna team.
+                    Withdrawals are processed within 1–2 business days by the Partna team.
                   </div>
 
                   <button onClick={handleWithdraw} disabled={withdrawLoading}
@@ -482,7 +490,6 @@ export default function Overview({ admin, business }) {
         />
         <StatCard label="Active Campaigns" value={campaigns.length}
           sub={campaigns[0]?.name || 'No active campaign'} color={PARTNA_GOLD} />
-        {/* Business wallet card */}
         <div className="rounded-2xl p-5 flex flex-col justify-between" style={{ background: '#fff' }}>
           <div>
             <div className="text-xs font-semibold mb-1" style={{ color: 'rgba(0,0,0,0.4)' }}>
@@ -511,7 +518,6 @@ export default function Overview({ admin, business }) {
 
       {/* ── CHART + RECENT ACTIVITY ── */}
       <div className="grid grid-cols-3 gap-4">
-
         <div className="col-span-2 rounded-2xl p-5" style={{ background: '#fff' }}>
           <div className="flex items-center justify-between mb-4">
             <div className="text-sm font-bold" style={{ color: PARTNA_PRIMARY }}>
@@ -531,11 +537,11 @@ export default function Overview({ admin, business }) {
               <div className="flex rounded-lg overflow-hidden border" style={{ borderColor: 'rgba(27,79,114,0.15)' }}>
                 <button onClick={() => setChartType('bar')} className="px-2 py-1.5 text-xs font-semibold"
                   style={{ background: chartType === 'bar' ? PARTNA_PRIMARY : '#fff', color: chartType === 'bar' ? '#fff' : 'rgba(0,0,0,0.4)' }}>
-                  ▦ Bar
+                  Bar
                 </button>
                 <button onClick={() => setChartType('line')} className="px-2 py-1.5 text-xs font-semibold"
                   style={{ background: chartType === 'line' ? PARTNA_PRIMARY : '#fff', color: chartType === 'line' ? '#fff' : 'rgba(0,0,0,0.4)', borderLeft: '1px solid rgba(27,79,114,0.15)' }}>
-                  ↗ Line
+                  Line
                 </button>
               </div>
               <div className="flex rounded-lg overflow-hidden border" style={{ borderColor: 'rgba(27,79,114,0.15)' }}>
@@ -672,7 +678,6 @@ export default function Overview({ admin, business }) {
 
       {campaigns.length === 0 && (
         <div className="rounded-2xl p-8 text-center" style={{ background: '#fff' }}>
-          <div className="text-3xl mb-3">🎯</div>
           <div className="text-sm font-bold mb-1" style={{ color: PARTNA_PRIMARY }}>No campaigns yet</div>
           <div className="text-xs mb-4" style={{ color: 'rgba(0,0,0,0.4)' }}>
             Create your first campaign to start enrolling customers

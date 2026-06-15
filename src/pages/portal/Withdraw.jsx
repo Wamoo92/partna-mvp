@@ -12,6 +12,13 @@ function generateReference() {
   return ref
 }
 
+// Map internal network IDs to exact OpenFloat allowed type values
+function toOpenFloatNetwork(network) {
+  if (network === 'mtn') return 'MTN'
+  if (network === 'airtel') return 'AirtelMoney'
+  return network
+}
+
 export default function Withdraw({ customer }) {
   const brand = useBrand()
   const navigate = useNavigate()
@@ -106,6 +113,7 @@ export default function Withdraw({ customer }) {
   }
 
   const fees = getFees(parsedAmount)
+  const networkLabel = network === 'mtn' ? 'MTN MoMo' : 'Airtel Money'
 
   async function handleWithdraw() {
     setError('')
@@ -126,6 +134,10 @@ export default function Withdraw({ customer }) {
       const reference = generateReference()
       setTxnReference(reference)
 
+      // Store network in OpenFloat format and phone as structured columns
+      const openFloatNetwork = toOpenFloatNetwork(network)
+      const cleanPhone = momoPhone.replace(/\s/g, '')
+
       const { data: txnData, error: txnError } = await supabase
         .from('transactions')
         .insert({
@@ -135,8 +147,11 @@ export default function Withdraw({ customer }) {
           type: 'withdrawal',
           amount: parsedAmount,
           status: 'pending',
-          network,
+          network: openFloatNetwork,           // 'MTN' or 'AirtelMoney' — OpenFloat format
+          withdrawal_network: openFloatNetwork, // structured column for CSV export
+          withdrawal_phone: cleanPhone,         // structured column for CSV export
           reference,
+          notes: `${networkLabel}: ${momoPhone}`,
         })
         .select()
 
@@ -152,7 +167,7 @@ export default function Withdraw({ customer }) {
         await supabase.from('transaction_fees').insert({
           transaction_id: txnId,
           customer_id: customer.id,
-          network,
+          network: openFloatNetwork,
           fee_type: 'withdrawal',
           charged_to: 'user',
           partna_fee: fees.partnaFee,
@@ -241,7 +256,6 @@ export default function Withdraw({ customer }) {
 
       {step === 3 && (
         <div className="px-5 pt-8 pb-10 text-center" style={{ background: brand.primaryColor }}>
-          <div className="text-4xl mb-3">⏳</div>
           <div className="text-white text-xl font-bold mb-1">Withdrawal Requested</div>
           <div className="text-xs" style={{ color: 'rgba(255,255,255,0.65)' }}>
             Your request is being processed
@@ -400,7 +414,7 @@ export default function Withdraw({ customer }) {
                 { label: 'Partna service fee (3%)', value: '− ' + formatUGX(fees.partnaFee), color: '#DC2626' },
                 { label: 'Mobile money carrier fee', value: '− ' + formatUGX(fees.carrierFee), color: '#DC2626' },
                 { label: 'Tax (0.5%)', value: '− ' + formatUGX(fees.tax), color: '#DC2626' },
-                { label: 'Network', value: network === 'mtn' ? 'MTN MoMo' : 'Airtel Money', color: brand.primaryColor },
+                { label: 'Network', value: networkLabel, color: brand.primaryColor },
                 { label: 'Number', value: momoPhone || '—', color: brand.primaryColor },
                 { label: 'Date & time', value: nowDisplay(), color: brand.primaryColor },
               ].map((row, i, arr) => (
@@ -440,7 +454,7 @@ export default function Withdraw({ customer }) {
             <div className="rounded-2xl px-4 py-3"
               style={{ background: 'rgba(27,79,114,0.06)', border: '1px solid rgba(27,79,114,0.15)' }}>
               <div className="text-xs font-semibold mb-1" style={{ color: brand.primaryColor }}>
-                ⏱ Processing time
+                Processing time
               </div>
               <div className="text-xs leading-relaxed" style={{ color: 'rgba(0,0,0,0.5)' }}>
                 Withdrawals typically take <strong>1–2 business days</strong> to process.
@@ -460,9 +474,9 @@ export default function Withdraw({ customer }) {
                 { label: 'Carrier fee', value: '− ' + formatUGX(fees.carrierFee), color: '#DC2626' },
                 { label: 'Tax', value: '− ' + formatUGX(fees.tax), color: '#DC2626' },
                 { label: 'You receive', value: formatUGX(fees.netAmount), color: '#16A34A' },
-                { label: 'Network', value: network === 'mtn' ? 'MTN MoMo' : 'Airtel Money', color: brand.primaryColor },
+                { label: 'Network', value: networkLabel, color: brand.primaryColor },
                 { label: 'Number', value: momoPhone, color: brand.primaryColor },
-                { label: 'Status', value: '⏳ Pending', color: '#D97706' },
+                { label: 'Status', value: 'Pending', color: '#D97706' },
                 { label: 'Date & time', value: nowDisplay(), color: brand.primaryColor },
               ].map((row, i, arr) => (
                 <div key={i} className="flex justify-between items-center py-1.5"
@@ -478,7 +492,7 @@ export default function Withdraw({ customer }) {
 
             <div className="px-4 py-3 rounded-xl text-xs text-center"
               style={{ background: 'rgba(27,79,114,0.06)', color: 'rgba(0,0,0,0.5)' }}>
-              📧 A receipt has been sent to {customer?.email}
+              A receipt has been sent to {customer?.email}
             </div>
 
             <button onClick={() => navigate('/portal/home')}
