@@ -31,23 +31,35 @@ function PortalGuard({ customer, loading, children }) {
   return children
 }
 
-function HomeGuard({ customer, campaign, loading, children }) {
+// HomeGuard — requires at least one active enrollment that is not deleted/paused
+// Uses enrollments array from useAuth instead of the old single campaign_id
+function HomeGuard({ customer, enrollments, loading, children }) {
   if (loading) return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50">
       <div className="w-8 h-8 border-4 border-[#1B4F72] border-t-transparent rounded-full animate-spin" />
     </div>
   )
+
+  // Not logged in
   if (!customer) return <Navigate to="/portal" replace />
-  if (!customer.campaign_id) return <Navigate to="/portal/select-campaign" replace />
-  if (campaign && getEffectiveStatus(campaign) === 'deleted') {
-    return <Navigate to="/portal/select-campaign" replace />
-  }
+
+  // No enrollments at all — send to campaign selection
+  if (enrollments.length === 0) return <Navigate to="/portal/select-campaign" replace />
+
+  // If ALL enrollments are in a deleted/cancelled campaign state, send to select-campaign
+  // (leaves paused campaigns accessible so customer can still withdraw)
+  const hasAccessibleEnrollment = enrollments.some(e => {
+    const status = e.campaigns ? getEffectiveStatus(e.campaigns) : 'active'
+    return status !== 'deleted'
+  })
+  if (!hasAccessibleEnrollment) return <Navigate to="/portal/select-campaign" replace />
+
   return children
 }
 
 // ── Portal + Dashboard tree — mounts useAuth ──
 function PortalAndDashboard() {
-  const { customer, business, campaign, loading, signOut } = useAuth()
+  const { customer, business, enrollments, loading, signOut } = useAuth()
   const brand = buildBrand(business)
 
   return (
@@ -55,12 +67,13 @@ function PortalAndDashboard() {
       <Routes>
         <Route path="/" element={<Navigate to="/portal" replace />} />
 
-        {/* ── Customer portal ── */}
+        {/* ── Customer portal — public routes ── */}
         <Route path="/portal" element={<Landing />} />
         <Route path="/portal/register" element={<Register />} />
         <Route path="/portal/login" element={<Login />} />
         <Route path="/portal/reset-pin" element={<ResetPin />} />
 
+        {/* ── Requires login but not enrollment ── */}
         <Route path="/portal/kyc" element={
           <PortalGuard customer={customer} loading={loading}>
             <KYC customer={customer} />
@@ -79,50 +92,51 @@ function PortalAndDashboard() {
           </PortalGuard>
         } />
 
+        {/* ── Requires login + at least one active enrollment ── */}
         <Route path="/portal/home" element={
-          <HomeGuard customer={customer} campaign={campaign} loading={loading}>
+          <HomeGuard customer={customer} enrollments={enrollments} loading={loading}>
             <Home customer={customer} signOut={signOut} />
           </HomeGuard>
         } />
 
         <Route path="/portal/card" element={
-          <HomeGuard customer={customer} campaign={campaign} loading={loading}>
+          <HomeGuard customer={customer} enrollments={enrollments} loading={loading}>
             <CardDetail customer={customer} />
           </HomeGuard>
         } />
 
         <Route path="/portal/rewards" element={
-          <HomeGuard customer={customer} campaign={campaign} loading={loading}>
+          <HomeGuard customer={customer} enrollments={enrollments} loading={loading}>
             <Rewards customer={customer} />
           </HomeGuard>
         } />
 
         <Route path="/portal/transactions" element={
-          <HomeGuard customer={customer} campaign={campaign} loading={loading}>
+          <HomeGuard customer={customer} enrollments={enrollments} loading={loading}>
             <Transactions customer={customer} />
           </HomeGuard>
         } />
 
         <Route path="/portal/profile" element={
-          <HomeGuard customer={customer} campaign={campaign} loading={loading}>
+          <HomeGuard customer={customer} enrollments={enrollments} loading={loading}>
             <Profile customer={customer} signOut={signOut} />
           </HomeGuard>
         } />
 
         <Route path="/portal/add-money" element={
-          <HomeGuard customer={customer} campaign={campaign} loading={loading}>
+          <HomeGuard customer={customer} enrollments={enrollments} loading={loading}>
             <AddMoney customer={customer} />
           </HomeGuard>
         } />
 
         <Route path="/portal/pay" element={
-          <HomeGuard customer={customer} campaign={campaign} loading={loading}>
+          <HomeGuard customer={customer} enrollments={enrollments} loading={loading}>
             <Pay customer={customer} />
           </HomeGuard>
         } />
 
         <Route path="/portal/withdraw" element={
-          <HomeGuard customer={customer} campaign={campaign} loading={loading}>
+          <HomeGuard customer={customer} enrollments={enrollments} loading={loading}>
             <Withdraw customer={customer} />
           </HomeGuard>
         } />

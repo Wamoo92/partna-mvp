@@ -4,7 +4,7 @@ import { supabase } from '../supabase'
 export function useAuth() {
   const [customer, setCustomer] = useState(null)
   const [business, setBusiness] = useState(null)
-  const [campaign, setCampaign] = useState(null)
+  const [enrollments, setEnrollments] = useState([]) // replaces single campaign
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -23,7 +23,7 @@ export function useAuth() {
         } else {
           setCustomer(null)
           setBusiness(null)
-          setCampaign(null)
+          setEnrollments([])
           setLoading(false)
         }
       }
@@ -33,42 +33,49 @@ export function useAuth() {
   }, [])
 
   async function fetchCustomer(userId) {
-    const { data: customerData } = await supabase
-      .from('customers')
-      .select('*')
-      .eq('auth_user_id', userId)
-
-    if (!customerData || customerData.length === 0) {
-      setLoading(false)
-      return
-    }
-
-    const c = customerData[0]
-    setCustomer(c)
-
-    // Fetch business branding
-    if (c.business_id) {
-      const { data: businessData } = await supabase
-        .from('businesses')
+    try {
+      const { data: customerData } = await supabase
+        .from('customers')
         .select('*')
-        .eq('id', c.business_id)
-
-      if (businessData && businessData.length > 0) {
-        setBusiness(businessData[0])
-      }
-    }
-
-    // Fetch customer's selected campaign (needed for HomeGuard deletion check)
-    if (c.campaign_id) {
-      const { data: campaignData } = await supabase
-        .from('campaigns')
-        .select('*')
-        .eq('id', c.campaign_id)
+        .eq('auth_user_id', userId)
         .maybeSingle()
 
-      setCampaign(campaignData || null)
-    } else {
-      setCampaign(null)
+      if (!customerData) {
+        setLoading(false)
+        return
+      }
+
+      // Check account hasn't been deleted
+      if (customerData.registration_status === 'deleted') {
+        await supabase.auth.signOut()
+        setLoading(false)
+        return
+      }
+
+      setCustomer(customerData)
+
+      // Fetch business branding
+      if (customerData.business_id) {
+        const { data: businessData } = await supabase
+          .from('businesses')
+          .select('*')
+          .eq('id', customerData.business_id)
+          .maybeSingle()
+        if (businessData) setBusiness(businessData)
+      }
+
+      // Fetch all active campaign enrollments — replaces single campaign_id lookup
+      const { data: enrollmentData } = await supabase
+        .from('customer_campaigns')
+        .select('*, campaigns(*), wallets(*)')
+        .eq('customer_id', customerData.id)
+        .eq('status', 'active')
+        .order('enrolled_at', { ascending: true })
+
+      setEnrollments(enrollmentData || [])
+
+    } catch (e) {
+      console.error('fetchCustomer error:', e)
     }
 
     setLoading(false)
@@ -78,15 +85,15 @@ export function useAuth() {
     await supabase.auth.signOut()
     setCustomer(null)
     setBusiness(null)
-    setCampaign(null)
+    setEnrollments([])
   }
 
   return {
     customer,
     business,
-    campaign,
+    enrollments,
     loading,
     signOut,
-    refetch: () => customer && fetchCustomer(customer.auth_user_id)
+    refetch: () => customer && fetchCustomer(customer.auth_user_id),
   }
 }
