@@ -18,6 +18,7 @@ import Withdraw from './pages/portal/Withdraw'
 import KYC from './pages/portal/KYC'
 import PaymentSource from './pages/portal/PaymentSource'
 import SelectCampaign from './pages/portal/SelectCampaign'
+import PaymentSuccess from './pages/portal/PaymentSuccess'
 import DashboardApp from './pages/dashboard/DashboardApp'
 import AdminApp from './pages/admin/AdminApp'
 
@@ -31,33 +32,22 @@ function PortalGuard({ customer, loading, children }) {
   return children
 }
 
-// HomeGuard — requires at least one active enrollment that is not deleted/paused
-// Uses enrollments array from useAuth instead of the old single campaign_id
 function HomeGuard({ customer, enrollments, loading, children }) {
   if (loading) return (
     <div className="loading-screen">
       <div className="spinner spinner-lg spinner-purple" />
     </div>
   )
-
-  // Not logged in
   if (!customer) return <Navigate to="/portal" replace />
-
-  // No enrollments at all — send to campaign selection
   if (enrollments.length === 0) return <Navigate to="/portal/select-campaign" replace />
-
-  // If ALL enrollments are in a deleted/cancelled campaign state, send to select-campaign
-  // (leaves paused campaigns accessible so customer can still withdraw)
   const hasAccessibleEnrollment = enrollments.some(e => {
     const status = e.campaigns ? getEffectiveStatus(e.campaigns) : 'active'
     return status !== 'deleted'
   })
   if (!hasAccessibleEnrollment) return <Navigate to="/portal/select-campaign" replace />
-
   return children
 }
 
-// ── Portal + Dashboard tree — mounts useAuth ──
 function PortalAndDashboard() {
   const { customer, business, enrollments, loading, signOut } = useAuth()
   const brand = buildBrand(business)
@@ -67,13 +57,13 @@ function PortalAndDashboard() {
       <Routes>
         <Route path="/" element={<Navigate to="/portal" replace />} />
 
-        {/* ── Customer portal — public routes ── */}
+        {/* ── Public routes ── */}
         <Route path="/portal" element={<Landing />} />
         <Route path="/portal/register" element={<Register />} />
         <Route path="/portal/login" element={<Login />} />
         <Route path="/portal/reset-pin" element={<ResetPin />} />
 
-        {/* ── Requires login but not enrollment ── */}
+        {/* ── Requires login, no enrollment needed ── */}
         <Route path="/portal/kyc" element={
           <PortalGuard customer={customer} loading={loading}>
             <KYC customer={customer} />
@@ -92,7 +82,16 @@ function PortalAndDashboard() {
           </PortalGuard>
         } />
 
-        {/* ── Requires login + at least one active enrollment ── */}
+        {/* ── Pesapal returns here after payment ── */}
+        {/* PortalGuard only — customer must be logged in but enrollment not required */}
+        {/* (Pesapal redirects back mid-session so HomeGuard would be too strict) */}
+        <Route path="/portal/payment-success" element={
+          <PortalGuard customer={customer} loading={loading}>
+            <PaymentSuccess />
+          </PortalGuard>
+        } />
+
+        {/* ── Requires login + active enrollment ── */}
         <Route path="/portal/home" element={
           <HomeGuard customer={customer} enrollments={enrollments} loading={loading}>
             <Home customer={customer} signOut={signOut} />
@@ -148,15 +147,11 @@ function PortalAndDashboard() {
   )
 }
 
-// ── Root router — splits admin from everything else ──
 function App() {
   return (
     <BrowserRouter>
       <Routes>
-        {/* Admin portal — completely isolated, never mounts useAuth */}
         <Route path="/admin/*" element={<AdminApp />} />
-
-        {/* Everything else — mounts useAuth */}
         <Route path="/*" element={<PortalAndDashboard />} />
       </Routes>
     </BrowserRouter>
