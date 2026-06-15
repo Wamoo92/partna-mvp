@@ -31,28 +31,31 @@ export function useBusinessAuth() {
   }, [])
 
   async function fetchAdmin(userId) {
-    const { data: adminData } = await supabase
-      .from('business_admins')
-      .select('*')
-      .eq('auth_user_id', userId)
-
-    if (!adminData || adminData.length === 0) {
-      setLoading(false)
-      return
-    }
-
-    const a = adminData[0]
-    setAdmin(a)
-
-    if (a.business_id) {
-      const { data: businessData } = await supabase
-        .from('businesses')
+    try {
+      const { data: adminData } = await supabase
+        .from('business_admins')
         .select('*')
-        .eq('id', a.business_id)
+        .eq('auth_user_id', userId)
+        .maybeSingle()
 
-      if (businessData && businessData.length > 0) {
-        setBusiness(businessData[0])
+      if (!adminData) {
+        setLoading(false)
+        return
       }
+
+      setAdmin(adminData)
+
+      if (adminData.business_id) {
+        const { data: businessData } = await supabase
+          .from('businesses')
+          .select('*')
+          .eq('id', adminData.business_id)
+          .maybeSingle()
+
+        if (businessData) setBusiness(businessData)
+      }
+    } catch (e) {
+      console.error('fetchAdmin error:', e)
     }
 
     setLoading(false)
@@ -69,6 +72,6 @@ export function useBusinessAuth() {
     business,
     loading,
     signOut,
-    refetch: () => admin && fetchAdmin(admin.auth_user_id)
+    refetch: () => admin && fetchAdmin(admin.auth_user_id),
   }
 }
