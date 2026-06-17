@@ -3,10 +3,11 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { crypto } from 'https://deno.land/std@0.168.0/crypto/mod.ts'
 import { encode as base64Encode } from 'https://deno.land/std@0.168.0/encoding/base64.ts'
 
-const PARTNER_ID  = Deno.env.get('SMILEID_PARTNER_ID')!
-const API_KEY     = Deno.env.get('SMILEID_API_KEY')!
-const IS_LIVE     = Deno.env.get('SMILEID_ENV') === 'production'
-const SMILEID_URL = IS_LIVE
+const PARTNER_ID   = Deno.env.get('SMILEID_PARTNER_ID')!
+const API_KEY      = Deno.env.get('SMILEID_API_KEY')!
+const IS_LIVE      = Deno.env.get('SMILEID_ENV') === 'production'
+const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
+const SMILEID_URL  = IS_LIVE
   ? 'https://api.smileidentity.com/v1/id_verification'
   : 'https://testapi.smileidentity.com/v1/id_verification'
 
@@ -16,7 +17,7 @@ const corsHeaders = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 }
 
-// ── Rate limiter — 5 KYC attempts per customer per hour ──
+// Rate limiter — 5 KYC attempts per customer per hour
 const kycRateMap = new Map<string, { count: number; resetAt: number }>()
 const KYC_LIMIT  = 5
 const KYC_WINDOW = 60 * 60 * 1000
@@ -34,22 +35,33 @@ function isKycRateLimited(customerId: string): boolean {
 }
 
 async function generateSignature(timestamp: string): Promise<string> {
-  const encoder  = new TextEncoder()
-  const keyData  = encoder.encode(API_KEY)
+  const encoder   = new TextEncoder()
+  const keyData   = encoder.encode(API_KEY)
   const cryptoKey = await crypto.subtle.importKey(
-    'raw', keyData,
-    { name: 'HMAC', hash: 'SHA-256' },
-    false, ['sign']
+    'raw', keyData, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']
   )
   const message         = encoder.encode(timestamp + PARTNER_ID + 'sid_request')
   const signatureBuffer = await crypto.subtle.sign('HMAC', cryptoKey, message)
   return base64Encode(new Uint8Array(signatureBuffer))
 }
 
-// Basic NIN format validation for Uganda
 function isValidUgandaNIN(nin: string): boolean {
-  // Uganda NIDs are typically 14 characters starting with CM or CF
   return /^(CM|CF)[A-Z0-9]{12}$/.test(nin)
+}
+
+async function sendSMS(customerId: string, phone: string, event: string, vars: Record<string, string> = {}) {
+  try {
+    await fetch(`${SUPABASE_URL}/functions/v1/send-sms`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
+      },
+      body: JSON.stringify({ event, phone, customerId, vars }),
+    })
+  } catch (e) {
+    console.error('SMS send error (non-critical):', e)
+  }
 }
 
 serve(async (req) => {
@@ -58,7 +70,6 @@ serve(async (req) => {
   try {
     const { customerId, nin, firstName, lastName, dob } = await req.json()
 
-    // Input validation
     if (!customerId || !nin) {
       return new Response(JSON.stringify({ error: 'Missing required fields' }), {
         status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -69,16 +80,13 @@ serve(async (req) => {
 
     if (!isValidUgandaNIN(cleanNIN)) {
       return new Response(JSON.stringify({
-        verified: false,
-        notFound: false,
-        unavailable: false,
+        verified: false, notFound: false, unavailable: false,
         error: 'Invalid NIN format. Uganda NIDs start with CM or CF followed by 12 characters.',
       }), {
         status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
     }
 
-    // Rate limit by customer ID — max 5 attempts per hour
     if (isKycRateLimited(customerId)) {
       return new Response(JSON.stringify({
         error: 'Too many verification attempts. Please try again in an hour.',
@@ -94,27 +102,14 @@ serve(async (req) => {
       method: 'POST',
       headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        partner_id:         PARTNER_ID,
-        source_sdk:         'rest_api',
-        source_sdk_version: '1.0.0',
-        signature,
-        timestamp,
-        country:            'UG',
-        id_type:            'NATIONAL_ID',
-        id_number:          cleanNIN,
-        first_name:         firstName || '',
-        last_name:          lastName  || '',
-        dob:                dob        || '',
-        partner_params: {
-          job_type: '5',
-          job_id:   `kyc-${customerId}-${Date.now()}`,
-          user_id:  customerId,
-        },
+        partner_id: PARTNER_ID, source_sdk: 'rest_api', source_sdk_version: '1.0.0',
+        signature, timestamp, country: 'UG', id_type: 'NATIONAL_ID',
+        id_number: cleanNIN, first_name: firstName || '', last_name: lastName || '', dob: dob || '',
+        partner_params: { job_type: '5', job_id: `kyc-${customerId}-${Date.now()}`, user_id: customerId },
       }),
     })
 
     const smileData = await smileRes.json()
-
     const verified    = smileData.Actions?.Verify_ID_Number === 'Verified' && smileData.ResultCode === '1012'
     const notFound    = smileData.ResultCode === '1013'
     const unavailable = smileData.ResultCode === '1015'
@@ -134,8 +129,7 @@ serve(async (req) => {
       }).eq('id', customerId)
     } else {
       await supabase.from('customers').update({
-        nin:        cleanNIN,
-        kyc_status: 'failed',
+        nin: cleanNIN, kyc_status: 'failed',
       }).eq('id', customerId)
     }
 
@@ -147,10 +141,26 @@ serve(async (req) => {
       result_text:  smileData.ResultText  || null,
     })
 
+    // Send KYC result SMS
+    const { data: customer } = await supabase
+      .from('customers')
+      .select('phone, first_name')
+      .eq('id', customerId)
+      .maybeSingle()
+
+    if (customer?.phone) {
+      if (verified) {
+        await sendSMS(customerId, customer.phone, 'kyc_verified', {
+          name: customer.first_name || firstName || '',
+        })
+      } else if (!unavailable) {
+        // Only send failure SMS if NIRA was reachable — not if service was down
+        await sendSMS(customerId, customer.phone, 'kyc_failed', {})
+      }
+    }
+
     return new Response(JSON.stringify({
-      verified,
-      notFound,
-      unavailable,
+      verified, notFound, unavailable,
       resultText:   smileData.ResultText || null,
       smileJobId:   smileData.SmileJobID || null,
       verifiedName: smileData.FullName   || null,

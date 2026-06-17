@@ -1,0 +1,201 @@
+import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+
+const AT_USERNAME  = Deno.env.get('AT_USERNAME')!
+const AT_API_KEY   = Deno.env.get('AT_API_KEY')!
+const AT_SENDER_ID = Deno.env.get('AT_SENDER_ID') || ''
+const AT_SMS_URL   = 'https://api.africastalking.com/version1/messaging'
+
+const corsHeaders = {
+  'Access-Control-Allow-Origin': 'https://www.partna.io',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+}
+
+// ── SMS Templates ──────────────────────────────────────────────────────────
+// Edit the text here to change what customers receive
+// {variables} are replaced at send time
+
+const TEMPLATES: Record<string, (vars: Record<string, string>) => string> = {
+
+  deposit_confirmed: (v) =>
+    `Partna: Your deposit of ${v.amount} has been confirmed. ` +
+    `New balance: ${v.balance}. ` +
+    `Campaign: ${v.campaign}. ` +
+    `Ref: ${v.reference}. ` +
+    `Visit www.partna.io to view your account.`,
+
+  withdrawal_requested: (v) =>
+    `Partna: Your withdrawal request of ${v.amount} has been submitted. ` +
+    `Ref: ${v.reference}. ` +
+    `Processing takes 1-2 business days. ` +
+    `You will be notified once complete.`,
+
+  withdrawal_completed: (v) =>
+    `Partna: Your withdrawal of ${v.amount} has been processed successfully. ` +
+    `Ref: ${v.reference}. ` +
+    `Funds have been sent to your registered mobile money number.`,
+
+  kyc_verified: (v) =>
+    `Partna: Your identity has been verified successfully, ${v.name}. ` +
+    `You now have full access to all Partna features. ` +
+    `Visit www.partna.io to continue saving.`,
+
+  kyc_failed: (v) =>
+    `Partna: We could not verify your National ID. ` +
+    `Please check your NIN and try again at www.partna.io. ` +
+    `Contact support if you need help.`,
+
+  campaign_enrolled: (v) =>
+    `Partna: Welcome to ${v.campaign}! ` +
+    `Your savings campaign is now active. ` +
+    `Draw code: ${v.draw_code}. ` +
+    `Start saving at www.partna.io`,
+
+  pin_changed: (_v) =>
+    `Partna: Your PIN has been changed successfully. ` +
+    `If you did not make this change please contact support immediately at www.partna.io`,
+
+  account_deleted: (_v) =>
+    `Partna: Your account has been deactivated. ` +
+    `Any remaining balance will be refunded within 5 working days. ` +
+    `Thank you for using Partna.`,
+}
+
+// ── Phone number formatter ─────────────────────────────────────────────────
+// Africa's Talking requires international format: +256XXXXXXXXX
+function formatPhone(phone: string): string {
+  if (!phone) return ''
+  const clean = phone.replace(/[\s\-\(\)]/g, '')
+  // Already in international format
+  if (clean.startsWith('+256')) return clean
+  if (clean.startsWith('256')) return '+' + clean
+  // Local format starting with 0
+  if (clean.startsWith('0')) return '+256' + clean.slice(1)
+  // Bare number starting with 7
+  if (clean.startsWith('7')) return '+256' + clean
+  return clean
+}
+
+// ── Send via Africa's Talking ──────────────────────────────────────────────
+async function sendSMS(phone: string, message: string): Promise<{ success: boolean; messageId?: string; error?: string }> {
+  const formattedPhone = formatPhone(phone)
+  if (!formattedPhone) return { success: false, error: 'Invalid phone number' }
+
+  const body = new URLSearchParams({
+    username: AT_USERNAME,
+    to:       formattedPhone,
+    message,
+  })
+  if (AT_SENDER_ID) body.append('from', AT_SENDER_ID)
+
+  try {
+    const res = await fetch(AT_SMS_URL, {
+      method: 'POST',
+      headers: {
+        'Accept':       'application/json',
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'apiKey':       AT_API_KEY,
+      },
+      body: body.toString(),
+    })
+
+    const data = await res.json()
+    const recipient = data.SMSMessageData?.Recipients?.[0]
+
+    if (recipient?.status === 'Success') {
+      return { success: true, messageId: recipient.messageId }
+    }
+
+    return {
+      success: false,
+      error: recipient?.status || 'Unknown AT error',
+    }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+}
+
+// ── Log SMS attempt to Supabase ────────────────────────────────────────────
+async function logSMS(supabase: any, {
+  customerId, phone, event, status, messageId, error
+}: {
+  customerId: string
+  phone: string
+  event: string
+  status: string
+  messageId?: string
+  error?: string
+}) {
+  try {
+    await supabase.from('sms_logs').insert({
+      customer_id: customerId,
+      phone,
+      event,
+      status,
+      message_id: messageId || null,
+      error: error || null,
+    })
+  } catch (e) {
+    // Non-critical — don't fail SMS send if logging fails
+    console.error('SMS log error:', e)
+  }
+}
+
+// ── Main handler ───────────────────────────────────────────────────────────
+serve(async (req) => {
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
+
+  try {
+    const { event, phone, customerId, vars = {} } = await req.json()
+
+    if (!event || !phone || !customerId) {
+      return new Response(JSON.stringify({ error: 'Missing required fields: event, phone, customerId' }), {
+        status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
+
+    const template = TEMPLATES[event]
+    if (!template) {
+      return new Response(JSON.stringify({ error: `Unknown SMS event: ${event}` }), {
+        status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
+
+    const message = template(vars)
+    const result  = await sendSMS(phone, message)
+
+    const supabase = createClient(
+      Deno.env.get('SUPABASE_URL')!,
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
+    )
+
+    await logSMS(supabase, {
+      customerId,
+      phone,
+      event,
+      status:    result.success ? 'sent' : 'failed',
+      messageId: result.messageId,
+      error:     result.error,
+    })
+
+    if (!result.success) {
+      console.error(`SMS failed for event ${event} to ${phone}:`, result.error)
+    }
+
+    // Always return 200 — SMS failure should never block the main operation
+    return new Response(JSON.stringify({
+      success:   result.success,
+      messageId: result.messageId,
+      error:     result.error,
+    }), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    })
+
+  } catch (err) {
+    console.error('send-sms error:', err)
+    return new Response(JSON.stringify({ error: err.message }), {
+      status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    })
+  }
+})

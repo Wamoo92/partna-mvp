@@ -8,9 +8,8 @@ const PESAPAL_BASE    = IS_LIVE
   ? 'https://pay.pesapal.com/v3'
   : 'https://cybqa.pesapal.com/pesapalv3'
 
-// Where to send the customer after payment confirmed or failed
-// This should be your live domain once hosted — for now points to localhost
-const APP_BASE = Deno.env.get('APP_BASE_URL') || 'http://localhost:5173'
+const APP_BASE     = Deno.env.get('APP_BASE_URL') || 'https://www.partna.io'
+const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 
 async function getPesapalToken(): Promise<string> {
   const res = await fetch(`${PESAPAL_BASE}/api/Auth/RequestToken`, {
@@ -31,21 +30,35 @@ async function getTransactionStatus(token: string, orderTrackingId: string) {
   return await res.json()
 }
 
+function formatUGX(n: number): string {
+  return 'UGX ' + Number(n).toLocaleString('en-UG', { maximumFractionDigits: 0 })
+}
+
+async function sendSMS(customerId: string, phone: string, event: string, vars: Record<string, string>) {
+  try {
+    await fetch(`${SUPABASE_URL}/functions/v1/send-sms`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
+      },
+      body: JSON.stringify({ event, phone, customerId, vars }),
+    })
+  } catch (e) {
+    console.error('SMS send error (non-critical):', e)
+  }
+}
+
 serve(async (req) => {
-  const url    = new URL(req.url)
-  const params = url.searchParams
-
-  // Pesapal appends these to our callback URL
+  const url             = new URL(req.url)
+  const params          = url.searchParams
   const orderTrackingId = params.get('OrderTrackingId')
-  const merchantRef     = params.get('OrderMerchantReference')
-
-  // Our own params we baked into the callback URL in pesapal-initiate
-  const walletId      = params.get('walletId')
-  const amount        = params.get('amount')
-  const reference     = params.get('reference')
-  const customerId    = params.get('customerId')
-  const campaignId    = params.get('campaignId') || null
-  const enrollmentId  = params.get('enrollmentId') || null
+  const walletId        = params.get('walletId')
+  const amount          = params.get('amount')
+  const reference       = params.get('reference')
+  const customerId      = params.get('customerId')
+  const campaignId      = params.get('campaignId') || null
+  const enrollmentId    = params.get('enrollmentId') || null
 
   if (!orderTrackingId || !walletId || !amount || !customerId) {
     return Response.redirect(`${APP_BASE}/portal/home?deposit=failed`, 302)
@@ -60,40 +73,57 @@ serve(async (req) => {
     const token  = await getPesapalToken()
     const status = await getTransactionStatus(token, orderTrackingId)
 
-    // payment_status_description: 'Completed' means money received
     if (status.payment_status_description === 'Completed') {
 
       // Credit the wallet
       const { data: wallet } = await supabase
-        .from('wallets')
-        .select('balance')
-        .eq('id', walletId)
-        .maybeSingle()
+        .from('wallets').select('balance').eq('id', walletId).maybeSingle()
 
+      let newBalance = 0
       if (wallet) {
-        const newBalance = Number(wallet.balance) + Number(amount)
+        newBalance = Number(wallet.balance) + Number(amount)
         await supabase.from('wallets').update({ balance: newBalance }).eq('id', walletId)
       }
 
-      // Mark the pending transaction as completed
-      await supabase
-        .from('transactions')
+      // Mark transaction completed and get campaign name
+      await supabase.from('transactions')
         .update({
           status: 'completed',
           notes:  `Pesapal confirmed. order_tracking_id: ${orderTrackingId}`,
         })
         .eq('reference', reference)
 
-      // Redirect customer to success page
+      // Fetch customer phone and campaign name for SMS
+      const { data: customer } = await supabase
+        .from('customers')
+        .select('phone, first_name')
+        .eq('id', customerId)
+        .maybeSingle()
+
+      let campaignName = 'your campaign'
+      if (campaignId) {
+        const { data: campaign } = await supabase
+          .from('campaigns').select('name').eq('id', campaignId).maybeSingle()
+        if (campaign) campaignName = campaign.name
+      }
+
+      // Send deposit confirmed SMS
+      if (customer?.phone) {
+        await sendSMS(customerId, customer.phone, 'deposit_confirmed', {
+          amount:    formatUGX(Number(amount)),
+          balance:   formatUGX(newBalance),
+          campaign:  campaignName,
+          reference: reference || '',
+        })
+      }
+
       return Response.redirect(
         `${APP_BASE}/portal/payment-success?reference=${reference}&amount=${amount}&enrollmentId=${enrollmentId || ''}`,
         302
       )
 
     } else {
-      // Payment not completed — mark transaction as failed
-      await supabase
-        .from('transactions')
+      await supabase.from('transactions')
         .update({ status: 'failed', notes: `Pesapal status: ${status.payment_status_description}` })
         .eq('reference', reference)
 
