@@ -3,6 +3,25 @@ import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../supabase'
 import { useBrand } from '../../lib/BrandContext'
 
+const SUPABASE_URL      = import.meta.env.VITE_SUPABASE_URL
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY
+
+// ── SMS helper (non-blocking) ──────────────────────────────────────────────
+async function sendSMS(customerId, phone, event, vars = {}) {
+  try {
+    await fetch(`${SUPABASE_URL}/functions/v1/send-sms`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+      },
+      body: JSON.stringify({ event, phone, customerId, vars }),
+    })
+  } catch (e) {
+    console.error('SMS send error (non-critical):', e)
+  }
+}
+
 function formatUGX(n) {
   return 'UGX ' + Number(n).toLocaleString('en-UG', { maximumFractionDigits: 0 })
 }
@@ -161,10 +180,9 @@ function LeaveModal({ enrollment, leaveFee, leaveLoading, leaveSuccess, onConfir
                 You will remain registered and can join another campaign.
               </p>
 
-              {/* Refund breakdown */}
               <div style={{ border: 'var(--border)', overflow: 'hidden' }}>
                 {[
-                  { label: 'Current balance',    value: formatUGX(leaveFee?.gross || 0) },
+                  { label: 'Current balance',      value: formatUGX(leaveFee?.gross || 0) },
                   { label: 'Early exit fee (10%)', value: '− ' + formatUGX(leaveFee?.fee || 0), color: '#C0392B' },
                 ].map((row, i) => (
                   <div key={i} style={{
@@ -270,10 +288,8 @@ function DeleteModal({ enrollments, deleteSummary, deleteLoading, deleteSuccess,
                 and permanently deactivate your account. All balances will be refunded minus a 10% fee per campaign.
               </p>
 
-              {/* Per-campaign breakdown */}
               {enrollments.length > 0 && (
                 <div style={{ border: 'var(--border)', overflow: 'hidden' }}>
-                  {/* Header */}
                   <div style={{
                     padding: 'var(--space-2) var(--space-4)',
                     background: 'var(--color-black)',
@@ -377,10 +393,10 @@ export default function Profile({ customer, signOut }) {
   const [leaveFee, setLeaveFee]         = useState(null)
 
   // Delete account modal
-  const [showDelete, setShowDelete]         = useState(false)
-  const [deleteLoading, setDeleteLoading]   = useState(false)
-  const [deleteSuccess, setDeleteSuccess]   = useState(false)
-  const [deleteSummary, setDeleteSummary]   = useState(null)
+  const [showDelete, setShowDelete]       = useState(false)
+  const [deleteLoading, setDeleteLoading] = useState(false)
+  const [deleteSuccess, setDeleteSuccess] = useState(false)
+  const [deleteSummary, setDeleteSummary] = useState(null)
 
   useEffect(() => { if (customer) loadData() }, [customer])
 
@@ -505,6 +521,12 @@ export default function Profile({ customer, signOut }) {
       }
 
       await supabase.from('customers').update({ registration_status: 'deleted' }).eq('id', customer.id)
+
+      // ── Send account_deleted SMS before signing out ────────────────
+      if (customer?.phone) {
+        await sendSMS(customer.id, customer.phone, 'account_deleted', {})
+      }
+
       await supabase.auth.signOut()
       setDeleteSuccess(true)
     } catch (e) {
@@ -530,6 +552,12 @@ export default function Profile({ customer, signOut }) {
       if (signInError) { setPinError('Current PIN is incorrect.'); setChangingPin(false); return }
       const { error: updateError } = await supabase.auth.updateUser({ password: newPassword })
       if (updateError) { setPinError('Could not update PIN. Please try again.'); setChangingPin(false); return }
+
+      // ── Send pin_changed SMS ───────────────────────────────────────
+      if (customer?.phone) {
+        sendSMS(customer.id, customer.phone, 'pin_changed', {})
+      }
+
       setPinSuccess(true)
       setCurrentPin(''); setNewPin(''); setConfirmPin('')
       setTimeout(() => { setShowPinForm(false); setPinSuccess(false) }, 2000)
@@ -621,7 +649,6 @@ export default function Profile({ customer, signOut }) {
         gap: 'var(--space-3)',
         textAlign: 'center',
       }}>
-        {/* Avatar */}
         <div style={{
           width: 72, height: 72,
           background: 'var(--color-primary)',
@@ -683,17 +710,16 @@ export default function Profile({ customer, signOut }) {
         {/* Account details */}
         <Section title="Account details">
           {[
-            { label: 'First name',       value: customer?.first_name },
-            { label: 'Last name',        value: customer?.last_name },
+            { label: 'First name',        value: customer?.first_name },
+            { label: 'Last name',         value: customer?.last_name },
             ...(customer?.other_names ? [{ label: 'Other names', value: customer.other_names }] : []),
-            { label: 'Phone',            value: customer?.phone },
-            { label: 'Email',            value: customer?.email },
+            { label: 'Phone',             value: customer?.phone },
+            { label: 'Email',             value: customer?.email },
             { label: 'National ID (NIN)', value: maskNin(customer?.nin) },
           ].map((item, i, arr) => (
             <InfoRow key={i} label={item.label} value={item.value} last={i === arr.length - 1} />
           ))}
 
-          {/* KYC status row */}
           <button
             onClick={() => !kycVerified && navigate('/portal/kyc')}
             style={{
@@ -753,10 +779,10 @@ export default function Profile({ customer, signOut }) {
             </div>
           ) : (
             enrollments.map((e, idx) => {
-              const camp    = e.campaigns
-              const bal     = Number(e.wallets?.balance || 0)
-              const target  = Number(camp?.target_amount || 0)
-              const pct     = target > 0 ? Math.min((bal / target) * 100, 100) : 0
+              const camp      = e.campaigns
+              const bal       = Number(e.wallets?.balance || 0)
+              const target    = Number(camp?.target_amount || 0)
+              const pct       = target > 0 ? Math.min((bal / target) * 100, 100) : 0
               const remaining = Math.max(target - bal, 0)
               return (
                 <div key={e.id} style={{
@@ -780,7 +806,6 @@ export default function Profile({ customer, signOut }) {
                     </span>
                   </div>
 
-                  {/* Progress */}
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 'var(--space-2)' }}>
                     <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-grey)' }}>
                       {pct.toFixed(0)}% saved
@@ -801,10 +826,7 @@ export default function Profile({ customer, signOut }) {
                       {formatUGX(remaining)} remaining
                       {camp?.target_date && ' · ' + new Date(camp.target_date).toLocaleDateString('en-UG', { day: 'numeric', month: 'short', year: 'numeric' })}
                     </div>
-                    <button
-                      onClick={() => openLeaveModal(e)}
-                      className="btn btn-sm btn-danger"
-                    >
+                    <button onClick={() => openLeaveModal(e)} className="btn btn-sm btn-danger">
                       Leave
                     </button>
                   </div>
@@ -813,7 +835,6 @@ export default function Profile({ customer, signOut }) {
             })
           )}
 
-          {/* Add campaign footer */}
           <div style={{ padding: 'var(--space-3) var(--space-4)', borderTop: '1.5px solid var(--color-grey-light)' }}>
             <button
               onClick={() => navigate('/portal/select-campaign')}
@@ -851,8 +872,8 @@ export default function Profile({ customer, signOut }) {
                 </div>
               )}
               {[
-                { label: 'Current PIN', value: currentPin, setter: setCurrentPin },
-                { label: 'New PIN',     value: newPin,     setter: setNewPin },
+                { label: 'Current PIN',     value: currentPin, setter: setCurrentPin },
+                { label: 'New PIN',         value: newPin,     setter: setNewPin },
                 { label: 'Confirm new PIN', value: confirmPin, setter: setConfirmPin },
               ].map((field, i) => (
                 <div className="input-group" key={i}>

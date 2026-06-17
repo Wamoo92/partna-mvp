@@ -3,6 +3,25 @@ import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../supabase'
 import { useBrand } from '../../lib/BrandContext'
 
+const SUPABASE_URL      = import.meta.env.VITE_SUPABASE_URL
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY
+
+// ── SMS helper (non-blocking) ──────────────────────────────────────────────
+async function sendSMS(customerId, phone, event, vars = {}) {
+  try {
+    await fetch(`${SUPABASE_URL}/functions/v1/send-sms`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+      },
+      body: JSON.stringify({ event, phone, customerId, vars }),
+    })
+  } catch (e) {
+    console.error('SMS send error (non-critical):', e)
+  }
+}
+
 function generateDrawCode() {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
   let code = 'SC-'
@@ -389,6 +408,14 @@ export default function SelectCampaign({ customer, business }) {
       if (walletError) { console.error('Wallet creation error:', walletError); setSaving(false); return }
 
       await supabase.from('customer_campaigns').update({ wallet_id: wallet.id }).eq('id', enrollment.id)
+
+      // ── Send campaign_enrolled SMS (non-blocking) ──────────────────
+      if (customer?.phone) {
+        sendSMS(customer.id, customer.phone, 'campaign_enrolled', {
+          campaign:  campaign.name,
+          draw_code: drawCode,
+        })
+      }
 
       if (enrolledCampaignIds.length === 0) {
         navigate('/portal/kyc', { replace: true })
