@@ -25,9 +25,7 @@ async function sendSMS(customerId, phone, event, vars = {}) {
 function generateDrawCode() {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
   let code = 'SC-'
-  for (let i = 0; i < 6; i++) {
-    code += chars[Math.floor(Math.random() * chars.length)]
-  }
+  for (let i = 0; i < 6; i++) code += chars[Math.floor(Math.random() * chars.length)]
   return code
 }
 
@@ -39,16 +37,21 @@ function formatDate(d) {
   return new Date(d).toLocaleDateString('en-UG', { day: 'numeric', month: 'long', year: 'numeric' })
 }
 
-// ── Preview card (neobrutalism) ────────────────────────────────────────────
+const FEE_TYPE_LABELS = {
+  tuition:       'Tuition fees',
+  functional:    'Functional fees',
+  building_fund: 'Building fund',
+  exam:          'Exam fees',
+  pta:           'PTA contribution',
+  other:         'Other fees',
+}
+
+// ── Card preview ───────────────────────────────────────────────────────────
 function PreviewCard({ customer, brand, flipped, onFlip }) {
   return (
-    <div
-      onClick={onFlip}
-      style={{ perspective: '800px', width: 280, height: 174, cursor: 'pointer', margin: '0 auto' }}
-    >
+    <div onClick={onFlip} style={{ perspective: '800px', width: 280, height: 174, cursor: 'pointer', margin: '0 auto' }}>
       <div style={{
-        width: 280, height: 174,
-        position: 'relative',
+        width: 280, height: 174, position: 'relative',
         transformStyle: 'preserve-3d',
         transition: 'transform 0.55s ease',
         transform: flipped ? 'rotateY(180deg)' : 'rotateY(0deg)',
@@ -56,53 +59,25 @@ function PreviewCard({ customer, brand, flipped, onFlip }) {
         {/* Front */}
         <div style={{
           position: 'absolute', inset: 0,
-          backfaceVisibility: 'hidden',
-          WebkitBackfaceVisibility: 'hidden',
-          background: 'var(--color-white)',
-          border: '3px solid var(--color-black)',
+          backfaceVisibility: 'hidden', WebkitBackfaceVisibility: 'hidden',
+          background: 'var(--color-white)', border: '3px solid var(--color-black)',
           boxShadow: '6px 6px 0px 0px var(--color-primary)',
-          padding: 'var(--space-4)',
-          display: 'flex',
-          flexDirection: 'column',
-          justifyContent: 'space-between',
-          overflow: 'hidden',
+          padding: 'var(--space-4)', display: 'flex', flexDirection: 'column',
+          justifyContent: 'space-between', overflow: 'hidden',
         }}>
           <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 5, background: 'var(--color-black)' }} />
-
-          {/* Top row */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 6 }}>
-            <div style={{
-              fontWeight: 'var(--weight-black)',
-              fontSize: 'var(--text-xs)',
-              letterSpacing: 'var(--tracking-wider)',
-              textTransform: 'uppercase',
-            }}>
+            <div style={{ fontWeight: 'var(--weight-black)', fontSize: 'var(--text-xs)', letterSpacing: 'var(--tracking-wider)', textTransform: 'uppercase' }}>
               {brand.businessName}
             </div>
-            <div style={{
-              width: 32, height: 22,
-              background: 'linear-gradient(135deg, #EDE5A6, #CFA255)',
-              border: '1.5px solid var(--color-black)',
-            }} />
+            <div style={{ width: 32, height: 22, background: 'linear-gradient(135deg, #EDE5A6, #CFA255)', border: '1.5px solid var(--color-black)' }} />
           </div>
-
-          {/* Card number */}
-          <div style={{
-            fontFamily: 'monospace',
-            fontSize: 'var(--text-base)',
-            fontWeight: 'var(--weight-bold)',
-            letterSpacing: '0.15em',
-            color: 'var(--color-black)',
-          }}>
+          <div style={{ fontFamily: 'monospace', fontSize: 'var(--text-base)', fontWeight: 'var(--weight-bold)', letterSpacing: '0.15em', color: 'var(--color-black)' }}>
             •••• •••• •••• ••••
           </div>
-
-          {/* Bottom row */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
             <div>
-              <div style={{ fontSize: 8, fontWeight: 'var(--weight-bold)', letterSpacing: 'var(--tracking-widest)', textTransform: 'uppercase', color: 'var(--color-grey)', marginBottom: 2 }}>
-                Cardholder
-              </div>
+              <div style={{ fontSize: 8, fontWeight: 'var(--weight-bold)', letterSpacing: 'var(--tracking-widest)', textTransform: 'uppercase', color: 'var(--color-grey)', marginBottom: 2 }}>Cardholder</div>
               <div style={{ fontWeight: 'var(--weight-black)', fontSize: 'var(--text-xs)', textTransform: 'uppercase', letterSpacing: 'var(--tracking-wide)' }}>
                 {customer?.first_name} {customer?.last_name}
               </div>
@@ -112,29 +87,22 @@ function PreviewCard({ customer, brand, flipped, onFlip }) {
               <div style={{ width: 24, height: 24, borderRadius: '50%', background: '#F79E1B', border: '2px solid var(--color-black)', marginLeft: -9 }} />
             </div>
           </div>
-
           <div style={{ position: 'absolute', bottom: 4, left: 0, right: 0, textAlign: 'center', fontSize: 8, fontWeight: 'var(--weight-bold)', letterSpacing: 'var(--tracking-widest)', textTransform: 'uppercase', color: 'var(--color-grey-mid)' }}>
             tap to flip
           </div>
         </div>
-
         {/* Back */}
         <div style={{
           position: 'absolute', inset: 0,
-          backfaceVisibility: 'hidden',
-          WebkitBackfaceVisibility: 'hidden',
+          backfaceVisibility: 'hidden', WebkitBackfaceVisibility: 'hidden',
           transform: 'rotateY(180deg)',
-          background: 'var(--color-black)',
-          border: '3px solid var(--color-black)',
-          boxShadow: '6px 6px 0px 0px var(--color-primary)',
-          overflow: 'hidden',
+          background: 'var(--color-black)', border: '3px solid var(--color-black)',
+          boxShadow: '6px 6px 0px 0px var(--color-primary)', overflow: 'hidden',
         }}>
           <div style={{ position: 'absolute', top: 26, left: 0, right: 0, height: 36, background: '#1a1a1a' }} />
           <div style={{ position: 'absolute', top: 76, left: 16, right: 16, display: 'flex', alignItems: 'center' }}>
             <div style={{ flex: 1, height: 28, background: 'repeating-linear-gradient(90deg,#e8e8e8 0,#e8e8e8 4px,#ccc 4px,#ccc 8px)' }} />
-            <div style={{ width: 44, height: 28, background: 'var(--color-white)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'monospace', fontWeight: 'var(--weight-black)', fontSize: 'var(--text-sm)', border: '2px solid var(--color-black)' }}>
-              •••
-            </div>
+            <div style={{ width: 44, height: 28, background: 'var(--color-white)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'monospace', fontWeight: 'var(--weight-black)', fontSize: 'var(--text-sm)', border: '2px solid var(--color-black)' }}>•••</div>
           </div>
           <div style={{ position: 'absolute', bottom: 20, left: 0, right: 0, textAlign: 'center', fontSize: 9, color: 'rgba(255,255,255,0.35)', fontWeight: 'var(--weight-bold)', letterSpacing: 'var(--tracking-wide)' }}>
             {brand.businessName} Savings Program
@@ -145,59 +113,202 @@ function PreviewCard({ customer, brand, flipped, onFlip }) {
   )
 }
 
-// ── Campaign detail + enroll card ──────────────────────────────────────────
-function CampaignDetailCard({ campaign, customer, brand, cardFlipped, setCardFlipped, agreed, setAgreed, saving, onConfirm, alreadyEnrolled }) {
-  return (
-    <div style={{
-      background: 'var(--color-white)',
-      border: 'var(--border-thick)',
-      boxShadow: 'var(--shadow-lg)',
-      overflow: 'hidden',
-    }}>
-      {/* Card preview header */}
+// ── Student ID lookup ──────────────────────────────────────────────────────
+// Privacy-safe: exact match only on student ID fields, no partial name search
+// Never shows a list — only shows one confirmed student or an error
+function StudentIdLookup({ businessId, enrolledStudentIds, onStudentConfirmed, confirmedStudent, onClear }) {
+  const [studentIdInput, setStudentIdInput]   = useState('')
+  const [lookingUp, setLookingUp]             = useState(false)
+  const [lookupError, setLookupError]         = useState('')
+
+  async function handleLookup() {
+    const val = studentIdInput.trim()
+    if (!val) { setLookupError('Please enter a student ID.'); return }
+    setLookingUp(true)
+    setLookupError('')
+    try {
+      // Exact match only — against partna_student_id OR school_student_id
+      const { data, error } = await supabase
+        .from('students')
+        .select('id, first_name, last_name, partna_student_id, school_student_id, year_group')
+        .eq('business_id', businessId)
+        .eq('is_active', true)
+        .or(`partna_student_id.eq.${val.toUpperCase()},school_student_id.eq.${val}`)
+        .maybeSingle()
+
+      if (error || !data) {
+        setLookupError('No student found with that ID. Please check the ID and try again, or contact your school.')
+        setLookingUp(false)
+        return
+      }
+
+      // Check if this student is already enrolled in an education campaign
+      if (enrolledStudentIds.includes(data.id)) {
+        setLookupError('This student is already enrolled in an active campaign. Each child can only have one active campaign at a time.')
+        setLookingUp(false)
+        return
+      }
+
+      onStudentConfirmed(data)
+    } catch (e) {
+      console.error('Student lookup error:', e)
+      setLookupError('Something went wrong. Please try again.')
+    }
+    setLookingUp(false)
+  }
+
+  // If student already confirmed, show confirmation chip
+  if (confirmedStudent) {
+    return (
       <div style={{
-        background: 'var(--color-black)',
-        borderBottom: 'var(--border)',
-        padding: 'var(--space-5) var(--space-5) var(--space-4)',
+        background: 'var(--color-white)', border: '2px solid #2D8B45',
+        padding: 'var(--space-4)',
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        gap: 'var(--space-3)',
       }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
+          <div style={{
+            width: 40, height: 40, flexShrink: 0,
+            background: '#2D8B45', border: 'var(--border)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}>
+            <span className="icon-outlined" style={{ fontSize: 20, color: 'var(--color-white)' }}>check</span>
+          </div>
+          <div>
+            <div style={{ fontWeight: 'var(--weight-bold)', fontSize: 'var(--text-sm)', color: 'var(--color-black)' }}>
+              {confirmedStudent.first_name} {confirmedStudent.last_name}
+            </div>
+            <div style={{ display: 'flex', gap: 'var(--space-2)', marginTop: 2 }}>
+              <span style={{ fontFamily: 'monospace', fontSize: 'var(--text-xs)', color: 'var(--color-primary)', fontWeight: 'var(--weight-bold)' }}>
+                {confirmedStudent.partna_student_id}
+              </span>
+              {confirmedStudent.year_group && (
+                <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-grey)' }}>
+                  · {confirmedStudent.year_group}
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+        <button
+          onClick={() => { onClear(); setStudentIdInput(''); setLookupError('') }}
+          className="btn btn-sm btn-secondary"
+        >
+          Change
+        </button>
+      </div>
+    )
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+      <div style={{
+        padding: 'var(--space-3) var(--space-4)',
+        background: 'var(--color-white)', border: 'var(--border)',
+        display: 'flex', alignItems: 'flex-start', gap: 'var(--space-3)',
+      }}>
+        <span className="icon-outlined" style={{ fontSize: 18, color: 'var(--color-primary)', flexShrink: 0, marginTop: 1 }}>info</span>
+        <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-grey)', lineHeight: 'var(--leading-normal)' }}>
+          Enter your child's <strong style={{ color: 'var(--color-black)' }}>Partna Student ID</strong> (e.g. PTN-ST-00001)
+          or their <strong style={{ color: 'var(--color-black)' }}>school admission number</strong> (e.g. ADM-001).
+          You can find this on any school correspondence or by contacting the school office.
+        </div>
+      </div>
+
+      <div className="input-group">
+        <label className="input-label">Student ID</label>
+        <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+          <div className="input-wrapper" style={{ flex: 1 }}>
+            <span className="icon-outlined input-icon-left">badge</span>
+            <input
+              type="text"
+              className={`input ${lookupError ? 'input-error' : ''}`}
+              placeholder="PTN-ST-00001 or ADM-001"
+              value={studentIdInput}
+              onChange={e => { setStudentIdInput(e.target.value); setLookupError('') }}
+              onKeyDown={e => e.key === 'Enter' && handleLookup()}
+              style={{ textTransform: 'uppercase' }}
+            />
+          </div>
+          <button
+            onClick={handleLookup}
+            disabled={lookingUp || !studentIdInput.trim()}
+            className="btn btn-primary"
+            style={{ flexShrink: 0 }}
+          >
+            {lookingUp
+              ? <div className="spinner spinner-sm" style={{ borderTopColor: 'var(--color-black)' }} />
+              : <><span className="icon-outlined icon-sm">search</span> Find</>
+            }
+          </button>
+        </div>
+        {lookupError && (
+          <span className="input-hint error">{lookupError}</span>
+        )}
+        <span className="input-hint">
+          Only an exact ID match will work — no partial searches.
+        </span>
+      </div>
+    </div>
+  )
+}
+
+// ── Campaign detail + enroll card ──────────────────────────────────────────
+function CampaignDetailCard({
+  campaign, customer, brand, cardFlipped, setCardFlipped,
+  agreed, setAgreed, saving, onConfirm, alreadyEnrolled,
+  // Education-only props
+  isEducation, businessId, enrolledStudentIds,
+  confirmedStudent, onStudentConfirmed, onStudentClear,
+}) {
+  const isEduCampaign = campaign.campaign_type === 'education_fees'
+  const canEnroll     = !isEduCampaign || (isEduCampaign && !!confirmedStudent)
+
+  const detailRows = isEduCampaign ? [
+    { icon: 'school',        label: 'Fee type',          value: FEE_TYPE_LABELS[campaign.fee_type] || campaign.fee_type || '—' },
+    ...(campaign.academic_year    ? [{ icon: 'calendar_today', label: 'Academic year',  value: campaign.academic_year }] : []),
+    ...(campaign.term_or_semester ? [{ icon: 'event_note',     label: 'Term',           value: campaign.term_or_semester }] : []),
+    { icon: 'savings',       label: 'Total fees',        value: formatUGX(campaign.target_amount) },
+    { icon: 'event',         label: 'Payment deadline',  value: formatDate(campaign.target_date) },
+    ...(campaign.minimum_payment > 0 ? [{ icon: 'payments', label: 'Minimum per payment', value: formatUGX(campaign.minimum_payment) }] : []),
+    ...(campaign.minimum_registration_amount > 0 ? [{ icon: 'how_to_reg', label: 'Registration threshold (info only)', value: formatUGX(campaign.minimum_registration_amount) }] : []),
+  ] : [
+    { icon: 'savings',      label: 'Target amount',        value: formatUGX(campaign.target_amount) },
+    { icon: 'event',        label: 'Deadline',             value: formatDate(campaign.target_date) },
+    { icon: 'payments',     label: 'Minimum deposit',      value: campaign.minimum_deposit > 0 ? formatUGX(campaign.minimum_deposit) : 'None' },
+    { icon: 'receipt_long', label: 'Payment installments', value: campaign.allow_partial_payments ? 'Yes' : 'No' },
+  ]
+
+  return (
+    <div style={{ background: 'var(--color-white)', border: 'var(--border-thick)', boxShadow: 'var(--shadow-lg)', overflow: 'hidden' }}>
+      {/* Card preview */}
+      <div style={{ background: 'var(--color-black)', borderBottom: 'var(--border)', padding: 'var(--space-5) var(--space-5) var(--space-4)' }}>
         <PreviewCard customer={customer} brand={brand} flipped={cardFlipped} onFlip={() => setCardFlipped(f => !f)} />
-        <p style={{
-          textAlign: 'center',
-          marginTop: 'var(--space-2)',
-          fontSize: 9,
-          fontWeight: 'var(--weight-bold)',
-          letterSpacing: 'var(--tracking-widest)',
-          textTransform: 'uppercase',
-          color: 'rgba(255,255,255,0.3)',
-        }}>
+        <p style={{ textAlign: 'center', marginTop: 'var(--space-2)', fontSize: 9, fontWeight: 'var(--weight-bold)', letterSpacing: 'var(--tracking-widest)', textTransform: 'uppercase', color: 'rgba(255,255,255,0.3)' }}>
           Your savings card preview · Tap to flip
         </p>
       </div>
 
       {/* Campaign info */}
       <div style={{ padding: 'var(--space-5)' }}>
-        <div style={{
-          display: 'inline-block',
-          background: 'var(--color-primary)',
-          border: 'var(--border)',
-          padding: '3px var(--space-3)',
-          fontSize: 'var(--text-xs)',
-          fontWeight: 'var(--weight-black)',
-          letterSpacing: 'var(--tracking-widest)',
-          textTransform: 'uppercase',
-          marginBottom: 'var(--space-3)',
-        }}>
-          Campaign
+        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', marginBottom: 'var(--space-3)' }}>
+          <div style={{
+            display: 'inline-block', background: 'var(--color-primary)', border: 'var(--border)',
+            padding: '3px var(--space-3)', fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-black)',
+            letterSpacing: 'var(--tracking-widest)', textTransform: 'uppercase',
+          }}>
+            {isEduCampaign ? 'Education fees' : 'Campaign'}
+          </div>
         </div>
+
         <h3 style={{
-          fontSize: 'var(--text-xl)',
-          fontWeight: 'var(--weight-black)',
-          letterSpacing: 'var(--tracking-tight)',
-          fontVariationSettings: "'wdth' 105, 'opsz' 24",
+          fontSize: 'var(--text-xl)', fontWeight: 'var(--weight-black)',
+          letterSpacing: 'var(--tracking-tight)', fontVariationSettings: "'wdth' 105, 'opsz' 24",
           marginBottom: 'var(--space-2)',
         }}>
           {campaign.name}
         </h3>
+
         {campaign.description && (
           <p style={{ fontSize: 'var(--text-sm)', color: 'var(--color-grey)', lineHeight: 'var(--leading-normal)', marginBottom: 'var(--space-4)' }}>
             {campaign.description}
@@ -213,16 +324,9 @@ function CampaignDetailCard({ campaign, customer, brand, cardFlipped, setCardFli
 
         {/* Detail rows */}
         <div style={{ border: 'var(--border)', overflow: 'hidden' }}>
-          {[
-            { icon: 'savings',       label: 'Target amount',        value: formatUGX(campaign.target_amount) },
-            { icon: 'event',         label: 'Deadline',             value: formatDate(campaign.target_date) },
-            { icon: 'payments',      label: 'Minimum deposit',      value: campaign.minimum_deposit > 0 ? formatUGX(campaign.minimum_deposit) : 'None' },
-            { icon: 'receipt_long',  label: 'Payment installments', value: campaign.allow_partial_payments ? 'Yes' : 'No' },
-          ].map((row, i, arr) => (
+          {detailRows.map((row, i, arr) => (
             <div key={i} style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
               padding: 'var(--space-3) var(--space-4)',
               borderBottom: i < arr.length - 1 ? 'var(--border)' : 'none',
               background: i % 2 === 0 ? 'var(--color-white)' : 'var(--color-bg)',
@@ -237,21 +341,44 @@ function CampaignDetailCard({ campaign, customer, brand, cardFlipped, setCardFli
         </div>
       </div>
 
+      {/* Student ID lookup — education campaigns only */}
+      {isEduCampaign && !alreadyEnrolled && (
+        <div style={{ padding: '0 var(--space-5) var(--space-5)' }}>
+          <div style={{
+            fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-black)',
+            letterSpacing: 'var(--tracking-widest)', textTransform: 'uppercase',
+            color: 'var(--color-grey)', marginBottom: 'var(--space-3)',
+          }}>
+            Which child is this for?
+          </div>
+          <StudentIdLookup
+            businessId={businessId}
+            enrolledStudentIds={enrolledStudentIds}
+            confirmedStudent={confirmedStudent}
+            onStudentConfirmed={onStudentConfirmed}
+            onClear={onStudentClear}
+          />
+        </div>
+      )}
+
       {/* Enroll CTA */}
       {!alreadyEnrolled && (
         <div style={{
           padding: 'var(--space-4) var(--space-5) var(--space-5)',
-          borderTop: 'var(--border)',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 'var(--space-4)',
+          borderTop: 'var(--border)', display: 'flex', flexDirection: 'column', gap: 'var(--space-4)',
         }}>
-          <label className="checkbox-group">
-            <input
-              type="checkbox"
-              checked={agreed}
-              onChange={e => setAgreed(e.target.checked)}
-            />
+          {/* Education: must select student first */}
+          {isEduCampaign && !confirmedStudent && (
+            <div className="alert alert-warning">
+              <span className="icon-outlined alert-icon">badge</span>
+              <div className="alert-content">
+                Please find and confirm your child's student ID above before enrolling.
+              </div>
+            </div>
+          )}
+
+          <label className="checkbox-group" style={{ opacity: canEnroll ? 1 : 0.5, pointerEvents: canEnroll ? 'auto' : 'none' }}>
+            <input type="checkbox" checked={agreed} onChange={e => setAgreed(e.target.checked)} disabled={!canEnroll} />
             <span className="checkbox-label" style={{ color: 'var(--color-grey)' }}>
               I agree to the savings campaign terms and conditions. I understand the target amount,
               deadline, and payment requirements for this campaign.
@@ -260,7 +387,7 @@ function CampaignDetailCard({ campaign, customer, brand, cardFlipped, setCardFli
 
           <button
             onClick={onConfirm}
-            disabled={!agreed || saving}
+            disabled={!agreed || saving || !canEnroll}
             className="btn btn-primary btn-full btn-lg"
           >
             {saving
@@ -293,19 +420,32 @@ export default function SelectCampaign({ customer, business }) {
   const [loading, setLoading]                     = useState(true)
   const [cardFlipped, setCardFlipped]             = useState(false)
   const [enrolledCampaignIds, setEnrolledCampaignIds] = useState([])
+  const [enrolledStudentIds, setEnrolledStudentIds]   = useState([])
+
+  // Education: confirmed student for the selected campaign
+  const [confirmedStudent, setConfirmedStudent]   = useState(null)
 
   useEffect(() => {
     if (business?.id && customer?.id) loadData()
   }, [business, customer])
 
+  // Reset confirmed student whenever the selected campaign changes
+  useEffect(() => {
+    setConfirmedStudent(null)
+    setAgreed(false)
+  }, [selectedCampaign?.id])
+
   async function loadData() {
     setLoading(true)
+
     const { data: existingEnrollments } = await supabase
       .from('customer_campaigns')
-      .select('campaign_id')
+      .select('campaign_id, student_id')
       .eq('customer_id', customer.id)
       .eq('status', 'active')
+
     setEnrolledCampaignIds((existingEnrollments || []).map(e => e.campaign_id))
+    setEnrolledStudentIds((existingEnrollments || []).map(e => e.student_id).filter(Boolean))
 
     if (!isRetail) {
       const { data } = await supabase
@@ -336,9 +476,7 @@ export default function SelectCampaign({ customer, business }) {
       .or(`name.ilike.%${val}%,product_code.ilike.%${val}%`)
       .limit(10)
 
-    if (!products || products.length === 0) {
-      setProductResults([]); setShowDropdown(true); return
-    }
+    if (!products || products.length === 0) { setProductResults([]); setShowDropdown(true); return }
 
     const { data: camps } = await supabase
       .from('campaigns')
@@ -376,24 +514,28 @@ export default function SelectCampaign({ customer, business }) {
   async function handleConfirm() {
     const campaign = isRetail ? retailCampaign : selectedCampaign
     if (!campaign || !agreed) return
+    if (enrolledCampaignIds.includes(campaign.id)) { navigate('/portal/home', { replace: true }); return }
 
-    if (enrolledCampaignIds.includes(campaign.id)) {
-      navigate('/portal/home', { replace: true }); return
-    }
+    const isEduCampaign = campaign.campaign_type === 'education_fees'
+    if (isEduCampaign && !confirmedStudent) return
 
     setSaving(true)
     try {
       const drawCode = generateDrawCode()
 
+      const enrollPayload = {
+        customer_id: customer.id,
+        campaign_id: campaign.id,
+        business_id: business.id,
+        draw_code:   drawCode,
+        status:      'active',
+        // Link the confirmed student for education campaigns
+        ...(isEduCampaign && confirmedStudent ? { student_id: confirmedStudent.id } : {}),
+      }
+
       const { data: enrollment, error: enrollError } = await supabase
         .from('customer_campaigns')
-        .insert({
-          customer_id:  customer.id,
-          campaign_id:  campaign.id,
-          business_id:  business.id,
-          draw_code:    drawCode,
-          status:       'active',
-        })
+        .insert(enrollPayload)
         .select()
         .single()
 
@@ -409,7 +551,6 @@ export default function SelectCampaign({ customer, business }) {
 
       await supabase.from('customer_campaigns').update({ wallet_id: wallet.id }).eq('id', enrollment.id)
 
-      // ── Send campaign_enrolled SMS (non-blocking) ──────────────────
       if (customer?.phone) {
         sendSMS(customer.id, customer.phone, 'campaign_enrolled', {
           campaign:  campaign.name,
@@ -435,11 +576,17 @@ export default function SelectCampaign({ customer, business }) {
   )
 
   const availableCampaigns = campaigns.filter(c => !enrolledCampaignIds.includes(c.id))
-  const hasEnrollments = enrolledCampaignIds.length > 0
+  const hasEnrollments     = enrolledCampaignIds.length > 0
 
   const detailProps = {
     customer, brand, cardFlipped, setCardFlipped,
     agreed, setAgreed, saving, onConfirm: handleConfirm,
+    // Education props
+    businessId: business?.id,
+    enrolledStudentIds,
+    confirmedStudent,
+    onStudentConfirmed: setConfirmedStudent,
+    onStudentClear:     () => { setConfirmedStudent(null); setAgreed(false) },
   }
 
   return (
@@ -447,23 +594,17 @@ export default function SelectCampaign({ customer, business }) {
 
       {/* ── Header ── */}
       <header style={{
-        background: 'var(--color-black)',
-        borderBottom: 'var(--border)',
+        background: 'var(--color-black)', borderBottom: 'var(--border)',
         padding: 'var(--space-4) var(--space-5)',
-        display: 'flex',
-        alignItems: 'center',
-        gap: 'var(--space-4)',
+        display: 'flex', alignItems: 'center', gap: 'var(--space-4)',
       }}>
         {hasEnrollments && (
           <button
             onClick={() => navigate('/portal/home')}
             style={{
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              width: 36, height: 36,
-              border: '2px solid rgba(255,255,255,0.25)',
-              background: 'transparent',
-              color: 'var(--color-white)',
-              cursor: 'pointer', flexShrink: 0,
+              width: 36, height: 36, border: '2px solid rgba(255,255,255,0.25)',
+              background: 'transparent', color: 'var(--color-white)', cursor: 'pointer', flexShrink: 0,
             }}
             onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--color-primary)'}
             onMouseLeave={e => e.currentTarget.style.borderColor = 'rgba(255,255,255,0.25)'}
@@ -473,13 +614,7 @@ export default function SelectCampaign({ customer, business }) {
         )}
         <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
           {brand.logoUrl && (
-            <div style={{
-              width: 32, height: 32,
-              background: 'var(--color-primary)',
-              border: '2px solid var(--color-primary)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              flexShrink: 0,
-            }}>
+            <div style={{ width: 32, height: 32, background: 'var(--color-primary)', border: '2px solid var(--color-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
               <img src={brand.logoUrl} alt={brand.businessName} style={{ width: 22, height: 22, objectFit: 'contain' }} />
             </div>
           )}
@@ -491,32 +626,21 @@ export default function SelectCampaign({ customer, business }) {
 
       {/* ── Title bar ── */}
       <div style={{
-        background: 'var(--color-black)',
-        borderBottom: '3px solid var(--color-primary)',
+        background: 'var(--color-black)', borderBottom: '3px solid var(--color-primary)',
         padding: 'var(--space-6) var(--space-5) var(--space-8)',
       }}>
         <div style={{
-          display: 'inline-block',
-          background: 'var(--color-primary)',
-          border: 'var(--border)',
-          padding: '3px var(--space-3)',
-          fontSize: 'var(--text-xs)',
-          fontWeight: 'var(--weight-black)',
-          letterSpacing: 'var(--tracking-widest)',
-          textTransform: 'uppercase',
-          color: 'var(--color-black)',
+          display: 'inline-block', background: 'var(--color-primary)', border: 'var(--border)',
+          padding: '3px var(--space-3)', fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-black)',
+          letterSpacing: 'var(--tracking-widest)', textTransform: 'uppercase', color: 'var(--color-black)',
           marginBottom: 'var(--space-3)',
         }}>
           {hasEnrollments ? 'Add campaign' : 'Get started'}
         </div>
         <h1 style={{
-          color: 'var(--color-white)',
-          fontSize: 'var(--text-2xl)',
-          fontWeight: 'var(--weight-black)',
-          lineHeight: 'var(--leading-tight)',
-          letterSpacing: 'var(--tracking-tight)',
-          fontVariationSettings: "'wdth' 110, 'opsz' 30",
-          marginBottom: 'var(--space-2)',
+          color: 'var(--color-white)', fontSize: 'var(--text-2xl)', fontWeight: 'var(--weight-black)',
+          lineHeight: 'var(--leading-tight)', letterSpacing: 'var(--tracking-tight)',
+          fontVariationSettings: "'wdth' 110, 'opsz' 30", marginBottom: 'var(--space-2)',
         }}>
           {hasEnrollments ? 'Add another campaign' : 'Choose your campaign'}
         </h1>
@@ -527,16 +651,11 @@ export default function SelectCampaign({ customer, business }) {
             ? 'Review the campaign details and agree to the terms to continue.'
             : 'Select the campaign you want to save toward.'}
         </p>
-
         {!hasEnrollments && (
           <div style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: 'var(--space-2)',
-            marginTop: 'var(--space-4)',
-            padding: '6px var(--space-4)',
-            border: '1.5px solid rgba(255,255,255,0.2)',
-            background: 'rgba(255,255,255,0.06)',
+            display: 'inline-flex', alignItems: 'center', gap: 'var(--space-2)',
+            marginTop: 'var(--space-4)', padding: '6px var(--space-4)',
+            border: '1.5px solid rgba(255,255,255,0.2)', background: 'rgba(255,255,255,0.06)',
           }}>
             <span className="icon-outlined icon-xs" style={{ color: 'var(--color-primary)' }}>lock</span>
             <span style={{ fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-bold)', color: 'rgba(255,255,255,0.7)', letterSpacing: 'var(--tracking-wide)' }}>
@@ -547,13 +666,7 @@ export default function SelectCampaign({ customer, business }) {
       </div>
 
       {/* ── Body ── */}
-      <div style={{
-        flex: 1,
-        padding: 'var(--space-5)',
-        display: 'flex',
-        flexDirection: 'column',
-        gap: 'var(--space-4)',
-      }}>
+      <div style={{ flex: 1, padding: 'var(--space-5)', display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
 
         {/* ── RETAIL FLOW ── */}
         {isRetail && (
@@ -563,8 +676,7 @@ export default function SelectCampaign({ customer, business }) {
               <div className="input-wrapper">
                 <span className="icon-outlined input-icon-left">search</span>
                 <input
-                  type="text"
-                  className="input"
+                  type="text" className="input"
                   placeholder="Enter product code or name…"
                   value={productQuery}
                   onChange={e => handleProductSearch(e.target.value)}
@@ -572,111 +684,69 @@ export default function SelectCampaign({ customer, business }) {
                   onBlur={() => setTimeout(() => setShowDropdown(false), 150)}
                 />
               </div>
-
               {showDropdown && (
                 <div style={{
-                  position: 'absolute',
-                  top: '100%',
-                  left: 0, right: 0,
-                  background: 'var(--color-white)',
-                  border: 'var(--border)',
-                  boxShadow: 'var(--shadow-md)',
-                  zIndex: 'var(--z-dropdown)',
-                  marginTop: 'var(--space-1)',
+                  position: 'absolute', top: '100%', left: 0, right: 0,
+                  background: 'var(--color-white)', border: 'var(--border)',
+                  boxShadow: 'var(--shadow-md)', zIndex: 'var(--z-dropdown)', marginTop: 'var(--space-1)',
                 }}>
                   {productResults.length === 0 ? (
                     <div style={{ padding: 'var(--space-4)', fontSize: 'var(--text-sm)', color: 'var(--color-grey)' }}>
                       No products with active campaigns found.
                     </div>
-                  ) : (
-                    productResults.map((p, i) => (
-                      <button
-                        key={p.id}
-                        onMouseDown={() => handleSelectProduct(p)}
-                        style={{
-                          width: '100%',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'space-between',
-                          padding: 'var(--space-3) var(--space-4)',
-                          background: 'none',
-                          border: 'none',
-                          borderBottom: i < productResults.length - 1 ? '1.5px solid var(--color-grey-light)' : 'none',
-                          cursor: 'pointer',
-                          textAlign: 'left',
-                          transition: 'background-color var(--transition-fast)',
-                        }}
-                        onMouseEnter={e => e.currentTarget.style.background = 'var(--color-bg)'}
-                        onMouseLeave={e => e.currentTarget.style.background = 'none'}
-                      >
-                        <div>
-                          <div style={{ fontWeight: 'var(--weight-bold)', fontSize: 'var(--text-sm)' }}>{p.name}</div>
-                          {p.description && (
-                            <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-grey)', marginTop: 2 }}>
-                              {p.description}
-                            </div>
-                          )}
-                        </div>
-                        <div style={{ textAlign: 'right', flexShrink: 0, marginLeft: 'var(--space-4)' }}>
-                          <div style={{ fontFamily: 'monospace', fontWeight: 'var(--weight-black)', fontSize: 'var(--text-xs)', color: 'var(--color-primary)' }}>
-                            {p.product_code}
-                          </div>
-                          <div style={{ fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-bold)', marginTop: 2 }}>
-                            {formatUGX(p.price)}
-                          </div>
-                        </div>
-                      </button>
-                    ))
-                  )}
+                  ) : productResults.map((p, i) => (
+                    <button
+                      key={p.id} onMouseDown={() => handleSelectProduct(p)}
+                      style={{
+                        width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                        padding: 'var(--space-3) var(--space-4)', background: 'none', border: 'none',
+                        borderBottom: i < productResults.length - 1 ? '1.5px solid var(--color-grey-light)' : 'none',
+                        cursor: 'pointer', textAlign: 'left', transition: 'background-color var(--transition-fast)',
+                      }}
+                      onMouseEnter={e => e.currentTarget.style.background = 'var(--color-bg)'}
+                      onMouseLeave={e => e.currentTarget.style.background = 'none'}
+                    >
+                      <div>
+                        <div style={{ fontWeight: 'var(--weight-bold)', fontSize: 'var(--text-sm)' }}>{p.name}</div>
+                        {p.description && <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-grey)', marginTop: 2 }}>{p.description}</div>}
+                      </div>
+                      <div style={{ textAlign: 'right', flexShrink: 0, marginLeft: 'var(--space-4)' }}>
+                        <div style={{ fontFamily: 'monospace', fontWeight: 'var(--weight-black)', fontSize: 'var(--text-xs)', color: 'var(--color-primary)' }}>{p.product_code}</div>
+                        <div style={{ fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-bold)', marginTop: 2 }}>{formatUGX(p.price)}</div>
+                      </div>
+                    </button>
+                  ))}
                 </div>
               )}
             </div>
-
             {productError && (
               <div className="alert alert-danger">
                 <span className="icon-outlined alert-icon">error_outline</span>
                 <div className="alert-content">{productError}</div>
               </div>
             )}
-
             {retailCampaign && (
-              <CampaignDetailCard
-                campaign={retailCampaign}
-                alreadyEnrolled={enrolledCampaignIds.includes(retailCampaign.id)}
-                {...detailProps}
-              />
+              <CampaignDetailCard campaign={retailCampaign} alreadyEnrolled={enrolledCampaignIds.includes(retailCampaign.id)} {...detailProps} />
             )}
           </>
         )}
 
-        {/* ── EDUCATION FLOW ── */}
+        {/* ── NON-RETAIL FLOW ── */}
         {!isRetail && (
           <>
-            {/* No campaigns at all */}
             {availableCampaigns.length === 0 && !hasEnrollments && (
               <div className="card" style={{ textAlign: 'center', padding: 'var(--space-10)' }}>
-                <span className="icon-outlined" style={{ fontSize: 40, color: 'var(--color-grey-mid)', display: 'block', marginBottom: 'var(--space-3)' }}>
-                  campaign
-                </span>
-                <div style={{ fontWeight: 'var(--weight-bold)', fontSize: 'var(--text-base)', marginBottom: 'var(--space-2)' }}>
-                  No campaigns available yet
-                </div>
+                <span className="icon-outlined" style={{ fontSize: 40, color: 'var(--color-grey-mid)', display: 'block', marginBottom: 'var(--space-3)' }}>campaign</span>
+                <div style={{ fontWeight: 'var(--weight-bold)', fontSize: 'var(--text-base)', marginBottom: 'var(--space-2)' }}>No campaigns available yet</div>
                 <div style={{ fontSize: 'var(--text-sm)', color: 'var(--color-grey)' }}>
                   Your institution hasn't launched any active campaigns yet. Please check back later or contact your institution.
                 </div>
               </div>
             )}
 
-            {/* Already enrolled in all */}
             {availableCampaigns.length === 0 && hasEnrollments && (
               <div className="card" style={{ textAlign: 'center', padding: 'var(--space-10)' }}>
-                <div style={{
-                  width: 56, height: 56,
-                  background: 'var(--color-green)',
-                  border: 'var(--border)',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  margin: '0 auto var(--space-4)',
-                }}>
+                <div style={{ width: 56, height: 56, background: 'var(--color-green)', border: 'var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto var(--space-4)' }}>
                   <span className="icon-outlined" style={{ fontSize: 28 }}>check</span>
                 </div>
                 <div style={{ fontWeight: 'var(--weight-bold)', fontSize: 'var(--text-base)', marginBottom: 'var(--space-2)' }}>
@@ -692,7 +762,6 @@ export default function SelectCampaign({ customer, business }) {
               </div>
             )}
 
-            {/* Single campaign — show detail directly */}
             {availableCampaigns.length === 1 && (
               <CampaignDetailCard
                 campaign={availableCampaigns[0]}
@@ -701,54 +770,44 @@ export default function SelectCampaign({ customer, business }) {
               />
             )}
 
-            {/* Multiple campaigns — picker then detail */}
             {availableCampaigns.length > 1 && (
               <>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
                   {availableCampaigns.map(c => {
                     const isSelected = selectedCampaign?.id === c.id
+                    const isEduC     = c.campaign_type === 'education_fees'
                     return (
                       <button
                         key={c.id}
                         onClick={() => { setSelectedCampaign(c); setAgreed(false); setCardFlipped(false) }}
                         style={{
-                          width: '100%',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'space-between',
+                          width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                           padding: 'var(--space-4)',
                           background: isSelected ? 'var(--color-primary)' : 'var(--color-white)',
                           border: isSelected ? 'var(--border-thick)' : 'var(--border)',
                           boxShadow: isSelected ? 'var(--shadow-sm)' : 'none',
-                          cursor: 'pointer',
-                          textAlign: 'left',
-                          transition: 'all var(--transition-base)',
+                          cursor: 'pointer', textAlign: 'left', transition: 'all var(--transition-base)',
                         }}
                       >
                         <div>
-                          <div style={{
-                            fontWeight: 'var(--weight-bold)',
-                            fontSize: 'var(--text-base)',
-                            color: isSelected ? 'var(--color-black)' : 'var(--color-black)',
-                            marginBottom: 'var(--space-1)',
-                          }}>
+                          <div style={{ fontWeight: 'var(--weight-bold)', fontSize: 'var(--text-base)', color: 'var(--color-black)', marginBottom: 'var(--space-1)' }}>
                             {c.name}
                           </div>
                           <div style={{ fontSize: 'var(--text-sm)', color: isSelected ? 'rgba(0,0,0,0.6)' : 'var(--color-grey)' }}>
-                            {formatUGX(c.target_amount)} · Due {formatDate(c.target_date)}
+                            {isEduC
+                              ? `${FEE_TYPE_LABELS[c.fee_type] || c.fee_type || 'Fees'} · ${formatUGX(c.target_amount)} · Due ${formatDate(c.target_date)}`
+                              : `${formatUGX(c.target_amount)} · Due ${formatDate(c.target_date)}`
+                            }
                           </div>
                         </div>
                         <div style={{
-                          width: 24, height: 24,
+                          width: 24, height: 24, flexShrink: 0, marginLeft: 'var(--space-4)',
                           border: isSelected ? '2px solid var(--color-black)' : '2px solid var(--color-grey-mid)',
                           background: isSelected ? 'var(--color-black)' : 'transparent',
                           display: 'flex', alignItems: 'center', justifyContent: 'center',
-                          flexShrink: 0, marginLeft: 'var(--space-4)',
                           transition: 'all var(--transition-base)',
                         }}>
-                          {isSelected && (
-                            <span className="icon-outlined" style={{ fontSize: 14, color: 'var(--color-white)' }}>check</span>
-                          )}
+                          {isSelected && <span className="icon-outlined" style={{ fontSize: 14, color: 'var(--color-white)' }}>check</span>}
                         </div>
                       </button>
                     )
@@ -770,25 +829,14 @@ export default function SelectCampaign({ customer, business }) {
 
       {/* ── Footer ── */}
       <footer style={{
-        padding: 'var(--space-4) var(--space-5)',
-        borderTop: '1.5px solid var(--color-grey-light)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        gap: 'var(--space-2)',
+        padding: 'var(--space-4) var(--space-5)', borderTop: '1.5px solid var(--color-grey-light)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 'var(--space-2)',
       }}>
         <img src="/partna-icon.svg" alt="Partna" style={{ width: 18, height: 18, opacity: 0.4 }} />
-        <span style={{
-          fontSize: 'var(--text-xs)',
-          fontWeight: 'var(--weight-bold)',
-          letterSpacing: 'var(--tracking-wider)',
-          textTransform: 'uppercase',
-          color: 'var(--color-grey)',
-        }}>
+        <span style={{ fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-bold)', letterSpacing: 'var(--tracking-wider)', textTransform: 'uppercase', color: 'var(--color-grey)' }}>
           Powered by Partna
         </span>
       </footer>
-
     </div>
   )
 }
