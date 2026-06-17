@@ -4,11 +4,12 @@ import { useNavigate, useLocation } from 'react-router-dom'
 const BASE_NAV_ITEMS = [
   { path: '/dashboard/overview',  label: 'Overview',          icon: 'dashboard',      sectors: null },
   { path: '/dashboard/customers', label: 'Customers',         icon: 'group',          sectors: null },
+  { path: '/dashboard/students',  label: 'Students',          icon: 'school',         sectors: ['Education'] },
   { path: '/dashboard/products',  label: 'Products',          icon: 'inventory_2',    sectors: ['Retail'] },
   { path: '/dashboard/campaigns', label: 'Campaigns',         icon: 'campaign',       sectors: null },
-  { path: '/dashboard/payments',  label: 'Payments',          icon: 'payments',       sectors: null },
+  { path: '/dashboard/payments',  label: 'Fee Payments',      icon: 'receipt_long',   sectors: ['Education'] },
+  { path: '/dashboard/payments',  label: 'Payments',          icon: 'payments',       sectors: ['Retail', null] },
   { path: '/dashboard/sales',     label: 'Sales',             icon: 'receipt_long',   sectors: ['Retail'] },
-  { path: '/dashboard/sales',     label: 'Fee Payments',      icon: 'receipt_long',   sectors: ['Education'] },
   { path: '/dashboard/vouchers',  label: 'Vouchers & Prizes', icon: 'card_giftcard',  sectors: null },
   { path: '/dashboard/settings',  label: 'Settings',          icon: 'settings',       sectors: null },
 ]
@@ -26,9 +27,15 @@ export default function DashboardLayout({ admin, business, signOut, children }) 
   const kybPending = business?.kyb_status !== 'verified'
   const sector     = business?.sector || ''
 
-  const NAV_ITEMS = BASE_NAV_ITEMS.filter(item =>
-    item.sectors === null || item.sectors.includes(sector)
-  )
+  const NAV_ITEMS = BASE_NAV_ITEMS.filter(item => {
+    if (item.sectors === null) return true
+    if (Array.isArray(item.sectors)) {
+      // null in the array means "show for non-Education, non-Retail"
+      if (item.sectors.includes(null) && sector !== 'Education' && sector !== 'Retail') return true
+      return item.sectors.includes(sector)
+    }
+    return false
+  })
 
   const activeItem = NAV_ITEMS.find(n =>
     location.pathname === n.path ||
@@ -205,12 +212,8 @@ export default function DashboardLayout({ admin, business, signOut, children }) 
                 onMouseEnter={e => { if (!active) { e.currentTarget.style.background = 'rgba(255,255,255,0.06)'; e.currentTarget.style.color = 'var(--color-white)' }}}
                 onMouseLeave={e => { if (!active) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'rgba(255,255,255,0.55)' }}}
               >
-                {/* Active left bar */}
                 {active && !collapsed && (
-                  <div style={{
-                    position: 'absolute', left: 0, top: 0, bottom: 0,
-                    width: 3, background: 'var(--color-black)',
-                  }} />
+                  <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 3, background: 'var(--color-black)' }} />
                 )}
                 <span className="icon-outlined" style={{ fontSize: 20, flexShrink: 0 }}>{item.icon}</span>
                 {!collapsed && (
@@ -230,10 +233,7 @@ export default function DashboardLayout({ admin, business, signOut, children }) 
         </nav>
 
         {/* Footer — admin + log out */}
-        <div style={{
-          borderTop: '1px solid rgba(255,255,255,0.08)',
-          padding: 'var(--space-4) var(--space-3)',
-        }}>
+        <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', padding: 'var(--space-4) var(--space-3)' }}>
           {!collapsed && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', marginBottom: 'var(--space-3)' }}>
               <div style={{
@@ -332,15 +332,11 @@ export default function DashboardLayout({ admin, business, signOut, children }) 
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
             {kybPending && (
-              <button
-                onClick={() => navigate('/dashboard/settings')}
-                className="btn btn-sm btn-warning"
-              >
+              <button onClick={() => navigate('/dashboard/settings')} className="btn btn-sm btn-warning">
                 <span className="icon-outlined icon-xs">warning</span>
                 Complete KYB
               </button>
             )}
-            {/* Admin avatar */}
             <div style={{
               width: 36, height: 36,
               background: 'var(--color-black)',
@@ -355,7 +351,6 @@ export default function DashboardLayout({ admin, business, signOut, children }) 
           </div>
         </header>
 
-        {/* KYB inline banner in content area */}
         <main style={{ flex: 1, padding: 'var(--space-6)', overflowY: 'auto' }}>
           {kybPending && (
             <div style={{
@@ -375,16 +370,12 @@ export default function DashboardLayout({ admin, business, signOut, children }) 
                   Complete your KYB verification to unlock all features.
                 </div>
               </div>
-              <button
-                onClick={() => navigate('/dashboard/settings')}
-                className="btn btn-sm btn-black"
-              >
+              <button onClick={() => navigate('/dashboard/settings')} className="btn btn-sm btn-black">
                 <span className="icon-outlined icon-xs">arrow_forward</span>
                 Verify now
               </button>
             </div>
           )}
-
           {children}
         </main>
       </div>

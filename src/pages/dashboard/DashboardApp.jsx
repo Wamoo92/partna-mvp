@@ -9,6 +9,7 @@ import Overview          from './Overview'
 import Customers         from './Customers'
 import Campaigns         from './Campaigns'
 import Payments          from './Payments'
+import Students          from './Students'
 import VouchersPrizes    from './VouchersPrizes'
 import Settings          from './Settings'
 import Products          from './Products'
@@ -37,14 +38,15 @@ export default function DashboardApp() {
         <DashboardGuard admin={admin} loading={loading}>
           <DashboardLayout admin={admin} business={business} signOut={signOut}>
             <Routes>
-              <Route path="/overview"   element={<Overview   admin={admin} business={business} />} />
-              <Route path="/customers"  element={<Customers  admin={admin} business={business} />} />
-              <Route path="/campaigns"  element={<Campaigns  admin={admin} business={business} />} />
-              <Route path="/payments"   element={<Payments   admin={admin} business={business} />} />
+              <Route path="/overview"   element={<Overview      admin={admin} business={business} />} />
+              <Route path="/customers"  element={<Customers     admin={admin} business={business} />} />
+              <Route path="/students"   element={<Students      admin={admin} business={business} />} />
+              <Route path="/campaigns"  element={<Campaigns     admin={admin} business={business} />} />
+              <Route path="/payments"   element={<Payments      admin={admin} business={business} />} />
               <Route path="/vouchers"   element={<VouchersPrizes admin={admin} business={business} />} />
-              <Route path="/settings"   element={<Settings   admin={admin} business={business} />} />
-              <Route path="/products"   element={<Products   admin={admin} business={business} />} />
-              <Route path="/sales"      element={<Sales      admin={admin} business={business} />} />
+              <Route path="/settings"   element={<Settings      admin={admin} business={business} />} />
+              <Route path="/products"   element={<Products      admin={admin} business={business} />} />
+              <Route path="/sales"      element={<Sales         admin={admin} business={business} />} />
               <Route path="/"           element={<Navigate to="/dashboard/overview" replace />} />
             </Routes>
           </DashboardLayout>
