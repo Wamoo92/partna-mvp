@@ -2,6 +2,9 @@ import { useState, useEffect } from 'react'
 import * as XLSX from 'xlsx'
 import { supabase } from '../../supabase'
 
+const SUPABASE_URL      = import.meta.env.VITE_SUPABASE_URL
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY
+
 // ── OpenFloat export ───────────────────────────────────────────────────────
 
 function downloadOpenFloatFile(rows, filename) {
@@ -11,6 +14,22 @@ function downloadOpenFloatFile(rows, filename) {
   const wb = XLSX.utils.book_new()
   XLSX.utils.book_append_sheet(wb, ws, 'Accounts')
   XLSX.writeFile(wb, filename)
+}
+
+// ── SMS helper (non-blocking) ──────────────────────────────────────────────
+async function sendSMS(customerId, phone, event, vars = {}) {
+  try {
+    await fetch(`${SUPABASE_URL}/functions/v1/send-sms`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+      },
+      body: JSON.stringify({ event, phone, customerId, vars }),
+    })
+  } catch (e) {
+    console.error('SMS send error (non-critical):', e)
+  }
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -61,32 +80,32 @@ export default function Transactions() {
   const [tab, setTab] = useState('customer')
 
   // Customer transactions
-  const [transactions, setTransactions]   = useState([])
-  const [businesses, setBusinesses]       = useState([])
+  const [transactions, setTransactions]       = useState([])
+  const [businesses, setBusinesses]           = useState([])
   const [loadingCustomer, setLoadingCustomer] = useState(true)
-  const [search, setSearch]               = useState('')
-  const [filterBusiness, setFilterBusiness] = useState('')
-  const [filterType, setFilterType]       = useState('')
-  const [filterStatus, setFilterStatus]   = useState('')
-  const [dateFrom, setDateFrom]           = useState('')
-  const [dateTo, setDateTo]               = useState('')
-  const [sortBy, setSortBy]               = useState('created_at')
-  const [sortDir, setSortDir]             = useState('desc')
-  const [markingId, setMarkingId]         = useState(null)
-  const [confirmId, setConfirmId]         = useState(null)
-  const [selectedCust, setSelectedCust]   = useState(new Set())
+  const [search, setSearch]                   = useState('')
+  const [filterBusiness, setFilterBusiness]   = useState('')
+  const [filterType, setFilterType]           = useState('')
+  const [filterStatus, setFilterStatus]       = useState('')
+  const [dateFrom, setDateFrom]               = useState('')
+  const [dateTo, setDateTo]                   = useState('')
+  const [sortBy, setSortBy]                   = useState('created_at')
+  const [sortDir, setSortDir]                 = useState('desc')
+  const [markingId, setMarkingId]             = useState(null)
+  const [confirmId, setConfirmId]             = useState(null)
+  const [selectedCust, setSelectedCust]       = useState(new Set())
 
   // Business withdrawals
-  const [bizWithdrawals, setBizWithdrawals]   = useState([])
-  const [loadingBiz, setLoadingBiz]           = useState(true)
-  const [bizSearch, setBizSearch]             = useState('')
+  const [bizWithdrawals, setBizWithdrawals]       = useState([])
+  const [loadingBiz, setLoadingBiz]               = useState(true)
+  const [bizSearch, setBizSearch]                 = useState('')
   const [bizFilterBusiness, setBizFilterBusiness] = useState('')
-  const [bizFilterStatus, setBizFilterStatus] = useState('')
-  const [bizDateFrom, setBizDateFrom]         = useState('')
-  const [bizDateTo, setBizDateTo]             = useState('')
-  const [bizMarkingId, setBizMarkingId]       = useState(null)
-  const [bizConfirmId, setBizConfirmId]       = useState(null)
-  const [selectedBiz, setSelectedBiz]         = useState(new Set())
+  const [bizFilterStatus, setBizFilterStatus]     = useState('')
+  const [bizDateFrom, setBizDateFrom]             = useState('')
+  const [bizDateTo, setBizDateTo]                 = useState('')
+  const [bizMarkingId, setBizMarkingId]           = useState(null)
+  const [bizConfirmId, setBizConfirmId]           = useState(null)
+  const [selectedBiz, setSelectedBiz]             = useState(new Set())
 
   useEffect(() => { loadCustomer(); loadBusiness() }, [])
 
@@ -108,8 +127,21 @@ export default function Transactions() {
     setMarkingId(txnId)
     try {
       await supabase.from('transactions').update({ status: 'completed' }).eq('id', txnId)
+
+      // Find the transaction to get customer details for SMS
+      const txn = transactions.find(t => t.id === txnId)
+
       setTransactions(prev => prev.map(t => t.id === txnId ? { ...t, status: 'completed' } : t))
       setConfirmId(null)
+
+      // Send withdrawal_completed SMS to customer (non-blocking)
+      if (txn?.customers?.phone && txn?.customer_id) {
+        sendSMS(txn.customer_id, txn.customers.phone, 'withdrawal_completed', {
+          amount:    formatUGXFull(txn.amount),
+          reference: txn.reference || txnId.slice(0, 8),
+        })
+      }
+
     } catch (e) { console.error('Mark completed error:', e) }
     setMarkingId(null)
   }
@@ -236,7 +268,7 @@ export default function Transactions() {
             </div>
             <div className="modal-body">
               <p style={{ fontSize: 'var(--text-sm)', color: 'var(--color-grey)', lineHeight: 'var(--leading-normal)' }}>
-                This confirms the mobile money disbursement has been processed. This cannot be undone.
+                This confirms the mobile money disbursement has been processed. The customer will receive an SMS notification. This cannot be undone.
               </p>
             </div>
             <div className="modal-footer">
@@ -271,7 +303,7 @@ export default function Transactions() {
                     { label: 'Business',       value: w?.businesses?.name },
                     { label: 'Amount',         value: formatUGXFull(w?.amount), color: '#C0392B' },
                     { label: 'Method',         value: method },
-                    { label: 'Account name',   value: w?.withdrawal_account_name || '—' },
+                    { label: 'Account name',   value: w?.withdrawal_account_name   || '—' },
                     { label: 'Account number', value: w?.withdrawal_account_number || '—' },
                     ...(w?.withdrawal_notify_phone ? [{ label: 'Notify phone', value: w.withdrawal_notify_phone }] : []),
                   ].map((row, i, arr) => (
@@ -335,10 +367,10 @@ export default function Transactions() {
             <>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 'var(--space-4)' }}>
                 {[
-                  { label: 'Shown transactions', value: filteredCustomer.length,       accent: 'var(--color-primary)' },
-                  { label: 'Total deposits',      value: formatUGX(totalDeposits),     accent: 'var(--color-green)'   },
-                  { label: 'Total withdrawals',   value: formatUGX(totalWithdrawals),  accent: 'var(--color-red)'     },
-                  { label: 'Pending withdrawals', value: pendingCustW.length,          accent: pendingCustW.length > 0 ? 'var(--color-yellow)' : 'var(--color-grey-light)' },
+                  { label: 'Shown transactions', value: filteredCustomer.length,      accent: 'var(--color-primary)' },
+                  { label: 'Total deposits',      value: formatUGX(totalDeposits),    accent: 'var(--color-green)'   },
+                  { label: 'Total withdrawals',   value: formatUGX(totalWithdrawals), accent: 'var(--color-red)'     },
+                  { label: 'Pending withdrawals', value: pendingCustW.length,         accent: pendingCustW.length > 0 ? 'var(--color-yellow)' : 'var(--color-grey-light)' },
                 ].map(s => (
                   <div key={s.label} style={{ background: 'var(--color-white)', border: 'var(--border)', boxShadow: 'var(--shadow-sm)', padding: 'var(--space-4)' }}>
                     <div style={{ height: 3, background: s.accent, marginBottom: 'var(--space-2)' }} />
@@ -399,7 +431,7 @@ export default function Transactions() {
                 </select>
                 <input type="date" className="input input-sm" value={dateFrom} onChange={e => setDateFrom(e.target.value)} style={{ width: 140 }} />
                 <span style={{ alignSelf: 'center', color: 'var(--color-grey-mid)', fontSize: 'var(--text-lg)' }}>—</span>
-                <input type="date" className="input input-sm" value={dateTo}   onChange={e => setDateTo(e.target.value)}   style={{ width: 140 }} />
+                <input type="date" className="input input-sm" value={dateTo} onChange={e => setDateTo(e.target.value)} style={{ width: 140 }} />
                 {hasCustomerFilters && (
                   <button onClick={() => { setSearch(''); setFilterBusiness(''); setFilterType(''); setFilterStatus(''); setDateFrom(''); setDateTo('') }} className="btn btn-sm btn-danger">
                     <span className="icon-outlined icon-xs">close</span> Clear
@@ -568,7 +600,7 @@ export default function Transactions() {
                 </select>
                 <input type="date" className="input input-sm" value={bizDateFrom} onChange={e => setBizDateFrom(e.target.value)} style={{ width: 140 }} />
                 <span style={{ alignSelf: 'center', color: 'var(--color-grey-mid)', fontSize: 'var(--text-lg)' }}>—</span>
-                <input type="date" className="input input-sm" value={bizDateTo}   onChange={e => setBizDateTo(e.target.value)}   style={{ width: 140 }} />
+                <input type="date" className="input input-sm" value={bizDateTo} onChange={e => setBizDateTo(e.target.value)} style={{ width: 140 }} />
                 {hasBizFilters && (
                   <button onClick={() => { setBizSearch(''); setBizFilterBusiness(''); setBizFilterStatus(''); setBizDateFrom(''); setBizDateTo('') }} className="btn btn-sm btn-danger">
                     <span className="icon-outlined icon-xs">close</span> Clear
