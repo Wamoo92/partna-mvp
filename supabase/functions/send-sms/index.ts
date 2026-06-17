@@ -41,7 +41,7 @@ const TEMPLATES: Record<string, (vars: Record<string, string>) => string> = {
     `You now have full access to all Partna features. ` +
     `Visit www.partna.io to continue saving.`,
 
-  kyc_failed: (v) =>
+  kyc_failed: (_v) =>
     `Partna: We could not verify your National ID. ` +
     `Please check your NIN and try again at www.partna.io. ` +
     `Contact support if you need help.`,
@@ -60,6 +60,20 @@ const TEMPLATES: Record<string, (vars: Record<string, string>) => string> = {
     `Partna: Your account has been deactivated. ` +
     `Any remaining balance will be refunded within 5 working days. ` +
     `Thank you for using Partna.`,
+
+  fee_payment_confirmed: (v) =>
+    `Partna: Payment of ${v.amount} received for ${v.student_name} ` +
+    `(${v.fee_type}) — ${v.campaign}. ` +
+    `Total paid to date: ${v.total_paid}. ` +
+    `Ref: ${v.reference}. ` +
+    `Visit www.partna.io to view your account.`,
+
+  fee_payment_received: (v) =>
+    `Partna: Payment of ${v.amount} received for student ${v.student_name} ` +
+    `(ID: ${v.student_id}). ` +
+    `Campaign: ${v.campaign}. ` +
+    `Ref: ${v.reference}. ` +
+    `Log in to your dashboard to view all payments.`,
 }
 
 // ── Phone number formatter ─────────────────────────────────────────────────
@@ -67,12 +81,9 @@ const TEMPLATES: Record<string, (vars: Record<string, string>) => string> = {
 function formatPhone(phone: string): string {
   if (!phone) return ''
   const clean = phone.replace(/[\s\-\(\)]/g, '')
-  // Already in international format
   if (clean.startsWith('+256')) return clean
   if (clean.startsWith('256')) return '+' + clean
-  // Local format starting with 0
   if (clean.startsWith('0')) return '+256' + clean.slice(1)
-  // Bare number starting with 7
   if (clean.startsWith('7')) return '+256' + clean
   return clean
 }
@@ -137,7 +148,6 @@ async function logSMS(supabase: any, {
       error: error || null,
     })
   } catch (e) {
-    // Non-critical — don't fail SMS send if logging fails
     console.error('SMS log error:', e)
   }
 }
@@ -183,7 +193,6 @@ serve(async (req) => {
       console.error(`SMS failed for event ${event} to ${phone}:`, result.error)
     }
 
-    // Always return 200 — SMS failure should never block the main operation
     return new Response(JSON.stringify({
       success:   result.success,
       messageId: result.messageId,
