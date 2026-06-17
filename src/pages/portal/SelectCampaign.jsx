@@ -121,13 +121,30 @@ function StudentIdLookup({ businessId, enrolledStudentIds, onStudentConfirmed, c
   const [lookingUp, setLookingUp]             = useState(false)
   const [lookupError, setLookupError]         = useState('')
 
-  async function handleLookup() {
+  // Fallback name search state
+  const [showNameSearch, setShowNameSearch]   = useState(false)
+  const [nameFirst, setNameFirst]             = useState('')
+  const [nameLast, setNameLast]               = useState('')
+  const [nameYear, setNameYear]               = useState('')
+  const [nameSearching, setNameSearching]     = useState(false)
+  const [nameSearchError, setNameSearchError] = useState('')
+
+  // ── Shared: check enrollment and confirm ────────────────────────────
+  function checkAndConfirm(data) {
+    if (enrolledStudentIds.includes(data.id)) {
+      return 'This student is already enrolled in an active campaign. Each child can only have one active campaign at a time.'
+    }
+    onStudentConfirmed(data)
+    return null
+  }
+
+  // ── ID-based lookup ─────────────────────────────────────────────────
+  async function handleIdLookup() {
     const val = studentIdInput.trim()
     if (!val) { setLookupError('Please enter a student ID.'); return }
     setLookingUp(true)
     setLookupError('')
     try {
-      // Exact match only — against partna_student_id OR school_student_id
       const { data, error } = await supabase
         .from('students')
         .select('id, first_name, last_name, partna_student_id, school_student_id, year_group')
@@ -137,27 +154,64 @@ function StudentIdLookup({ businessId, enrolledStudentIds, onStudentConfirmed, c
         .maybeSingle()
 
       if (error || !data) {
-        setLookupError('No student found with that ID. Please check the ID and try again, or contact your school.')
+        setLookupError('No student found with that ID. Please check the ID and try again, or use "I don\'t know the Student ID number" below.')
         setLookingUp(false)
         return
       }
 
-      // Check if this student is already enrolled in an education campaign
-      if (enrolledStudentIds.includes(data.id)) {
-        setLookupError('This student is already enrolled in an active campaign. Each child can only have one active campaign at a time.')
-        setLookingUp(false)
-        return
-      }
-
-      onStudentConfirmed(data)
+      const err = checkAndConfirm(data)
+      if (err) setLookupError(err)
     } catch (e) {
-      console.error('Student lookup error:', e)
+      console.error('Student ID lookup error:', e)
       setLookupError('Something went wrong. Please try again.')
     }
     setLookingUp(false)
   }
 
-  // If student already confirmed, show confirmation chip
+  // ── Name + year group lookup ─────────────────────────────────────────
+  async function handleNameLookup() {
+    const first = nameFirst.trim()
+    const last  = nameLast.trim()
+    const year  = nameYear.trim()
+
+    if (!first) { setNameSearchError('Please enter the first name.'); return }
+    if (!last)  { setNameSearchError('Please enter the last name.'); return }
+    if (!year)  { setNameSearchError('Please enter the year group or class.'); return }
+
+    setNameSearching(true)
+    setNameSearchError('')
+    try {
+      // All three fields must match exactly (case-insensitive)
+      // ilike with no wildcards = case-insensitive exact match
+      const { data, error } = await supabase
+        .from('students')
+        .select('id, first_name, last_name, partna_student_id, school_student_id, year_group')
+        .eq('business_id', businessId)
+        .eq('is_active', true)
+        .ilike('first_name', first)
+        .ilike('last_name', last)
+        .ilike('year_group', year)
+        .maybeSingle()
+
+      if (error || !data) {
+        setNameSearchError(
+          'No student found with those details. Please check the spelling and year group, and try again. ' +
+          'If the problem continues, contact your school office.'
+        )
+        setNameSearching(false)
+        return
+      }
+
+      const err = checkAndConfirm(data)
+      if (err) setNameSearchError(err)
+    } catch (e) {
+      console.error('Student name lookup error:', e)
+      setNameSearchError('Something went wrong. Please try again.')
+    }
+    setNameSearching(false)
+  }
+
+  // ── Confirmed chip ──────────────────────────────────────────────────
   if (confirmedStudent) {
     return (
       <div style={{
@@ -191,7 +245,14 @@ function StudentIdLookup({ businessId, enrolledStudentIds, onStudentConfirmed, c
           </div>
         </div>
         <button
-          onClick={() => { onClear(); setStudentIdInput(''); setLookupError('') }}
+          onClick={() => {
+            onClear()
+            setStudentIdInput('')
+            setLookupError('')
+            setShowNameSearch(false)
+            setNameFirst(''); setNameLast(''); setNameYear('')
+            setNameSearchError('')
+          }}
           className="btn btn-sm btn-secondary"
         >
           Change
@@ -202,53 +263,144 @@ function StudentIdLookup({ businessId, enrolledStudentIds, onStudentConfirmed, c
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
-      <div style={{
-        padding: 'var(--space-3) var(--space-4)',
-        background: 'var(--color-white)', border: 'var(--border)',
-        display: 'flex', alignItems: 'flex-start', gap: 'var(--space-3)',
-      }}>
-        <span className="icon-outlined" style={{ fontSize: 18, color: 'var(--color-primary)', flexShrink: 0, marginTop: 1 }}>info</span>
-        <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-grey)', lineHeight: 'var(--leading-normal)' }}>
-          Enter your child's <strong style={{ color: 'var(--color-black)' }}>Partna Student ID</strong> (e.g. PTN-ST-00001)
-          or their <strong style={{ color: 'var(--color-black)' }}>school admission number</strong> (e.g. ADM-001).
-          You can find this on any school correspondence or by contacting the school office.
-        </div>
-      </div>
 
-      <div className="input-group">
-        <label className="input-label">Student ID</label>
-        <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
-          <div className="input-wrapper" style={{ flex: 1 }}>
-            <span className="icon-outlined input-icon-left">badge</span>
-            <input
-              type="text"
-              className={`input ${lookupError ? 'input-error' : ''}`}
-              placeholder="PTN-ST-00001 or ADM-001"
-              value={studentIdInput}
-              onChange={e => { setStudentIdInput(e.target.value); setLookupError('') }}
-              onKeyDown={e => e.key === 'Enter' && handleLookup()}
-              style={{ textTransform: 'uppercase' }}
-            />
+      {/* ── ID lookup ── */}
+      {!showNameSearch && (
+        <>
+          <div style={{
+            padding: 'var(--space-3) var(--space-4)',
+            background: 'var(--color-white)', border: 'var(--border)',
+            display: 'flex', alignItems: 'flex-start', gap: 'var(--space-3)',
+          }}>
+            <span className="icon-outlined" style={{ fontSize: 18, color: 'var(--color-primary)', flexShrink: 0, marginTop: 1 }}>info</span>
+            <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-grey)', lineHeight: 'var(--leading-normal)' }}>
+              Enter your child's <strong style={{ color: 'var(--color-black)' }}>Student ID number</strong> (e.g. ADM-001, STU-001, REG-2024-001).
+              You can find this on any fee statement, admission letter, or registration document from your institution.
+            </div>
           </div>
+
+          <div className="input-group">
+            <label className="input-label">Student ID number</label>
+            <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+              <div className="input-wrapper" style={{ flex: 1 }}>
+                <span className="icon-outlined input-icon-left">badge</span>
+                <input
+                  type="text"
+                  className={`input ${lookupError ? 'input-error' : ''}`}
+                  placeholder="e.g. ADM-001, STU-001, REG-2024-001"
+                  value={studentIdInput}
+                  onChange={e => { setStudentIdInput(e.target.value); setLookupError('') }}
+                  onKeyDown={e => e.key === 'Enter' && handleIdLookup()}
+                  style={{ textTransform: 'uppercase' }}
+                />
+              </div>
+              <button
+                onClick={handleIdLookup}
+                disabled={lookingUp || !studentIdInput.trim()}
+                className="btn btn-primary"
+                style={{ flexShrink: 0 }}
+              >
+                {lookingUp
+                  ? <div className="spinner spinner-sm" style={{ borderTopColor: 'var(--color-black)' }} />
+                  : <><span className="icon-outlined icon-sm">search</span> Find</>
+                }
+              </button>
+            </div>
+            {lookupError && <span className="input-hint error">{lookupError}</span>}
+          </div>
+
+          {/* Don't know ID link */}
           <button
-            onClick={handleLookup}
-            disabled={lookingUp || !studentIdInput.trim()}
-            className="btn btn-primary"
-            style={{ flexShrink: 0 }}
+            onClick={() => { setShowNameSearch(true); setLookupError('') }}
+            style={{
+              background: 'none', border: 'none', cursor: 'pointer',
+              fontSize: 'var(--text-xs)', color: 'var(--color-primary)',
+              fontWeight: 'var(--weight-bold)', textDecoration: 'underline',
+              textAlign: 'left', padding: 0,
+            }}
           >
-            {lookingUp
-              ? <div className="spinner spinner-sm" style={{ borderTopColor: 'var(--color-black)' }} />
-              : <><span className="icon-outlined icon-sm">search</span> Find</>
-            }
+            I don't know the Student ID number
           </button>
-        </div>
-        {lookupError && (
-          <span className="input-hint error">{lookupError}</span>
-        )}
-        <span className="input-hint">
-          Only an exact ID match will work — no partial searches.
-        </span>
-      </div>
+        </>
+      )}
+
+      {/* ── Name + year group fallback ── */}
+      {showNameSearch && (
+        <>
+          <div style={{
+            padding: 'var(--space-3) var(--space-4)',
+            background: 'var(--color-yellow)', border: 'var(--border)',
+            display: 'flex', alignItems: 'flex-start', gap: 'var(--space-3)',
+          }}>
+            <span className="icon-outlined" style={{ fontSize: 18, flexShrink: 0, marginTop: 1 }}>info</span>
+            <div style={{ fontSize: 'var(--text-xs)', lineHeight: 'var(--leading-normal)' }}>
+              Enter your child's <strong>exact</strong> first name, last name, and year group or class as registered at school.
+              All three must match exactly to find your child.
+            </div>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-3)' }}>
+            <div className="input-group">
+              <label className="input-label">First name</label>
+              <input
+                type="text" className="input"
+                placeholder="e.g. Sarah"
+                value={nameFirst}
+                onChange={e => { setNameFirst(e.target.value); setNameSearchError('') }}
+              />
+            </div>
+            <div className="input-group">
+              <label className="input-label">Last name</label>
+              <input
+                type="text" className="input"
+                placeholder="e.g. Nakato"
+                value={nameLast}
+                onChange={e => { setNameLast(e.target.value); setNameSearchError('') }}
+              />
+            </div>
+          </div>
+
+          <div className="input-group">
+            <label className="input-label">Year group / Class</label>
+            <input
+              type="text" className="input"
+              placeholder="e.g. S3, P6, Form 4, Year 2"
+              value={nameYear}
+              onChange={e => { setNameYear(e.target.value); setNameSearchError('') }}
+            />
+            <span className="input-hint">Enter exactly as it appears on your institution's correspondence.</span>
+          </div>
+
+          {nameSearchError && (
+            <div className="alert alert-danger">
+              <span className="icon-outlined alert-icon">error_outline</span>
+              <div className="alert-content">{nameSearchError}</div>
+            </div>
+          )}
+
+          <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+            <button
+              onClick={() => { setShowNameSearch(false); setNameSearchError(''); setNameFirst(''); setNameLast(''); setNameYear('') }}
+              className="btn btn-secondary"
+              style={{ flex: 1 }}
+            >
+              <span className="icon-outlined icon-sm">arrow_back</span>
+              Back
+            </button>
+            <button
+              onClick={handleNameLookup}
+              disabled={nameSearching || !nameFirst.trim() || !nameLast.trim() || !nameYear.trim()}
+              className="btn btn-primary"
+              style={{ flex: 2 }}
+            >
+              {nameSearching
+                ? <><div className="spinner spinner-sm" style={{ borderTopColor: 'var(--color-black)' }} /> Searching…</>
+                : <><span className="icon-outlined icon-sm">search</span> Find my child</>
+              }
+            </button>
+          </div>
+        </>
+      )}
     </div>
   )
 }
