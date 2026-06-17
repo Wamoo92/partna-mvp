@@ -16,8 +16,21 @@ function daysLeft(campaign) {
   return Math.max(Math.ceil((new Date(campaign.target_date).getTime() - Date.now()) / 86400000), 0)
 }
 
-const WIZARD_STEPS      = ['Basic info', 'Target & dates', 'Payment schedule', 'Vouchers & prizes', 'Review & launch']
-const WIZARD_STEPS_RETAIL = ['Product',  'Payment schedule', 'Vouchers & prizes', 'Review & launch']
+const FEE_TYPES = [
+  { value: 'tuition',       label: 'Tuition fees' },
+  { value: 'functional',    label: 'Functional fees' },
+  { value: 'building_fund', label: 'Building fund' },
+  { value: 'exam',          label: 'Exam fees' },
+  { value: 'pta',           label: 'PTA contribution' },
+  { value: 'other',         label: 'Other' },
+]
+
+// General campaign steps
+const WIZARD_STEPS_GENERAL = ['Campaign type', 'Basic info', 'Target & dates', 'Payment schedule', 'Vouchers & prizes', 'Review & launch']
+// Education campaign steps
+const WIZARD_STEPS_EDU     = ['Campaign type', 'Basic info', 'Target & fees', 'Payment schedule', 'Vouchers & prizes', 'Review & launch']
+// Retail campaign steps (unchanged)
+const WIZARD_STEPS_RETAIL  = ['Product', 'Payment schedule', 'Vouchers & prizes', 'Review & launch']
 
 // ── Countdown timer ────────────────────────────────────────────────────────
 function CountdownTimer({ campaign }) {
@@ -36,6 +49,7 @@ function CampaignCard({ campaign, status, onDelete, onRestart }) {
   const isActive  = status === 'active'
   const isPaused  = status === 'paused'
   const isDeleted = status === 'deleted'
+  const isEdu     = campaign.campaign_type === 'education_fees'
 
   const scheduleLabel = !campaign.allow_partial_payments
     ? 'Disabled'
@@ -43,10 +57,12 @@ function CampaignCard({ campaign, status, onDelete, onRestart }) {
     ? `Fixed — ${campaign.payment_discount_percentage}% minimum`
     : 'Flexible'
 
+  const feeTypeLabel = FEE_TYPES.find(f => f.value === campaign.fee_type)?.label || campaign.fee_type || '—'
+
   return (
     <div style={{
       background: 'var(--color-white)',
-      border: isPaused  ? '2px solid var(--color-yellow)' : 'var(--border)',
+      border: isPaused ? '2px solid var(--color-yellow)' : 'var(--border)',
       boxShadow: isActive ? 'var(--shadow-sm)' : 'none',
       padding: 'var(--space-5)',
       display: 'flex', flexDirection: 'column', gap: 'var(--space-3)',
@@ -57,59 +73,57 @@ function CampaignCard({ campaign, status, onDelete, onRestart }) {
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 'var(--space-3)' }}>
         <div style={{ minWidth: 0 }}>
           <div style={{
-            fontWeight: 'var(--weight-bold)',
-            fontSize: 'var(--text-base)',
+            fontWeight: 'var(--weight-bold)', fontSize: 'var(--text-base)',
             color: isDeleted ? 'var(--color-grey)' : 'var(--color-black)',
             whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
           }}>
             {campaign.name}
           </div>
+          {/* Education badge */}
+          {isEdu && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-1)', marginTop: 3 }}>
+              <span className="icon-outlined" style={{ fontSize: 12, color: 'var(--color-primary)' }}>school</span>
+              <span style={{ fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-bold)', color: 'var(--color-primary)' }}>
+                {feeTypeLabel}
+                {campaign.academic_year ? ` · ${campaign.academic_year}` : ''}
+                {campaign.term_or_semester ? ` · ${campaign.term_or_semester}` : ''}
+              </span>
+            </div>
+          )}
           {campaign.product_code && (
-            <div style={{
-              fontFamily: 'monospace', fontSize: 'var(--text-xs)',
-              fontWeight: 'var(--weight-black)', color: 'var(--color-primary)',
-              marginTop: 3,
-            }}>
+            <div style={{ fontFamily: 'monospace', fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-black)', color: 'var(--color-primary)', marginTop: 3 }}>
               {campaign.product_code}
             </div>
           )}
         </div>
-        <span className={`badge no-dot ${isActive ? 'badge-success' : isPaused ? 'badge-warning' : 'badge-default'}`}
-          style={{ flexShrink: 0 }}>
+        <span className={`badge no-dot ${isActive ? 'badge-success' : isPaused ? 'badge-warning' : 'badge-default'}`} style={{ flexShrink: 0 }}>
           {isActive ? 'Active' : isPaused ? 'Paused' : 'Deleted'}
         </span>
       </div>
 
       {/* Paused countdown */}
       {isPaused && (
-        <div style={{
-          padding: 'var(--space-3) var(--space-4)',
-          background: 'var(--color-yellow)',
-          border: 'var(--border)',
-          display: 'flex', flexDirection: 'column', gap: 4,
-        }}>
+        <div style={{ padding: 'var(--space-3) var(--space-4)', background: 'var(--color-yellow)', border: 'var(--border)', display: 'flex', flexDirection: 'column', gap: 4 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
             <span className="icon-outlined" style={{ fontSize: 16 }}>schedule</span>
-            <span style={{ fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-bold)' }}>
-              Deletion countdown
-            </span>
+            <span style={{ fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-bold)' }}>Deletion countdown</span>
           </div>
           <div style={{ fontSize: 'var(--text-xl)', letterSpacing: '0.05em', color: 'var(--color-black)' }}>
             <CountdownTimer campaign={campaign} />
           </div>
-          <div style={{ fontSize: 'var(--text-xs)', color: 'rgba(0,0,0,0.55)' }}>
-            Time remaining to cancel
-          </div>
+          <div style={{ fontSize: 'var(--text-xs)', color: 'rgba(0,0,0,0.55)' }}>Time remaining to cancel</div>
         </div>
       )}
 
       {/* Detail rows */}
       <div style={{ border: 'var(--border)', overflow: 'hidden' }}>
         {[
-          { label: 'Target',           value: formatUGX(campaign.target_amount) },
-          { label: 'Deadline',         value: new Date(campaign.target_date).toLocaleDateString('en-UG', { day: 'numeric', month: 'long', year: 'numeric' }) },
+          { label: 'Target',                value: formatUGX(campaign.target_amount) },
+          { label: 'Deadline',              value: new Date(campaign.target_date).toLocaleDateString('en-UG', { day: 'numeric', month: 'long', year: 'numeric' }) },
           ...(isActive ? [{ label: 'Days remaining', value: daysLeft(campaign) + ' days' }] : []),
-          { label: 'Payment schedule', value: scheduleLabel },
+          ...(isEdu && campaign.minimum_payment > 0 ? [{ label: 'Min. payment', value: formatUGX(campaign.minimum_payment) }] : []),
+          ...(isEdu && campaign.minimum_registration_amount > 0 ? [{ label: 'Registration threshold', value: formatUGX(campaign.minimum_registration_amount) }] : []),
+          ...(!isEdu ? [{ label: 'Payment schedule', value: scheduleLabel }] : []),
         ].map((row, i, arr) => (
           <div key={i} style={{
             display: 'flex', justifyContent: 'space-between', alignItems: 'center',
@@ -150,12 +164,12 @@ function CampaignCard({ campaign, status, onDelete, onRestart }) {
 // ── Main ───────────────────────────────────────────────────────────────────
 
 export default function Campaigns({ admin, business }) {
-  const [campaigns, setCampaigns]     = useState([])
-  const [loading, setLoading]         = useState(true)
-  const [showWizard, setShowWizard]   = useState(false)
-  const [wizardStep, setWizardStep]   = useState(0)
-  const [saving, setSaving]           = useState(false)
-  const [error, setError]             = useState('')
+  const [campaigns, setCampaigns]   = useState([])
+  const [loading, setLoading]       = useState(true)
+  const [showWizard, setShowWizard] = useState(false)
+  const [wizardStep, setWizardStep] = useState(0)
+  const [saving, setSaving]         = useState(false)
+  const [error, setError]           = useState('')
 
   const [showDeleteModal, setShowDeleteModal] = useState(null)
   const [deletePassword, setDeletePassword]   = useState('')
@@ -165,23 +179,55 @@ export default function Campaigns({ admin, business }) {
   const [showRestartModal, setShowRestartModal] = useState(null)
   const [restarting, setRestarting]             = useState(false)
 
-  // Wizard state
-  const [name, setName]               = useState('')
-  const [description, setDescription] = useState('')
-  const [productCode, setProductCode] = useState('')
+  // ── Wizard state — shared ──────────────────────────────────────────────
+  const [campaignType, setCampaignType]   = useState('general') // 'general' | 'education_fees'
+  const [name, setName]                   = useState('')
+  const [description, setDescription]     = useState('')
+  const [targetAmount, setTargetAmount]   = useState('')
+  const [startDate, setStartDate]         = useState('')
+  const [endDate, setEndDate]             = useState('')
+  const [enableSchedule, setEnableSchedule] = useState(false)
+  const [scheduleType, setScheduleType]   = useState('flexible')
+  const [fixedPct, setFixedPct]           = useState(25)
+  const [enableVouchers, setEnableVouchers] = useState(false)
+  const [enablePrize, setEnablePrize]     = useState(false)
+
+  // ── Wizard state — retail only ─────────────────────────────────────────
+  const [productCode, setProductCode]               = useState('')
   const [productLookupResult, setProductLookupResult] = useState(null)
   const [productLookupError, setProductLookupError]   = useState('')
-  const [lookingUp, setLookingUp]     = useState(false)
-  const [targetAmount, setTargetAmount] = useState('')
-  const [startDate, setStartDate]     = useState('')
-  const [endDate, setEndDate]         = useState('')
-  const [enableSchedule, setEnableSchedule] = useState(false)
-  const [scheduleType, setScheduleType]     = useState('flexible')
-  const [fixedPct, setFixedPct]       = useState(25)
-  const [enableVouchers, setEnableVouchers] = useState(false)
-  const [enablePrize, setEnablePrize] = useState(false)
+  const [lookingUp, setLookingUp]                   = useState(false)
+
+  // ── Wizard state — education only ──────────────────────────────────────
+  const [feeType, setFeeType]                           = useState('tuition')
+  const [academicYear, setAcademicYear]                 = useState('')
+  const [termOrSemester, setTermOrSemester]             = useState('')
+  const [minimumPayment, setMinimumPayment]             = useState('')
+  const [minimumRegistrationAmount, setMinimumRegistrationAmount] = useState('')
 
   const isRetail = business?.sector === 'Retail'
+  const isEdu    = !isRetail && campaignType === 'education_fees'
+
+  // Wizard step arrays
+  const displaySteps = isRetail
+    ? WIZARD_STEPS_RETAIL
+    : isEdu
+    ? WIZARD_STEPS_EDU
+    : WIZARD_STEPS_GENERAL
+
+  // Map internal wizardStep to display step index
+  // For retail: step 0=product, 2=payment, 3=vouchers, 4=review
+  // For general/edu: step 0=type, 1=basic, 2=target, 3=payment, 4=vouchers, 5=review
+  function displayStep() {
+    if (isRetail) {
+      if (wizardStep === 0) return 0
+      if (wizardStep === 2) return 1
+      if (wizardStep === 3) return 2
+      if (wizardStep === 4) return 3
+      return wizardStep
+    }
+    return wizardStep
+  }
 
   useEffect(() => { if (business) loadCampaigns() }, [business])
   useEffect(() => {
@@ -269,19 +315,36 @@ export default function Campaigns({ admin, business }) {
     setLookingUp(false)
   }
 
-  function parsedTarget() { return parseInt(targetAmount.replace(/,/g, ''), 10) || 0 }
+  function parsedTarget()    { return parseInt(targetAmount.replace(/,/g, ''), 10) || 0 }
+  function parsedMinPay()    { return parseInt(minimumPayment.replace(/,/g, ''), 10) || 0 }
+  function parsedMinReg()    { return parseInt(minimumRegistrationAmount.replace(/,/g, ''), 10) || 0 }
   function fixedMinDeposit() { return Math.round(parsedTarget() * (fixedPct / 100)) }
 
   function validateStep(step) {
     setError('')
-    if (step === 0) {
-      if (isRetail && !productLookupResult) { setError('Please enter a valid product code.'); return false }
-      if (!isRetail && !name)               { setError('Please enter a campaign name.'); return false }
+    if (isRetail) {
+      if (step === 0 && !productLookupResult) { setError('Please enter a valid product code.'); return false }
+      return true
     }
-    if (step === 1 && !isRetail) {
-      if (!targetAmount || parsedTarget() < 1000) { setError('Please enter a valid target amount.'); return false }
+    // Step 0: campaign type — always valid (default is 'general')
+    if (step === 0) return true
+    // Step 1: basic info
+    if (step === 1) {
+      if (!name) { setError('Please enter a campaign name.'); return false }
+    }
+    // Step 2: target & dates (and education-specific fields)
+    if (step === 2) {
+      if (!targetAmount || parsedTarget() < 1000) { setError('Please enter a valid target amount (minimum UGX 1,000).'); return false }
       if (!startDate || !endDate)                  { setError('Please enter start and end dates.'); return false }
       if (new Date(endDate) <= new Date(startDate)) { setError('End date must be after start date.'); return false }
+      if (isEdu && parsedMinPay() > 0 && parsedMinPay() > parsedTarget()) {
+        setError('Minimum payment cannot exceed the target amount.')
+        return false
+      }
+      if (isEdu && parsedMinReg() > 0 && parsedMinReg() > parsedTarget()) {
+        setError('Registration threshold cannot exceed the target amount.')
+        return false
+      }
     }
     return true
   }
@@ -297,18 +360,37 @@ export default function Campaigns({ admin, business }) {
     setWizardStep(s => s - 1)
   }
 
+  const maxStep = isRetail ? 4 : 5
+
   async function handleLaunch() {
     setError(''); setSaving(true)
     try {
       const minDeposit = enableSchedule && scheduleType === 'fixed' ? fixedMinDeposit() : 0
-      const { error: campaignError } = await supabase.from('campaigns').insert({
-        business_id: business.id, name, description: description || null,
-        target_amount: parsedTarget(), target_date: new Date(endDate).toISOString(),
-        minimum_deposit: minDeposit, allow_partial_payments: enableSchedule,
-        minimum_payment: minDeposit,
-        payment_discount_percentage: enableSchedule && scheduleType === 'fixed' ? fixedPct : 0,
-        status: 'active', product_code: productLookupResult?.product_code || null,
-      })
+
+      const payload = {
+        business_id:   business.id,
+        name,
+        description:   description || null,
+        target_amount: parsedTarget(),
+        target_date:   new Date(endDate).toISOString(),
+        status:        'active',
+        campaign_type: isRetail ? 'general' : campaignType,
+
+        // General / retail fields
+        minimum_deposit:              minDeposit,
+        allow_partial_payments:       enableSchedule,
+        minimum_payment:              isEdu ? parsedMinPay() : minDeposit,
+        payment_discount_percentage:  enableSchedule && scheduleType === 'fixed' ? fixedPct : 0,
+        product_code:                 productLookupResult?.product_code || null,
+
+        // Education-specific fields
+        fee_type:                     isEdu ? feeType : null,
+        academic_year:                isEdu && academicYear ? academicYear : null,
+        term_or_semester:             isEdu && termOrSemester ? termOrSemester : null,
+        minimum_registration_amount:  isEdu ? parsedMinReg() : 0,
+      }
+
+      const { error: campaignError } = await supabase.from('campaigns').insert(payload)
       if (campaignError) throw campaignError
       await loadCampaigns(); setShowWizard(false); resetWizard()
     } catch (e) { console.error('Launch error:', e); setError('Could not create campaign. Please try again.') }
@@ -316,20 +398,14 @@ export default function Campaigns({ admin, business }) {
   }
 
   function resetWizard() {
-    setWizardStep(0); setName(''); setDescription(''); setTargetAmount('')
-    setStartDate(''); setEndDate(''); setProductCode(''); setProductLookupResult(null)
-    setProductLookupError(''); setEnableSchedule(false); setScheduleType('flexible')
-    setFixedPct(25); setEnableVouchers(false); setEnablePrize(false); setError('')
-  }
-
-  const displaySteps = isRetail ? WIZARD_STEPS_RETAIL : WIZARD_STEPS
-  function displayStep() {
-    if (!isRetail) return wizardStep
-    if (wizardStep === 0) return 0
-    if (wizardStep === 2) return 1
-    if (wizardStep === 3) return 2
-    if (wizardStep === 4) return 3
-    return wizardStep
+    setWizardStep(0); setCampaignType('general')
+    setName(''); setDescription(''); setTargetAmount('')
+    setStartDate(''); setEndDate('')
+    setProductCode(''); setProductLookupResult(null); setProductLookupError('')
+    setEnableSchedule(false); setScheduleType('flexible'); setFixedPct(25)
+    setEnableVouchers(false); setEnablePrize(false); setError('')
+    setFeeType('tuition'); setAcademicYear(''); setTermOrSemester('')
+    setMinimumPayment(''); setMinimumRegistrationAmount('')
   }
 
   const activeCampaigns  = campaigns.filter(c => getEffectiveStatus(c) === 'active')
@@ -362,12 +438,10 @@ export default function Campaigns({ admin, business }) {
                 <label className="input-label">Enter your password to confirm</label>
                 <div className="input-wrapper">
                   <span className="icon-outlined input-icon-left">lock</span>
-                  <input
-                    type="password" className="input"
-                    value={deletePassword} onChange={e => setDeletePassword(e.target.value)}
+                  <input type="password" className="input" value={deletePassword}
+                    onChange={e => setDeletePassword(e.target.value)}
                     onKeyDown={e => e.key === 'Enter' && handleDelete()}
-                    placeholder="Your account password"
-                  />
+                    placeholder="Your account password" />
                 </div>
               </div>
               {deleteError && (
@@ -378,9 +452,7 @@ export default function Campaigns({ admin, business }) {
               )}
             </div>
             <div className="modal-footer">
-              <button onClick={() => { setShowDeleteModal(null); setDeletePassword(''); setDeleteError('') }} className="btn btn-secondary" style={{ flex: 1 }}>
-                Cancel
-              </button>
+              <button onClick={() => { setShowDeleteModal(null); setDeletePassword(''); setDeleteError('') }} className="btn btn-secondary" style={{ flex: 1 }}>Cancel</button>
               <button onClick={handleDelete} disabled={deleting || !deletePassword} className="btn btn-danger" style={{ flex: 1 }}>
                 {deleting
                   ? <><div className="spinner spinner-sm" style={{ borderTopColor: 'var(--color-black)' }} /> Verifying…</>
@@ -460,7 +532,6 @@ export default function Campaigns({ admin, business }) {
               ))}
             </div>
           )}
-
           {pausedCampaigns.length > 0 && (
             <div>
               <div style={{ fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-black)', letterSpacing: 'var(--tracking-widest)', textTransform: 'uppercase', color: '#8A6700', marginBottom: 'var(--space-3)', display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
@@ -474,7 +545,6 @@ export default function Campaigns({ admin, business }) {
               </div>
             </div>
           )}
-
           {deletedCampaigns.length > 0 && (
             <div>
               <div style={{ fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-black)', letterSpacing: 'var(--tracking-widest)', textTransform: 'uppercase', color: 'var(--color-grey)', marginBottom: 'var(--space-3)' }}>
@@ -496,11 +566,7 @@ export default function Campaigns({ admin, business }) {
           <div className="modal modal-lg" style={{ maxHeight: '90vh', overflowY: 'auto' }}>
 
             {/* Wizard header */}
-            <div style={{
-              background: 'var(--color-black)',
-              borderBottom: '3px solid var(--color-primary)',
-              padding: 'var(--space-5) var(--space-6)',
-            }}>
+            <div style={{ background: 'var(--color-black)', borderBottom: '3px solid var(--color-primary)', padding: 'var(--space-5) var(--space-6)' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 'var(--space-4)' }}>
                 <h2 style={{ color: 'var(--color-white)', fontWeight: 'var(--weight-black)', fontSize: 'var(--text-lg)' }}>
                   New Campaign
@@ -535,71 +601,166 @@ export default function Campaigns({ admin, business }) {
 
             <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
 
-              {/* ── STEP 0 ── */}
-              {wizardStep === 0 && (
-                isRetail ? (
-                  <>
-                    <div className="input-group">
-                      <label className="input-label">Product code <span className="required">*</span></label>
-                      <div className="input-wrapper">
-                        <span className="icon-outlined input-icon-left">inventory_2</span>
-                        <input type="text" className={`input ${productLookupResult ? 'input-success' : productLookupError ? 'input-error' : ''}`}
-                          value={productCode} onChange={e => handleProductCodeLookup(e.target.value)}
-                          placeholder="e.g. PRD-A1B2C3"
-                          style={{ textTransform: 'uppercase', fontFamily: 'monospace', letterSpacing: '0.1em' }} />
-                        <div className="input-icon-right" style={{ pointerEvents: 'none' }}>
-                          {lookingUp
-                            ? <div className="spinner spinner-sm" />
-                            : productLookupResult
-                            ? <span className="icon-outlined" style={{ fontSize: 20, color: '#2D8B45' }}>check_circle</span>
-                            : null
-                          }
-                        </div>
+              {/* ── RETAIL STEP 0: Product code ── */}
+              {isRetail && wizardStep === 0 && (
+                <>
+                  <div className="input-group">
+                    <label className="input-label">Product code <span className="required">*</span></label>
+                    <div className="input-wrapper">
+                      <span className="icon-outlined input-icon-left">inventory_2</span>
+                      <input type="text" className={`input ${productLookupResult ? 'input-success' : productLookupError ? 'input-error' : ''}`}
+                        value={productCode} onChange={e => handleProductCodeLookup(e.target.value)}
+                        placeholder="e.g. PRD-A1B2C3"
+                        style={{ textTransform: 'uppercase', fontFamily: 'monospace', letterSpacing: '0.1em' }} />
+                      <div className="input-icon-right" style={{ pointerEvents: 'none' }}>
+                        {lookingUp
+                          ? <div className="spinner spinner-sm" />
+                          : productLookupResult
+                          ? <span className="icon-outlined" style={{ fontSize: 20, color: '#2D8B45' }}>check_circle</span>
+                          : null
+                        }
                       </div>
-                      {productLookupError && <span className="input-hint error">{productLookupError}</span>}
-                      <span className="input-hint">Enter a product code from your Products page. Campaign details will auto-fill.</span>
                     </div>
-
-                    {productLookupResult && (
-                      <div style={{ border: 'var(--border)', overflow: 'hidden' }}>
-                        <div style={{ background: 'var(--color-black)', padding: 'var(--space-2) var(--space-4)', fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-black)', letterSpacing: 'var(--tracking-widest)', textTransform: 'uppercase', color: 'var(--color-white)' }}>
-                          Auto-filled from product
-                        </div>
-                        {[
-                          { label: 'Campaign name',  value: name },
-                          { label: 'Description',    value: description || '—' },
-                          { label: 'Target amount',  value: formatUGX(parsedTarget()) },
-                          { label: 'Start date',     value: startDate },
-                          { label: 'Deadline',       value: endDate + ' (12 months)' },
-                        ].map((row, i, arr) => (
-                          <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: 'var(--space-2) var(--space-4)', borderBottom: i < arr.length - 1 ? '1.5px solid var(--color-grey-light)' : 'none', background: i % 2 === 0 ? 'var(--color-white)' : 'var(--color-bg)' }}>
-                            <span style={{ fontSize: 'var(--text-sm)', color: 'var(--color-grey)' }}>{row.label}</span>
-                            <span style={{ fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-bold)' }}>{row.value}</span>
-                          </div>
-                        ))}
-                        <div style={{ padding: 'var(--space-2) var(--space-4)', background: 'var(--color-bg)', fontSize: 'var(--text-xs)', color: 'var(--color-grey)', display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-                          <span className="icon-outlined" style={{ fontSize: 14 }}>lock</span>
-                          These fields are set from the product and cannot be edited.
-                        </div>
+                    {productLookupError && <span className="input-hint error">{productLookupError}</span>}
+                    <span className="input-hint">Enter a product code from your Products page. Campaign details will auto-fill.</span>
+                  </div>
+                  {productLookupResult && (
+                    <div style={{ border: 'var(--border)', overflow: 'hidden' }}>
+                      <div style={{ background: 'var(--color-black)', padding: 'var(--space-2) var(--space-4)', fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-black)', letterSpacing: 'var(--tracking-widest)', textTransform: 'uppercase', color: 'var(--color-white)' }}>
+                        Auto-filled from product
                       </div>
-                    )}
-                  </>
-                ) : (
-                  <>
-                    <div className="input-group">
-                      <label className="input-label">Campaign name <span className="required">*</span></label>
-                      <input type="text" className="input" value={name} onChange={e => setName(e.target.value)} />
+                      {[
+                        { label: 'Campaign name',  value: name },
+                        { label: 'Description',    value: description || '—' },
+                        { label: 'Target amount',  value: formatUGX(parsedTarget()) },
+                        { label: 'Start date',     value: startDate },
+                        { label: 'Deadline',       value: endDate + ' (12 months)' },
+                      ].map((row, i, arr) => (
+                        <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: 'var(--space-2) var(--space-4)', borderBottom: i < arr.length - 1 ? '1.5px solid var(--color-grey-light)' : 'none', background: i % 2 === 0 ? 'var(--color-white)' : 'var(--color-bg)' }}>
+                          <span style={{ fontSize: 'var(--text-sm)', color: 'var(--color-grey)' }}>{row.label}</span>
+                          <span style={{ fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-bold)' }}>{row.value}</span>
+                        </div>
+                      ))}
+                      <div style={{ padding: 'var(--space-2) var(--space-4)', background: 'var(--color-bg)', fontSize: 'var(--text-xs)', color: 'var(--color-grey)', display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+                        <span className="icon-outlined" style={{ fontSize: 14 }}>lock</span>
+                        These fields are set from the product and cannot be edited.
+                      </div>
                     </div>
-                    <div className="input-group">
-                      <label className="input-label">Description <span style={{ textTransform: 'none', letterSpacing: 0, fontWeight: 'var(--weight-regular)', color: 'var(--color-grey)' }}>(optional)</span></label>
-                      <textarea className="input" value={description} onChange={e => setDescription(e.target.value)} rows={3} />
-                    </div>
-                  </>
-                )
+                  )}
+                </>
               )}
 
-              {/* ── STEP 1 (education: target & dates) ── */}
-              {wizardStep === 1 && !isRetail && (
+              {/* ── NON-RETAIL STEP 0: Campaign type selector ── */}
+              {!isRetail && wizardStep === 0 && (
+                <>
+                  <p style={{ fontSize: 'var(--text-sm)', color: 'var(--color-grey)', lineHeight: 'var(--leading-normal)', margin: 0 }}>
+                    Choose the type of campaign you want to create. This determines which fields are available and how payments are processed.
+                  </p>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+                    {[
+                      {
+                        value: 'general',
+                        icon:  'savings',
+                        label: 'General savings campaign',
+                        sub:   'A flexible savings campaign toward any goal. Customers save toward a target amount and deadline. Suitable for any business type.',
+                      },
+                      {
+                        value: 'education_fees',
+                        icon:  'school',
+                        label: 'Education fees campaign',
+                        sub:   'A campaign designed for school fee collection. Includes fee type, academic year, minimum payment enforcement, and a registration threshold indicator for parents.',
+                      },
+                    ].map(opt => {
+                      const selected = campaignType === opt.value
+                      return (
+                        <button
+                          key={opt.value}
+                          onClick={() => setCampaignType(opt.value)}
+                          style={{
+                            width: '100%', textAlign: 'left',
+                            display: 'flex', alignItems: 'flex-start', gap: 'var(--space-4)',
+                            padding: 'var(--space-4)',
+                            background: selected ? 'var(--color-black)' : 'var(--color-white)',
+                            border: selected ? '3px solid var(--color-black)' : 'var(--border)',
+                            boxShadow: selected ? 'var(--shadow-sm)' : 'none',
+                            cursor: 'pointer', transition: 'all var(--transition-base)',
+                          }}
+                        >
+                          <div style={{
+                            width: 44, height: 44, flexShrink: 0,
+                            background: selected ? 'var(--color-primary)' : 'var(--color-grey-light)',
+                            border: selected ? '2px solid var(--color-primary)' : 'var(--border)',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          }}>
+                            <span className="icon-outlined" style={{ fontSize: 22, color: selected ? 'var(--color-black)' : 'var(--color-grey)' }}>{opt.icon}</span>
+                          </div>
+                          <div style={{ flex: 1 }}>
+                            <div style={{ fontWeight: 'var(--weight-bold)', fontSize: 'var(--text-sm)', color: selected ? 'var(--color-white)' : 'var(--color-black)', marginBottom: 'var(--space-1)' }}>
+                              {opt.label}
+                            </div>
+                            <div style={{ fontSize: 'var(--text-xs)', color: selected ? 'rgba(255,255,255,0.6)' : 'var(--color-grey)', lineHeight: 'var(--leading-normal)' }}>
+                              {opt.sub}
+                            </div>
+                          </div>
+                          <div style={{
+                            width: 20, height: 20, flexShrink: 0, marginTop: 2,
+                            border: selected ? '2px solid var(--color-primary)' : '2px solid var(--color-grey-mid)',
+                            background: selected ? 'var(--color-primary)' : 'transparent',
+                            borderRadius: '50%',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          }}>
+                            {selected && <div style={{ width: 8, height: 8, background: 'var(--color-black)', borderRadius: '50%' }} />}
+                          </div>
+                        </button>
+                      )
+                    })}
+                  </div>
+                </>
+              )}
+
+              {/* ── NON-RETAIL STEP 1: Basic info ── */}
+              {!isRetail && wizardStep === 1 && (
+                <>
+                  <div className="input-group">
+                    <label className="input-label">Campaign name <span className="required">*</span></label>
+                    <input type="text" className="input" value={name} onChange={e => setName(e.target.value)}
+                      placeholder={isEdu ? 'e.g. Term 1 2026 Tuition Fees' : 'e.g. School Fees 2026'} />
+                  </div>
+                  <div className="input-group">
+                    <label className="input-label">Description <span style={{ textTransform: 'none', letterSpacing: 0, fontWeight: 'var(--weight-regular)', color: 'var(--color-grey)' }}>(optional)</span></label>
+                    <textarea className="input" value={description} onChange={e => setDescription(e.target.value)} rows={3}
+                      placeholder={isEdu ? 'e.g. Term 1 tuition fees for St. Catherine\'s Secondary School' : ''} />
+                  </div>
+
+                  {/* Education-specific fields */}
+                  {isEdu && (
+                    <>
+                      <div className="input-group">
+                        <label className="input-label">Fee type <span className="required">*</span></label>
+                        <select className="input" value={feeType} onChange={e => setFeeType(e.target.value)}>
+                          {FEE_TYPES.map(ft => (
+                            <option key={ft.value} value={ft.value}>{ft.label}</option>
+                          ))}
+                        </select>
+                        <span className="input-hint">Select the category of fee this campaign collects.</span>
+                      </div>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-4)' }}>
+                        <div className="input-group">
+                          <label className="input-label">Academic year</label>
+                          <input type="text" className="input" value={academicYear} onChange={e => setAcademicYear(e.target.value)} placeholder="e.g. 2026" maxLength={9} />
+                        </div>
+                        <div className="input-group">
+                          <label className="input-label">Term / semester</label>
+                          <input type="text" className="input" value={termOrSemester} onChange={e => setTermOrSemester(e.target.value)} placeholder="e.g. Term 1" />
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </>
+              )}
+
+              {/* ── NON-RETAIL STEP 2: Target, dates (+ edu payment thresholds) ── */}
+              {!isRetail && wizardStep === 2 && (
                 <>
                   <div className="input-group">
                     <label className="input-label">Target amount (UGX) <span className="required">*</span></label>
@@ -607,24 +768,65 @@ export default function Campaigns({ admin, business }) {
                       <span style={{ position: 'absolute', left: 'var(--space-4)', fontWeight: 'var(--weight-bold)', fontSize: 'var(--text-sm)', color: 'var(--color-grey)', pointerEvents: 'none', zIndex: 1 }}>UGX</span>
                       <input type="text" inputMode="numeric" className="input" value={targetAmount}
                         onChange={e => setTargetAmount(formatAmountInput(e.target.value))}
-                        style={{ paddingLeft: 56 }} />
+                        style={{ paddingLeft: 56 }}
+                        placeholder={isEdu ? 'Total fee amount e.g. 800,000' : '0'} />
                     </div>
+                    {isEdu && <span className="input-hint">The total fee amount parents are saving toward.</span>}
                   </div>
+
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-4)' }}>
                     <div className="input-group">
                       <label className="input-label">Start date <span className="required">*</span></label>
                       <input type="date" className="input" value={startDate} onChange={e => setStartDate(e.target.value)} />
                     </div>
                     <div className="input-group">
-                      <label className="input-label">Deadline <span className="required">*</span></label>
+                      <label className="input-label">Payment deadline <span className="required">*</span></label>
                       <input type="date" className="input" value={endDate} onChange={e => setEndDate(e.target.value)} />
+                      {isEdu && <span className="input-hint">The date fees are due at your school.</span>}
                     </div>
                   </div>
+
+                  {/* Education-only payment threshold fields */}
+                  {isEdu && (
+                    <>
+                      <div style={{ height: 1, background: 'var(--color-grey-light)' }} />
+
+                      <div className="input-group">
+                        <label className="input-label">Minimum payment per transaction (UGX)</label>
+                        <div className="input-wrapper">
+                          <span style={{ position: 'absolute', left: 'var(--space-4)', fontWeight: 'var(--weight-bold)', fontSize: 'var(--text-sm)', color: 'var(--color-grey)', pointerEvents: 'none', zIndex: 1 }}>UGX</span>
+                          <input type="text" inputMode="numeric" className="input" value={minimumPayment}
+                            onChange={e => setMinimumPayment(formatAmountInput(e.target.value))}
+                            style={{ paddingLeft: 56 }} placeholder="0 — no minimum" />
+                        </div>
+                        <span className="input-hint">
+                          Partna will block any payment below this amount. Leave at 0 to allow any payment size.
+                        </span>
+                      </div>
+
+                      <div className="input-group">
+                        <label className="input-label">Registration threshold (UGX) — informational only</label>
+                        <div className="input-wrapper">
+                          <span style={{ position: 'absolute', left: 'var(--space-4)', fontWeight: 'var(--weight-bold)', fontSize: 'var(--text-sm)', color: 'var(--color-grey)', pointerEvents: 'none', zIndex: 1 }}>UGX</span>
+                          <input type="text" inputMode="numeric" className="input" value={minimumRegistrationAmount}
+                            onChange={e => setMinimumRegistrationAmount(formatAmountInput(e.target.value))}
+                            style={{ paddingLeft: 56 }} placeholder="0 — not set" />
+                        </div>
+                        <div className="alert alert-info" style={{ marginTop: 'var(--space-2)' }}>
+                          <span className="icon-outlined alert-icon">info</span>
+                          <div className="alert-content">
+                            This is the amount your school requires paid before a student can be registered (e.g. 50% of fees).
+                            Partna displays this to parents as a progress milestone but does <strong>not</strong> block payments below it.
+                          </div>
+                        </div>
+                      </div>
+                    </>
+                  )}
                 </>
               )}
 
-              {/* ── STEP 2: Payment schedule ── */}
-              {wizardStep === 2 && (
+              {/* ── STEP 2 (retail) / STEP 3 (non-retail): Payment schedule ── */}
+              {((isRetail && wizardStep === 2) || (!isRetail && wizardStep === 3)) && (
                 <>
                   <div style={{ background: 'var(--color-white)', border: 'var(--border)', padding: 'var(--space-4)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                     <div>
@@ -637,7 +839,6 @@ export default function Campaigns({ admin, business }) {
                       </div>
                     </div>
                   </div>
-
                   {enableSchedule && (
                     <div style={{ background: 'var(--color-white)', border: 'var(--border)', padding: 'var(--space-5)', display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
                       <div style={{ fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-black)', letterSpacing: 'var(--tracking-widest)', textTransform: 'uppercase', color: 'var(--color-grey)' }}>Payment type</div>
@@ -697,12 +898,12 @@ export default function Campaigns({ admin, business }) {
                 </>
               )}
 
-              {/* ── STEP 3: Vouchers & prizes ── */}
-              {wizardStep === 3 && (
+              {/* ── STEP 3 (retail) / STEP 4 (non-retail): Vouchers & prizes ── */}
+              {((isRetail && wizardStep === 3) || (!isRetail && wizardStep === 4)) && (
                 <>
                   {[
-                    { label: 'Enable vouchers',   sub: 'Add and manage vouchers from Vouchers & Prizes after launch.', val: enableVouchers, set: setEnableVouchers },
-                    { label: 'Enable prize draw',  sub: 'Set up prize draws from Vouchers & Prizes after launch.',     val: enablePrize,    set: setEnablePrize   },
+                    { label: 'Enable vouchers',  sub: 'Add and manage vouchers from Vouchers & Prizes after launch.', val: enableVouchers, set: setEnableVouchers },
+                    { label: 'Enable prize draw', sub: 'Set up prize draws from Vouchers & Prizes after launch.',     val: enablePrize,    set: setEnablePrize   },
                   ].map((item, i) => (
                     <div key={i} style={{ background: 'var(--color-white)', border: 'var(--border)', padding: 'var(--space-4)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                       <div>
@@ -719,22 +920,28 @@ export default function Campaigns({ admin, business }) {
                 </>
               )}
 
-              {/* ── STEP 4: Review ── */}
-              {wizardStep === 4 && (
+              {/* ── STEP 4 (retail) / STEP 5 (non-retail): Review & launch ── */}
+              {((isRetail && wizardStep === 4) || (!isRetail && wizardStep === 5)) && (
                 <>
                   <div style={{ border: 'var(--border)', overflow: 'hidden' }}>
                     <div style={{ background: 'var(--color-black)', padding: 'var(--space-2) var(--space-4)', fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-black)', letterSpacing: 'var(--tracking-widest)', textTransform: 'uppercase', color: 'var(--color-white)' }}>
                       Campaign summary
                     </div>
                     {[
-                      { label: 'Name', value: name },
+                      { label: 'Type',              value: isEdu ? 'Education fees' : 'General savings' },
+                      { label: 'Name',              value: name },
                       ...(isRetail ? [{ label: 'Product code', value: productLookupResult?.product_code }] : []),
-                      { label: 'Target', value: formatUGX(parsedTarget()) },
-                      { label: 'Start date', value: startDate },
-                      { label: 'Deadline', value: endDate },
-                      { label: 'Payment schedule', value: !enableSchedule ? 'Disabled' : scheduleType === 'flexible' ? 'Flexible' : `Fixed — ${fixedPct}% per payment (${formatUGX(fixedMinDeposit())})` },
-                      { label: 'Vouchers', value: enableVouchers ? 'Enabled' : 'Disabled' },
-                      { label: 'Prize draw', value: enablePrize ? 'Enabled' : 'Disabled' },
+                      ...(isEdu ? [{ label: 'Fee type', value: FEE_TYPES.find(f => f.value === feeType)?.label }] : []),
+                      ...(isEdu && academicYear ? [{ label: 'Academic year', value: academicYear }] : []),
+                      ...(isEdu && termOrSemester ? [{ label: 'Term / semester', value: termOrSemester }] : []),
+                      { label: 'Target',            value: formatUGX(parsedTarget()) },
+                      { label: 'Start date',        value: startDate },
+                      { label: 'Deadline',          value: endDate },
+                      ...(isEdu && parsedMinPay() > 0 ? [{ label: 'Min. payment', value: formatUGX(parsedMinPay()) }] : []),
+                      ...(isEdu && parsedMinReg() > 0 ? [{ label: 'Registration threshold (info only)', value: formatUGX(parsedMinReg()) }] : []),
+                      ...(!isEdu ? [{ label: 'Payment schedule', value: !enableSchedule ? 'Disabled' : scheduleType === 'flexible' ? 'Flexible' : `Fixed — ${fixedPct}% per payment (${formatUGX(fixedMinDeposit())})` }] : []),
+                      { label: 'Vouchers',          value: enableVouchers ? 'Enabled' : 'Disabled' },
+                      { label: 'Prize draw',        value: enablePrize ? 'Enabled' : 'Disabled' },
                     ].filter(Boolean).map((row, i, arr) => (
                       <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: 'var(--space-2) var(--space-4)', borderBottom: i < arr.length - 1 ? '1.5px solid var(--color-grey-light)' : 'none', background: i % 2 === 0 ? 'var(--color-white)' : 'var(--color-bg)' }}>
                         <span style={{ fontSize: 'var(--text-sm)', color: 'var(--color-grey)' }}>{row.label}</span>
@@ -767,7 +974,7 @@ export default function Campaigns({ admin, business }) {
                   Back
                 </button>
               )}
-              {wizardStep < 4 ? (
+              {wizardStep < maxStep ? (
                 <button onClick={nextStep} className="btn btn-primary" style={{ flex: 1 }}>
                   <span className="icon-outlined icon-sm">arrow_forward</span>
                   Continue
