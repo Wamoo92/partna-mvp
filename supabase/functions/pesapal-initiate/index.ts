@@ -4,19 +4,36 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 const CONSUMER_KEY    = Deno.env.get('PESAPAL_CONSUMER_KEY')!
 const CONSUMER_SECRET = Deno.env.get('PESAPAL_CONSUMER_SECRET')!
 const IS_LIVE         = Deno.env.get('PESAPAL_ENV') === 'live'
-
-const PESAPAL_BASE = IS_LIVE
+const PESAPAL_BASE    = IS_LIVE
   ? 'https://pay.pesapal.com/v3'
   : 'https://cybqa.pesapal.com/pesapalv3'
 
-// IPN and callback are our own Edge Function URLs
-const SUPABASE_URL    = Deno.env.get('SUPABASE_URL')!
-const IPN_URL         = `${SUPABASE_URL}/functions/v1/pesapal-ipn`
-const CALLBACK_URL    = `${SUPABASE_URL}/functions/v1/pesapal-callback`
+const SUPABASE_URL  = Deno.env.get('SUPABASE_URL')!
+const IPN_URL       = `${SUPABASE_URL}/functions/v1/pesapal-ipn`
+const CALLBACK_URL  = `${SUPABASE_URL}/functions/v1/pesapal-callback`
 
 const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Origin': 'https://www.partna.io',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+}
+
+// ── Simple in-memory rate limiter ──
+// Limits each IP to 10 payment initiations per 15 minutes
+const rateLimitMap = new Map<string, { count: number; resetAt: number }>()
+const RATE_LIMIT   = 10
+const WINDOW_MS    = 15 * 60 * 1000
+
+function isRateLimited(ip: string): boolean {
+  const now  = Date.now()
+  const entry = rateLimitMap.get(ip)
+  if (!entry || now > entry.resetAt) {
+    rateLimitMap.set(ip, { count: 1, resetAt: now + WINDOW_MS })
+    return false
+  }
+  if (entry.count >= RATE_LIMIT) return true
+  entry.count++
+  return false
 }
 
 async function getPesapalToken(): Promise<string> {
@@ -31,18 +48,14 @@ async function getPesapalToken(): Promise<string> {
 }
 
 async function getOrRegisterIPN(token: string): Promise<string> {
-  // Check if IPN already registered
   const listRes = await fetch(`${PESAPAL_BASE}/api/URLSetup/GetIpnList`, {
     headers: { 'Accept': 'application/json', 'Authorization': `Bearer ${token}` },
   })
   const listData = await listRes.json()
-
   if (Array.isArray(listData)) {
     const existing = listData.find((ipn: any) => ipn.url === IPN_URL)
     if (existing?.ipn_id) return existing.ipn_id
   }
-
-  // Register IPN
   const regRes = await fetch(`${PESAPAL_BASE}/api/URLSetup/RegisterIPN`, {
     method: 'POST',
     headers: {
@@ -60,24 +73,37 @@ async function getOrRegisterIPN(token: string): Promise<string> {
 serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
-  try {
-    const { amount, currency = 'UGX', customer, walletId, campaignId, enrollmentId } = await req.json()
+  // Rate limiting
+  const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown'
+  if (isRateLimited(ip)) {
+    return new Response(JSON.stringify({ error: 'Too many requests. Please try again later.' }), {
+      status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    })
+  }
 
-    if (!amount || !customer?.id || !walletId) {
+  try {
+    const body = await req.json()
+    const { amount, currency = 'UGX', customer, walletId, campaignId, enrollmentId } = body
+
+    // Input validation
+    if (!amount || typeof amount !== 'number' || amount < 1000 || amount > 50000000) {
+      return new Response(JSON.stringify({ error: 'Invalid amount' }), {
+        status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
+    if (!customer?.id || !walletId) {
       return new Response(JSON.stringify({ error: 'Missing required fields' }), {
         status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
     }
 
-    // Generate a unique merchant reference
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
     let reference = 'DEP-'
     for (let i = 0; i < 8; i++) reference += chars[Math.floor(Math.random() * chars.length)]
 
-    const token     = await getPesapalToken()
-    const ipn_id    = await getOrRegisterIPN(token)
+    const token  = await getPesapalToken()
+    const ipn_id = await getOrRegisterIPN(token)
 
-    // Submit order to Pesapal
     const orderRes = await fetch(`${PESAPAL_BASE}/api/Transactions/SubmitOrderRequest`, {
       method: 'POST',
       headers: {
@@ -86,15 +112,15 @@ serve(async (req) => {
         'Authorization': `Bearer ${token}`,
       },
       body: JSON.stringify({
-        id:               reference,
+        id:              reference,
         currency,
-        amount:           Number(amount),
-        description:      `Partna deposit — ${campaignId || 'savings'}`,
-        callback_url:     `${CALLBACK_URL}?walletId=${walletId}&amount=${amount}&reference=${reference}&customerId=${customer.id}&campaignId=${campaignId || ''}&enrollmentId=${enrollmentId || ''}`,
-        notification_id:  ipn_id,
+        amount:          Number(amount),
+        description:     `Partna deposit — ${campaignId || 'savings'}`,
+        callback_url:    `${CALLBACK_URL}?walletId=${walletId}&amount=${amount}&reference=${reference}&customerId=${customer.id}&campaignId=${campaignId || ''}&enrollmentId=${enrollmentId || ''}`,
+        notification_id: ipn_id,
         billing_address: {
-          email_address: customer.email || '',
-          phone_number:  customer.phone || '',
+          email_address: customer.email      || '',
+          phone_number:  customer.phone      || '',
           first_name:    customer.first_name || '',
           last_name:     customer.last_name  || '',
           country_code:  'UG',
@@ -103,31 +129,29 @@ serve(async (req) => {
     })
 
     const orderData = await orderRes.json()
-
     if (!orderData.redirect_url) {
       throw new Error(`Pesapal order failed: ${JSON.stringify(orderData)}`)
     }
 
-    // Store pending transaction in Supabase so we can reconcile later
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL')!,
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
     )
 
     await supabase.from('transactions').insert({
-      customer_id:  customer.id,
-      wallet_id:    walletId,
-      campaign_id:  campaignId || null,
-      type:         'deposit',
-      amount:       Number(amount),
-      status:       'pending',
+      customer_id: customer.id,
+      wallet_id:   walletId,
+      campaign_id: campaignId || null,
+      type:        'deposit',
+      amount:      Number(amount),
+      status:      'pending',
       reference,
-      notes:        `Pesapal order_tracking_id: ${orderData.order_tracking_id}`,
+      notes:       `Pesapal order_tracking_id: ${orderData.order_tracking_id}`,
     })
 
     return new Response(JSON.stringify({
-      redirect_url:       orderData.redirect_url,
-      order_tracking_id:  orderData.order_tracking_id,
+      redirect_url:      orderData.redirect_url,
+      order_tracking_id: orderData.order_tracking_id,
       reference,
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -135,7 +159,7 @@ serve(async (req) => {
 
   } catch (err) {
     console.error('pesapal-initiate error:', err)
-    return new Response(JSON.stringify({ error: err.message }), {
+    return new Response(JSON.stringify({ error: 'Payment initiation failed. Please try again.' }), {
       status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     })
   }

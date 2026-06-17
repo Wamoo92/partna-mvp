@@ -10,6 +10,14 @@ function formatUGX(n) {
   return 'UGX ' + Number(n).toLocaleString('en-UG', { maximumFractionDigits: 0 })
 }
 
+function formatDateTime(d) {
+  if (!d) return '—'
+  return new Date(d).toLocaleString('en-UG', {
+    day: 'numeric', month: 'short', year: 'numeric',
+    hour: '2-digit', minute: '2-digit', hour12: true,
+  })
+}
+
 function txAccent(type) {
   switch (type) {
     case 'deposit':    return 'var(--color-green)'
@@ -50,6 +58,33 @@ const CHART_FILTERS = [
   { label: '1yr', days: 365 },
 ]
 
+// ── Audit log action config ────────────────────────────────────────────────
+function auditIcon(action) {
+  if (action?.includes('deposit'))    return 'south'
+  if (action?.includes('withdrawal')) return 'north'
+  if (action?.includes('kyc'))        return 'verified_user'
+  if (action?.includes('wallet'))     return 'account_balance_wallet'
+  if (action?.includes('customer'))   return 'person'
+  if (action?.includes('transaction')) return 'receipt_long'
+  return 'history'
+}
+
+function auditAccent(action) {
+  if (action?.includes('deposit'))    return 'var(--color-green)'
+  if (action?.includes('withdrawal')) return 'var(--color-yellow)'
+  if (action?.includes('kyc'))        return 'var(--color-primary)'
+  if (action?.includes('delete'))     return 'var(--color-red)'
+  return 'var(--color-grey-light)'
+}
+
+function auditLabel(action) {
+  if (!action) return '—'
+  return action
+    .split('.')
+    .map(w => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(' — ')
+}
+
 // ── Stat card ──────────────────────────────────────────────────────────────
 function StatCard({ label, value, sub, accent, onClick }) {
   return (
@@ -89,15 +124,21 @@ function StatCard({ label, value, sub, accent, onClick }) {
 // ── Main ───────────────────────────────────────────────────────────────────
 export default function Dashboard() {
   const navigate = useNavigate()
-  const [loading, setLoading]       = useState(true)
-  const [stats, setStats]           = useState({ totalBusinesses: 0, totalCustomers: 0, totalAUM: 0, totalVolume: 0, totalRevenue: 0, pendingKYB: 0 })
-  const [recentTxns, setRecentTxns] = useState([])
-  const [chartData, setChartData]   = useState([])
-  const [chartFilter, setChartFilter] = useState(7)
-  const [chartType, setChartType]   = useState('bar')
-  const [allTxns, setAllTxns]       = useState([])
+  const [loading, setLoading]           = useState(true)
+  const [stats, setStats]               = useState({ totalBusinesses: 0, totalCustomers: 0, totalAUM: 0, totalVolume: 0, totalRevenue: 0, pendingKYB: 0 })
+  const [recentTxns, setRecentTxns]     = useState([])
+  const [chartData, setChartData]       = useState([])
+  const [chartFilter, setChartFilter]   = useState(7)
+  const [chartType, setChartType]       = useState('bar')
+  const [allTxns, setAllTxns]           = useState([])
 
-  useEffect(() => { loadData() }, [])
+  // Audit log state
+  const [auditLogs, setAuditLogs]       = useState([])
+  const [auditLoading, setAuditLoading] = useState(true)
+  const [auditFilter, setAuditFilter]   = useState('all')
+  const [auditSearch, setAuditSearch]   = useState('')
+
+  useEffect(() => { loadData(); loadAuditLogs() }, [])
   useEffect(() => { if (allTxns.length > 0 || !loading) buildChartData(allTxns, chartFilter) }, [chartFilter, allTxns])
 
   async function loadData() {
@@ -110,7 +151,7 @@ export default function Dashboard() {
 
       const { data: allTxnData } = await supabase
         .from('transactions')
-        .select('*, customers(first_name, last_name, business_id), businesses:customers(business_id(name))')
+        .select('*, customers(first_name, last_name, business_id)')
         .eq('status', 'completed')
         .order('created_at', { ascending: false })
       const txns = allTxnData || []
@@ -119,7 +160,8 @@ export default function Dashboard() {
       const { data: fees } = await supabase.from('transaction_fees').select('total_fees')
       const totalRevenue = fees?.reduce((s, f) => s + Number(f.total_fees), 0) || 0
 
-      const { count: kybCount } = await supabase.from('businesses').select('*', { count: 'exact', head: true }).eq('kyb_status', 'pending')
+      const { count: kybCount } = await supabase
+        .from('businesses').select('*', { count: 'exact', head: true }).eq('kyb_status', 'pending')
 
       setAllTxns(txns)
       setRecentTxns(txns.slice(0, 10))
@@ -129,6 +171,21 @@ export default function Dashboard() {
       console.error('Dashboard load error:', e)
     }
     setLoading(false)
+  }
+
+  async function loadAuditLogs() {
+    setAuditLoading(true)
+    try {
+      const { data } = await supabase
+        .from('audit_logs')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(200)
+      setAuditLogs(data || [])
+    } catch (e) {
+      console.error('Audit log load error:', e)
+    }
+    setAuditLoading(false)
   }
 
   function buildChartData(txns, days) {
@@ -169,6 +226,21 @@ export default function Dashboard() {
     })
     setChartData(points)
   }
+
+  // Filter audit logs
+  const filteredAuditLogs = auditLogs.filter(log => {
+    if (auditFilter !== 'all' && !log.action?.includes(auditFilter)) return false
+    if (auditSearch) {
+      const s = auditSearch.toLowerCase()
+      if (
+        !log.action?.toLowerCase().includes(s) &&
+        !log.resource_type?.toLowerCase().includes(s) &&
+        !log.resource_id?.toLowerCase().includes(s) &&
+        !log.actor_type?.toLowerCase().includes(s)
+      ) return false
+    }
+    return true
+  })
 
   const chartMax = Math.max(...chartData.map(d => Math.max(d.deposits, d.withdrawals)), 1)
   const hasData  = chartData.some(d => d.deposits > 0 || d.withdrawals > 0)
@@ -211,12 +283,12 @@ export default function Dashboard() {
 
       {/* ── Stat cards ── */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 'var(--space-4)' }}>
-        <StatCard label="Total businesses"      value={stats.totalBusinesses}          sub="Registered on platform"       accent="var(--color-primary)" onClick={() => navigate('/admin/businesses')} />
-        <StatCard label="Total customers"       value={stats.totalCustomers}           sub="Across all businesses"        accent="var(--color-yellow)"  onClick={() => navigate('/admin/customers')} />
-        <StatCard label="Total AUM"             value={formatUGX(stats.totalAUM)}      sub="All wallet balances"          accent="var(--color-green)"   />
-        <StatCard label="Transaction volume"    value={formatUGX(stats.totalVolume)}   sub="All completed transactions"   accent="var(--color-primary)" onClick={() => navigate('/admin/transactions')} />
-        <StatCard label="Partna revenue"        value={formatUGX(stats.totalRevenue)}  sub="Fees collected"               accent="var(--color-yellow)"  onClick={() => navigate('/admin/revenue')} />
-        <StatCard label="Pending KYB"           value={stats.pendingKYB}               sub="Awaiting review"
+        <StatCard label="Total businesses"   value={stats.totalBusinesses}        sub="Registered on platform"      accent="var(--color-primary)" onClick={() => navigate('/admin/businesses')} />
+        <StatCard label="Total customers"    value={stats.totalCustomers}          sub="Across all businesses"       accent="var(--color-yellow)"  onClick={() => navigate('/admin/customers')} />
+        <StatCard label="Total AUM"          value={formatUGX(stats.totalAUM)}    sub="All wallet balances"         accent="var(--color-green)"   />
+        <StatCard label="Transaction volume" value={formatUGX(stats.totalVolume)} sub="All completed transactions"  accent="var(--color-primary)" onClick={() => navigate('/admin/transactions')} />
+        <StatCard label="Partna revenue"     value={formatUGX(stats.totalRevenue)} sub="Fees collected"             accent="var(--color-yellow)"  onClick={() => navigate('/admin/revenue')} />
+        <StatCard label="Pending KYB"        value={stats.pendingKYB}             sub="Awaiting review"
           accent={stats.pendingKYB > 0 ? 'var(--color-red)' : 'var(--color-grey-light)'}
           onClick={() => navigate('/admin/kyb')} />
       </div>
@@ -231,7 +303,6 @@ export default function Dashboard() {
               Platform deposits & withdrawals
             </span>
             <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
-              {/* Legend */}
               <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-4)' }}>
                 {[{ color: 'var(--color-green)', label: 'Deposits' }, { color: '#C0392B', label: 'Withdrawals' }].map(({ color, label }) => (
                   <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-1)' }}>
@@ -240,7 +311,6 @@ export default function Dashboard() {
                   </div>
                 ))}
               </div>
-              {/* Chart type */}
               <div style={{ display: 'flex', border: 'var(--border)', overflow: 'hidden' }}>
                 {[{ id: 'bar', icon: 'bar_chart' }, { id: 'line', icon: 'show_chart' }].map((t, i) => (
                   <button key={t.id} onClick={() => setChartType(t.id)} style={{
@@ -251,7 +321,6 @@ export default function Dashboard() {
                   </button>
                 ))}
               </div>
-              {/* Time filter */}
               <div style={{ display: 'flex', border: 'var(--border)', overflow: 'hidden' }}>
                 {CHART_FILTERS.map((f, i) => (
                   <button key={f.days} onClick={() => setChartFilter(f.days)} style={{
@@ -283,8 +352,8 @@ export default function Dashboard() {
               {chartData.map((day, i) => (
                 <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, height: '100%', justifyContent: 'flex-end' }}>
                   <div style={{ width: '100%', display: 'flex', gap: 1, alignItems: 'flex-end', height: 140 }}>
-                    <div style={{ flex: 1, height: `${(day.deposits / chartMax) * 100}%`, background: 'var(--color-green)', border: day.deposits > 0 ? '1px solid var(--color-black)' : 'none', minHeight: day.deposits > 0 ? 2 : 0, transition: 'height var(--transition-slow)' }} />
-                    <div style={{ flex: 1, height: `${(day.withdrawals / chartMax) * 100}%`, background: '#C0392B', border: day.withdrawals > 0 ? '1px solid var(--color-black)' : 'none', minHeight: day.withdrawals > 0 ? 2 : 0, transition: 'height var(--transition-slow)' }} />
+                    <div style={{ flex: 1, height: `${(day.deposits / chartMax) * 100}%`, background: 'var(--color-green)', border: day.deposits > 0 ? '1px solid var(--color-black)' : 'none', minHeight: day.deposits > 0 ? 2 : 0 }} />
+                    <div style={{ flex: 1, height: `${(day.withdrawals / chartMax) * 100}%`, background: '#C0392B', border: day.withdrawals > 0 ? '1px solid var(--color-black)' : 'none', minHeight: day.withdrawals > 0 ? 2 : 0 }} />
                   </div>
                   {(chartFilter === 7 || i % Math.ceil(chartData.length / 10) === 0) && (
                     <div style={{ fontSize: 9, color: 'var(--color-grey)', fontWeight: 'var(--weight-bold)', marginTop: 3 }}>{day.label}</div>
@@ -328,7 +397,6 @@ export default function Dashboard() {
               See all
             </button>
           </div>
-
           {recentTxns.length === 0 ? (
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 120, fontSize: 'var(--text-sm)', color: 'var(--color-grey)' }}>
               No activity yet
@@ -361,9 +429,9 @@ export default function Dashboard() {
       {/* ── Quick links ── */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 'var(--space-4)' }}>
         {[
-          { label: 'Manage businesses', sub: 'View, approve, suspend',   path: '/admin/businesses',   icon: 'business',          accent: 'var(--color-primary)' },
-          { label: 'Review KYB',        sub: 'Pending submissions',       path: '/admin/kyb',          icon: 'verified_user',     accent: stats.pendingKYB > 0 ? 'var(--color-yellow)' : 'var(--color-grey-light)', alert: stats.pendingKYB > 0 },
-          { label: 'All transactions',  sub: 'Full platform ledger',      path: '/admin/transactions', icon: 'swap_vert',         accent: 'var(--color-primary)' },
+          { label: 'Manage businesses', sub: 'View, approve, suspend',   path: '/admin/businesses',   icon: 'business',            accent: 'var(--color-primary)' },
+          { label: 'Review KYB',        sub: 'Pending submissions',       path: '/admin/kyb',          icon: 'verified_user',       accent: stats.pendingKYB > 0 ? 'var(--color-yellow)' : 'var(--color-grey-light)', alert: stats.pendingKYB > 0 },
+          { label: 'All transactions',  sub: 'Full platform ledger',      path: '/admin/transactions', icon: 'swap_vert',           accent: 'var(--color-primary)' },
           { label: 'Voucher library',   sub: 'Create & manage vouchers',  path: '/admin/vouchers',     icon: 'confirmation_number', accent: 'var(--color-green)' },
         ].map(item => (
           <button
@@ -374,8 +442,7 @@ export default function Dashboard() {
               border: item.alert ? '2px solid var(--color-yellow)' : 'var(--border)',
               boxShadow: item.alert ? 'var(--shadow-sm)' : 'none',
               padding: 'var(--space-4)',
-              textAlign: 'left',
-              cursor: 'pointer',
+              textAlign: 'left', cursor: 'pointer',
               display: 'flex', flexDirection: 'column', gap: 'var(--space-3)',
               transition: 'box-shadow var(--transition-base), transform var(--transition-fast)',
             }}
@@ -395,6 +462,192 @@ export default function Dashboard() {
           </button>
         ))}
       </div>
+
+      {/* ── AUDIT LOG ── */}
+      <div style={{ background: 'var(--color-white)', border: 'var(--border)', boxShadow: 'var(--shadow-sm)' }}>
+
+        {/* Header */}
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: 'var(--space-4) var(--space-5)',
+          borderBottom: 'var(--border)',
+          background: 'var(--color-black)',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
+            <div style={{ width: 32, height: 32, background: 'var(--color-primary)', border: '2px solid rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <span className="icon-outlined" style={{ fontSize: 16, color: 'var(--color-black)' }}>security</span>
+            </div>
+            <div>
+              <div style={{ fontWeight: 'var(--weight-black)', fontSize: 'var(--text-sm)', color: 'var(--color-white)', letterSpacing: 'var(--tracking-tight)' }}>
+                Audit Log
+              </div>
+              <div style={{ fontSize: 'var(--text-xs)', color: 'rgba(255,255,255,0.45)', marginTop: 1 }}>
+                {filteredAuditLogs.length} of {auditLogs.length} events
+              </div>
+            </div>
+          </div>
+          <button onClick={loadAuditLogs} style={{ background: 'none', border: '1.5px solid rgba(255,255,255,0.2)', padding: '4px var(--space-3)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 'var(--space-1)' }}>
+            <span className="icon-outlined" style={{ fontSize: 14, color: 'rgba(255,255,255,0.6)' }}>refresh</span>
+            <span style={{ fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-bold)', color: 'rgba(255,255,255,0.6)' }}>Refresh</span>
+          </button>
+        </div>
+
+        {/* Filters */}
+        <div style={{ padding: 'var(--space-4) var(--space-5)', borderBottom: 'var(--border)', display: 'flex', gap: 'var(--space-3)', flexWrap: 'wrap', alignItems: 'center' }}>
+          <input
+            type="text"
+            placeholder="Search actions, resources..."
+            value={auditSearch}
+            onChange={e => setAuditSearch(e.target.value)}
+            style={{
+              flex: 1, minWidth: 200,
+              padding: 'var(--space-2) var(--space-3)',
+              border: 'var(--border)', background: 'var(--color-bg)',
+              fontSize: 'var(--text-xs)', outline: 'none',
+              fontFamily: 'inherit',
+            }}
+          />
+          <div style={{ display: 'flex', border: 'var(--border)', overflow: 'hidden' }}>
+            {[
+              { id: 'all',         label: 'All' },
+              { id: 'transaction', label: 'Transactions' },
+              { id: 'wallet',      label: 'Wallets' },
+              { id: 'kyc',         label: 'KYC' },
+              { id: 'customer',    label: 'Customers' },
+            ].map((f, i) => (
+              <button key={f.id} onClick={() => setAuditFilter(f.id)} style={{
+                padding: 'var(--space-2) var(--space-3)',
+                background: auditFilter === f.id ? 'var(--color-black)' : 'var(--color-white)',
+                border: 'none', borderLeft: i > 0 ? '1.5px solid var(--color-grey-light)' : 'none',
+                cursor: 'pointer', fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-bold)',
+                color: auditFilter === f.id ? 'var(--color-white)' : 'var(--color-grey)',
+                letterSpacing: 'var(--tracking-wide)',
+              }}>
+                {f.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Log table */}
+        {auditLoading ? (
+          <div style={{ display: 'flex', justifyContent: 'center', padding: 'var(--space-10)' }}>
+            <div className="spinner spinner-lg spinner-purple" />
+          </div>
+        ) : filteredAuditLogs.length === 0 ? (
+          <div style={{ padding: 'var(--space-10)', textAlign: 'center', color: 'var(--color-grey)', fontSize: 'var(--text-sm)' }}>
+            No audit events found
+          </div>
+        ) : (
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr style={{ background: 'var(--color-bg)', borderBottom: 'var(--border)' }}>
+                  {['Time', 'Action', 'Resource', 'Actor', 'Status', 'Details'].map(h => (
+                    <th key={h} style={{
+                      padding: 'var(--space-2) var(--space-4)',
+                      textAlign: 'left', fontSize: 'var(--text-xs)',
+                      fontWeight: 'var(--weight-black)',
+                      letterSpacing: 'var(--tracking-widest)',
+                      textTransform: 'uppercase',
+                      color: 'var(--color-grey)',
+                      whiteSpace: 'nowrap',
+                    }}>
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {filteredAuditLogs.slice(0, 50).map((log, i) => (
+                  <tr key={log.id} style={{ borderBottom: i < filteredAuditLogs.length - 1 ? '1.5px solid var(--color-grey-light)' : 'none', background: i % 2 === 0 ? 'var(--color-white)' : 'var(--color-bg)' }}>
+
+                    {/* Time */}
+                    <td style={{ padding: 'var(--space-3) var(--space-4)', whiteSpace: 'nowrap' }}>
+                      <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-grey)', fontFamily: 'monospace' }}>
+                        {formatDateTime(log.created_at)}
+                      </span>
+                    </td>
+
+                    {/* Action */}
+                    <td style={{ padding: 'var(--space-3) var(--space-4)' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+                        <div style={{ width: 24, height: 24, background: auditAccent(log.action), border: 'var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                          <span className="icon-outlined" style={{ fontSize: 12, color: 'var(--color-black)' }}>{auditIcon(log.action)}</span>
+                        </div>
+                        <span style={{ fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-bold)', fontFamily: 'monospace', whiteSpace: 'nowrap' }}>
+                          {log.action}
+                        </span>
+                      </div>
+                    </td>
+
+                    {/* Resource */}
+                    <td style={{ padding: 'var(--space-3) var(--space-4)' }}>
+                      <div style={{ fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-bold)', color: 'var(--color-black)' }}>
+                        {log.resource_type || '—'}
+                      </div>
+                      {log.resource_id && (
+                        <div style={{ fontSize: 10, color: 'var(--color-grey)', fontFamily: 'monospace', marginTop: 2 }}>
+                          {log.resource_id.slice(0, 8)}…
+                        </div>
+                      )}
+                    </td>
+
+                    {/* Actor */}
+                    <td style={{ padding: 'var(--space-3) var(--space-4)' }}>
+                      <span style={{
+                        display: 'inline-block',
+                        padding: '2px var(--space-2)',
+                        background: log.actor_type === 'system' ? 'var(--color-grey-light)' : 'var(--color-primary)',
+                        color: log.actor_type === 'system' ? 'var(--color-grey)' : 'var(--color-white)',
+                        fontSize: 10, fontWeight: 'var(--weight-black)',
+                        letterSpacing: 'var(--tracking-wide)', textTransform: 'uppercase',
+                      }}>
+                        {log.actor_type || 'system'}
+                      </span>
+                    </td>
+
+                    {/* Status */}
+                    <td style={{ padding: 'var(--space-3) var(--space-4)' }}>
+                      <span style={{
+                        display: 'inline-block',
+                        padding: '2px var(--space-2)',
+                        background: log.status === 'success' ? 'var(--color-green)' : log.status === 'blocked' ? 'var(--color-yellow)' : 'var(--color-red)',
+                        border: 'var(--border)',
+                        fontSize: 10, fontWeight: 'var(--weight-black)',
+                        letterSpacing: 'var(--tracking-wide)', textTransform: 'uppercase',
+                        color: 'var(--color-black)',
+                      }}>
+                        {log.status || 'success'}
+                      </span>
+                    </td>
+
+                    {/* Details — show key metadata fields */}
+                    <td style={{ padding: 'var(--space-3) var(--space-4)', maxWidth: 200 }}>
+                      {log.metadata && (
+                        <div style={{ fontSize: 10, color: 'var(--color-grey)', fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {log.metadata.new?.amount
+                            ? `UGX ${Number(log.metadata.new.amount).toLocaleString()}`
+                            : log.metadata.amount
+                            ? `UGX ${Number(log.metadata.amount).toLocaleString()}`
+                            : log.metadata.new?.status || log.metadata.status || '—'
+                          }
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {filteredAuditLogs.length > 50 && (
+              <div style={{ padding: 'var(--space-3) var(--space-5)', borderTop: 'var(--border)', fontSize: 'var(--text-xs)', color: 'var(--color-grey)', textAlign: 'center' }}>
+                Showing 50 of {filteredAuditLogs.length} events. Use filters to narrow results.
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
     </div>
   )
 }
