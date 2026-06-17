@@ -35,24 +35,19 @@ function nowDisplay() {
   })
 }
 
-function getCarrierFee(amt) {
-  if (amt <= 15000)   return 570
-  if (amt <= 45000)   return 800
-  if (amt <= 125000)  return 1350
-  if (amt <= 250000)  return 2500
-  if (amt <= 500000)  return 4100
-  if (amt <= 1000000) return 6000
-  return 7250
-}
+// ── Scenario C fee structure ───────────────────────────────────────────────
+// Deposits: free to customer
+// Withdrawals: UGX 1,800 flat (OpenFloat pass-through) + 2% Partna fee
+// No tax line until formal tax advice is obtained
+const CARRIER_FEE = 1800 // OpenFloat mobile money disbursement cost
 
 function getFees(amt) {
-  if (!amt || isNaN(amt)) return { partnaFee: 0, carrierFee: 0, tax: 0, totalFees: 0, netAmount: 0 }
-  const partnaFee  = Math.round(amt * 0.03)
-  const carrierFee = getCarrierFee(amt)
-  const tax        = Math.round(amt * 0.005)
-  const totalFees  = partnaFee + carrierFee + tax
-  const netAmount  = amt - totalFees
-  return { partnaFee, carrierFee, tax, totalFees, netAmount }
+  if (!amt || isNaN(amt)) return { partnaFee: 0, carrierFee: 0, totalFees: 0, netAmount: 0 }
+  const partnaFee  = Math.round(amt * 0.02)   // 2% Partna service fee
+  const carrierFee = CARRIER_FEE               // UGX 1,800 flat OpenFloat cost
+  const totalFees  = partnaFee + carrierFee
+  const netAmount  = Math.max(0, amt - totalFees)
+  return { partnaFee, carrierFee, totalFees, netAmount }
 }
 
 function SummaryTable({ rows }) {
@@ -112,7 +107,6 @@ async function sendSMS(customerId, phone, event, vars = {}) {
       body: JSON.stringify({ event, phone, customerId, vars }),
     })
   } catch (e) {
-    // Non-critical — never block the withdrawal flow
     console.error('SMS send error:', e)
   }
 }
@@ -222,7 +216,7 @@ export default function Withdraw({ customer }) {
           charged_to:     'user',
           partna_fee:     fees.partnaFee,
           carrier_fee:    fees.carrierFee,
-          tax:            fees.tax,
+          tax:            0,
           total_fees:     fees.totalFees,
           net_amount:     fees.netAmount,
         })
@@ -240,7 +234,6 @@ export default function Withdraw({ customer }) {
       }
 
       // ── Send withdrawal requested SMS (non-blocking) ──
-      // Use the customer's registered phone, not the withdrawal destination
       const smsPhone = customer?.phone || momoPhone
       sendSMS(customer.id, smsPhone, 'withdrawal_requested', {
         amount:    formatUGX(parsedAmount),
@@ -419,10 +412,9 @@ export default function Withdraw({ customer }) {
                   Fee preview
                 </div>
                 <SummaryTable rows={[
-                  { label: 'Withdrawal amount',       value: formatUGX(parsedAmount) },
-                  { label: 'Partna service fee (3%)', value: '− ' + formatUGX(fees.partnaFee),  color: '#C0392B' },
-                  { label: 'Carrier fee',             value: '− ' + formatUGX(fees.carrierFee), color: '#C0392B' },
-                  { label: 'Tax (0.5%)',              value: '− ' + formatUGX(fees.tax),         color: '#C0392B' },
+                  { label: 'Withdrawal amount',          value: formatUGX(parsedAmount) },
+                  { label: 'Partna service fee (2%)',    value: '− ' + formatUGX(fees.partnaFee),  color: '#C0392B' },
+                  { label: 'Mobile money fee (flat)',    value: '− ' + formatUGX(fees.carrierFee), color: '#C0392B' },
                 ]} />
                 <ReceiveRow netAmount={fees.netAmount} />
               </div>
@@ -493,14 +485,13 @@ export default function Withdraw({ customer }) {
                 Withdrawal summary
               </div>
               <SummaryTable rows={[
-                { label: 'Campaign',                value: campaign?.name || '—' },
-                { label: 'Withdrawal amount',       value: formatUGX(parsedAmount) },
-                { label: 'Partna service fee (3%)', value: '− ' + formatUGX(fees.partnaFee),  color: '#C0392B' },
-                { label: 'Carrier fee',             value: '− ' + formatUGX(fees.carrierFee), color: '#C0392B' },
-                { label: 'Tax (0.5%)',              value: '− ' + formatUGX(fees.tax),         color: '#C0392B' },
-                { label: 'Network',                 value: networkLabel },
-                { label: 'Number',                  value: momoPhone || '—' },
-                { label: 'Date & time',             value: nowDisplay() },
+                { label: 'Campaign',                   value: campaign?.name || '—' },
+                { label: 'Withdrawal amount',          value: formatUGX(parsedAmount) },
+                { label: 'Partna service fee (2%)',    value: '− ' + formatUGX(fees.partnaFee),  color: '#C0392B' },
+                { label: 'Mobile money fee (flat)',    value: '− ' + formatUGX(fees.carrierFee), color: '#C0392B' },
+                { label: 'Network',                    value: networkLabel },
+                { label: 'Number',                     value: momoPhone || '—' },
+                { label: 'Date & time',                value: nowDisplay() },
               ]} />
               <ReceiveRow netAmount={fees.netAmount} />
             </div>
@@ -544,16 +535,15 @@ export default function Withdraw({ customer }) {
                 Transaction details
               </div>
               <SummaryTable rows={[
-                { label: 'Reference',          value: txnReference,                      mono: true, color: 'var(--color-primary)' },
-                { label: 'Campaign',           value: campaign?.name || '—' },
-                { label: 'Amount withdrawn',   value: formatUGX(parsedAmount) },
-                { label: 'Partna service fee', value: '− ' + formatUGX(fees.partnaFee),  color: '#C0392B' },
-                { label: 'Carrier fee',        value: '− ' + formatUGX(fees.carrierFee), color: '#C0392B' },
-                { label: 'Tax',                value: '− ' + formatUGX(fees.tax),         color: '#C0392B' },
-                { label: 'Network',            value: networkLabel },
-                { label: 'Number',             value: momoPhone },
-                { label: 'Status',             value: 'Pending',                          color: '#8A6700' },
-                { label: 'Date & time',        value: nowDisplay() },
+                { label: 'Reference',               value: txnReference,                      mono: true, color: 'var(--color-primary)' },
+                { label: 'Campaign',                value: campaign?.name || '—' },
+                { label: 'Amount withdrawn',        value: formatUGX(parsedAmount) },
+                { label: 'Partna service fee (2%)', value: '− ' + formatUGX(fees.partnaFee),  color: '#C0392B' },
+                { label: 'Mobile money fee (flat)', value: '− ' + formatUGX(fees.carrierFee), color: '#C0392B' },
+                { label: 'Network',                 value: networkLabel },
+                { label: 'Number',                  value: momoPhone },
+                { label: 'Status',                  value: 'Pending',                          color: '#8A6700' },
+                { label: 'Date & time',             value: nowDisplay() },
               ]} />
               <ReceiveRow netAmount={fees.netAmount} />
             </div>
