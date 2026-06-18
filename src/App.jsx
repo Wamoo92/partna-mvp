@@ -22,6 +22,47 @@ import PaymentSuccess from './pages/portal/PaymentSuccess'
 import DashboardApp from './pages/dashboard/DashboardApp'
 import AdminApp from './pages/admin/AdminApp'
 
+// ── Portal not found screen ────────────────────────────────────────────────
+// Shown when a subdomain slug is in the URL but no matching business exists
+function PortalNotFound() {
+  return (
+    <div style={{
+      minHeight: '100vh',
+      background: 'var(--color-black)',
+      display: 'flex', flexDirection: 'column',
+      alignItems: 'center', justifyContent: 'center',
+      padding: 'var(--space-8)',
+      textAlign: 'center',
+      gap: 'var(--space-5)',
+    }}>
+      <img src="/partna-icon.svg" alt="Partna" style={{ width: 48, height: 48, opacity: 0.4 }} />
+      <div>
+        <div style={{
+          fontSize: 'var(--text-2xl)', fontWeight: 'var(--weight-black)',
+          color: 'var(--color-white)', letterSpacing: 'var(--tracking-tight)',
+          marginBottom: 'var(--space-3)',
+        }}>
+          Portal not found
+        </div>
+        <div style={{ fontSize: 'var(--text-sm)', color: 'rgba(255,255,255,0.45)', lineHeight: 'var(--leading-normal)', maxWidth: 340 }}>
+          This savings portal does not exist or has been deactivated.
+          Please check the link you were given or contact your institution.
+        </div>
+      </div>
+      <a
+        href="https://www.partna.io"
+        style={{
+          fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-bold)',
+          color: 'var(--color-primary)', letterSpacing: 'var(--tracking-wide)',
+          textDecoration: 'none',
+        }}
+      >
+        www.partna.io
+      </a>
+    </div>
+  )
+}
+
 function PortalGuard({ customer, loading, children }) {
   if (loading) return (
     <div className="loading-screen">
@@ -49,7 +90,22 @@ function HomeGuard({ customer, enrollments, loading, children }) {
 }
 
 function PortalAndDashboard() {
-  const { customer, business, enrollments, loading, signOut } = useAuth()
+  const { customer, business, subdomainBusiness, enrollments, loading, signOut } = useAuth()
+
+  // If a subdomain slug is in the URL but no matching business was found,
+  // show the not found screen instead of the default Partna portal
+  const slug = window.location.hostname.split('.')[0]
+  const isSubdomain = (
+    window.location.hostname !== 'localhost' &&
+    window.location.hostname !== '127.0.0.1' &&
+    window.location.hostname !== 'www.partna.io' &&
+    window.location.hostname !== 'partna.io' &&
+    window.location.hostname.endsWith('.partna.io')
+  )
+  if (isSubdomain && !loading && !subdomainBusiness) {
+    return <PortalNotFound />
+  }
+
   const brand = buildBrand(business)
 
   return (
@@ -58,10 +114,10 @@ function PortalAndDashboard() {
         <Route path="/" element={<Navigate to="/portal" replace />} />
 
         {/* ── Public routes ── */}
-        <Route path="/portal" element={<Landing />} />
-        <Route path="/portal/register" element={<Register />} />
-        <Route path="/portal/login" element={<Login />} />
-        <Route path="/portal/reset-pin" element={<ResetPin />} />
+        <Route path="/portal"            element={<Landing />} />
+        <Route path="/portal/register"   element={<Register />} />
+        <Route path="/portal/login"      element={<Login />} />
+        <Route path="/portal/reset-pin"  element={<ResetPin />} />
 
         {/* ── Requires login, no enrollment needed ── */}
         <Route path="/portal/kyc" element={
@@ -83,8 +139,6 @@ function PortalAndDashboard() {
         } />
 
         {/* ── Pesapal returns here after payment ── */}
-        {/* PortalGuard only — customer must be logged in but enrollment not required */}
-        {/* (Pesapal redirects back mid-session so HomeGuard would be too strict) */}
         <Route path="/portal/payment-success" element={
           <PortalGuard customer={customer} loading={loading}>
             <PaymentSuccess />
@@ -140,7 +194,7 @@ function PortalAndDashboard() {
           </HomeGuard>
         } />
 
-        {/* ── Business portal ── */}
+        {/* ── Business dashboard ── */}
         <Route path="/dashboard/*" element={<DashboardApp />} />
       </Routes>
     </BrandContext.Provider>
@@ -151,8 +205,8 @@ function App() {
   return (
     <BrowserRouter>
       <Routes>
-        <Route path="/admin/*" element={<AdminApp />} />
-        <Route path="/*" element={<PortalAndDashboard />} />
+        <Route path="/admin/*"  element={<AdminApp />} />
+        <Route path="/*"        element={<PortalAndDashboard />} />
       </Routes>
     </BrowserRouter>
   )
