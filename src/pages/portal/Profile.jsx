@@ -849,7 +849,7 @@ export default function Profile({ customer, signOut }) {
         {/* Account actions */}
         <Section title="Account">
           <ActionRow label="View my card"   icon="credit_card"   onClick={() => navigate('/portal/card')} />
-          <ActionRow label="View rewards"   icon="card_giftcard" onClick={() => navigate('/portal/rewards')} />
+          <ActionRow label="View card"   icon="credit_card"   onClick={() => navigate('/portal/card')} />
           <ActionRow
             label="Change PIN"
             icon="lock"
@@ -938,7 +938,7 @@ export default function Profile({ customer, signOut }) {
       }}>
         {[
           { label: 'Home',    icon: 'home',          path: '/portal/home'         },
-          { label: 'Rewards', icon: 'card_giftcard', path: '/portal/rewards'      },
+          { label: 'Card',    icon: 'credit_card',  path: '/portal/card'          },
           { label: 'History', icon: 'receipt_long',  path: '/portal/transactions' },
           { label: 'Profile', icon: 'person',        path: '/portal/profile'      },
         ].map(({ label, icon, path }) => {

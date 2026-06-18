@@ -9,7 +9,6 @@ import Login from './pages/portal/Login'
 import ResetPin from './pages/portal/ResetPin'
 import Home from './pages/portal/Home'
 import CardDetail from './pages/portal/CardDetail'
-import Rewards from './pages/portal/Rewards'
 import Transactions from './pages/portal/Transactions'
 import Profile from './pages/portal/Profile'
 import AddMoney from './pages/portal/AddMoney'
@@ -23,7 +22,6 @@ import DashboardApp from './pages/dashboard/DashboardApp'
 import AdminApp from './pages/admin/AdminApp'
 
 // ── Portal not found screen ────────────────────────────────────────────────
-// Shown when a subdomain slug is in the URL but no matching business exists
 function PortalNotFound() {
   return (
     <div style={{
@@ -92,9 +90,6 @@ function HomeGuard({ customer, enrollments, loading, children }) {
 function PortalAndDashboard() {
   const { customer, business, subdomainBusiness, enrollments, loading, signOut } = useAuth()
 
-  // If a subdomain slug is in the URL but no matching business was found,
-  // show the not found screen instead of the default Partna portal
-  const slug = window.location.hostname.split('.')[0]
   const isSubdomain = (
     window.location.hostname !== 'localhost' &&
     window.location.hostname !== '127.0.0.1' &&
@@ -155,12 +150,6 @@ function PortalAndDashboard() {
         <Route path="/portal/card" element={
           <HomeGuard customer={customer} enrollments={enrollments} loading={loading}>
             <CardDetail customer={customer} />
-          </HomeGuard>
-        } />
-
-        <Route path="/portal/rewards" element={
-          <HomeGuard customer={customer} enrollments={enrollments} loading={loading}>
-            <Rewards customer={customer} />
           </HomeGuard>
         } />
 
