@@ -424,14 +424,14 @@ export default function Register() {
                 <label className="input-label">
                   First name <span className="required">*</span>
                 </label>
-                <input type="text" className="input" placeholder="Grace"
+                <input type="text" className="input" placeholder="John"
                   value={firstName} onChange={e => setFirstName(e.target.value)} />
               </div>
               <div className="input-group" style={{ flex: 1 }}>
                 <label className="input-label">
                   Last name <span className="required">*</span>
                 </label>
-                <input type="text" className="input" placeholder="Nakamya"
+                <input type="text" className="input" placeholder="Doe"
                   value={lastName} onChange={e => setLastName(e.target.value)} />
               </div>
             </div>
@@ -464,7 +464,7 @@ export default function Register() {
               </label>
               <div className="input-wrapper">
                 <span className="icon-outlined input-icon-left">mail</span>
-                <input type="email" className="input" placeholder="grace@email.com"
+                <input type="email" className="input" placeholder="johndoe@email.com"
                   value={email} onChange={e => setEmail(e.target.value)} />
               </div>
               <span className="input-hint">Used for account recovery if you forget your PIN.</span>
