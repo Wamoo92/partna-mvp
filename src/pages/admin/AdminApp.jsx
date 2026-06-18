@@ -1,17 +1,17 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { useAdminAuth } from '../../hooks/useAdminAuth'
-import AdminLogin    from './AdminLogin'
-import AdminLayout   from './AdminLayout'
-import Dashboard     from './Dashboard'
-import Businesses    from './Businesses'
+import AdminLogin     from './AdminLogin'
+import AdminLayout    from './AdminLayout'
+import Dashboard      from './Dashboard'
+import Businesses     from './Businesses'
 import BusinessDetail from './BusinessDetail'
-import Customers     from './Customers'
+import Customers      from './Customers'
 import CustomerDetail from './CustomerDetail'
-import Transactions  from './Transactions'
-import Revenue       from './Revenue'
-import KYBQueue      from './KYBQueue'
-import Vouchers      from './Vouchers'
-import Settings      from './Settings'
+import Transactions   from './Transactions'
+import Revenue        from './Revenue'
+import KYBQueue       from './KYBQueue'
+import Rewards        from './Rewards'
+import Settings       from './Settings'
 
 function AdminGuard({ admin, loading, children }) {
   if (loading) return (
@@ -40,7 +40,7 @@ export default function AdminApp() {
               <Route path="/transactions"      element={<Transactions />} />
               <Route path="/revenue"           element={<Revenue />} />
               <Route path="/kyb"               element={<KYBQueue />} />
-              <Route path="/vouchers"          element={<Vouchers />} />
+              <Route path="/rewards"           element={<Rewards />} />
               <Route path="/settings"          element={<Settings />} />
               <Route path="/"                  element={<Navigate to="/admin/dashboard" replace />} />
             </Routes>

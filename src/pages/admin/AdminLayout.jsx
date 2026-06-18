@@ -1,14 +1,14 @@
 import { useNavigate, useLocation } from 'react-router-dom'
 
 const NAV_ITEMS = [
-  { label: 'Dashboard',    icon: 'dashboard',       path: '/admin/dashboard'   },
-  { label: 'Businesses',   icon: 'business',        path: '/admin/businesses'  },
-  { label: 'Customers',    icon: 'group',           path: '/admin/customers'   },
-  { label: 'Transactions', icon: 'swap_vert',       path: '/admin/transactions'},
-  { label: 'Revenue',      icon: 'payments',        path: '/admin/revenue'     },
-  { label: 'KYB Queue',    icon: 'verified_user',   path: '/admin/kyb'         },
-  { label: 'Vouchers',     icon: 'confirmation_number', path: '/admin/vouchers'},
-  { label: 'Settings',     icon: 'settings',        path: '/admin/settings'    },
+  { label: 'Dashboard',    icon: 'dashboard',     path: '/admin/dashboard'   },
+  { label: 'Businesses',   icon: 'business',      path: '/admin/businesses'  },
+  { label: 'Customers',    icon: 'group',         path: '/admin/customers'   },
+  { label: 'Transactions', icon: 'swap_vert',     path: '/admin/transactions'},
+  { label: 'Revenue',      icon: 'payments',      path: '/admin/revenue'     },
+  { label: 'KYB Queue',    icon: 'verified_user', path: '/admin/kyb'         },
+  { label: 'Rewards',      icon: 'redeem',        path: '/admin/rewards'     },
+  { label: 'Settings',     icon: 'settings',      path: '/admin/settings'    },
 ]
 
 // Wired up when KYBQueue is built
@@ -105,7 +105,6 @@ export default function AdminLayout({ admin, signOut, children }) {
                 onMouseEnter={e => { if (!active) { e.currentTarget.style.background = 'rgba(255,255,255,0.06)'; e.currentTarget.style.color = 'var(--color-white)' }}}
                 onMouseLeave={e => { if (!active) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'rgba(255,255,255,0.55)' }}}
               >
-                {/* Active left bar */}
                 {active && (
                   <div style={{
                     position: 'absolute', left: 0, top: 0, bottom: 0,
