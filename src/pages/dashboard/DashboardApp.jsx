@@ -10,7 +10,6 @@ import Customers         from './Customers'
 import Campaigns         from './Campaigns'
 import Payments          from './Payments'
 import Students          from './Students'
-import VouchersPrizes    from './VouchersPrizes'
 import Settings          from './Settings'
 import Products          from './Products'
 import Sales             from './Sales'
@@ -43,7 +42,6 @@ export default function DashboardApp() {
               <Route path="/students"   element={<Students      admin={admin} business={business} />} />
               <Route path="/campaigns"  element={<Campaigns     admin={admin} business={business} />} />
               <Route path="/payments"   element={<Payments      admin={admin} business={business} />} />
-              <Route path="/vouchers"   element={<VouchersPrizes admin={admin} business={business} />} />
               <Route path="/settings"   element={<Settings      admin={admin} business={business} />} />
               <Route path="/products"   element={<Products      admin={admin} business={business} />} />
               <Route path="/sales"      element={<Sales         admin={admin} business={business} />} />

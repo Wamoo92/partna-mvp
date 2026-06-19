@@ -1,34 +1,29 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../../supabase'
 
-// ── Constants ────────────────────────────────────────────────────────────────
-
+// ── Constants — unchanged ──────────────────────────────────────────────────
 const REG_TYPES = [
   { value: 'sole_proprietor', label: 'Sole Proprietorship' },
   { value: 'partnership',     label: 'Partnership' },
   { value: 'limited_company', label: 'Private Limited Company (Ltd)' },
 ]
-
 const KYB_DOCS = {
   limited_company: ['Certificate of Incorporation (URSB)', 'Memorandum & Articles of Association', 'URA TIN Certificate', 'Board Resolution authorizing Partna', 'National IDs of all directors', 'Voided cheque or bank letter'],
   partnership:     ['Certificate of Registration (URSB)', 'Partnership URA TIN', 'Partnership Deed', 'Resolution authorizing Partna', 'ID/Passport copies of all partners', 'Cancelled cheque or bank letter'],
   sole_proprietor: ['Business Registration Certificate', "National ID, Passport or Driver's License", 'URA TIN Certificate', 'Cancelled cheque or bank statement'],
 }
-
 const PACKAGES = [
-  { id: 'starter',    name: 'Starter',    monthly: 49,  annual: 470,  accent: 'var(--color-yellow)',  features: ['1 active campaign', 'Up to 100 customers', '3 vouchers/campaign', 'No prizes'] },
-  { id: 'growth',     name: 'Growth',     monthly: 149, annual: 1430, accent: 'var(--color-primary)', features: ['3 active campaigns', 'Up to 500 customers', '8 vouchers/campaign', 'Item & discount prizes'] },
-  { id: 'enterprise', name: 'Enterprise', monthly: 399, annual: 3830, accent: 'var(--color-green)',   features: ['Unlimited campaigns', 'Unlimited customers', 'All vouchers', 'All prize types incl. cash'] },
+  { id: 'starter',    name: 'Starter',    monthly: 49,  annual: 470,  accentColor: '#EF8354', features: ['1 active campaign', 'Up to 100 customers', '3 vouchers/campaign', 'No prizes'] },
+  { id: 'growth',     name: 'Growth',     monthly: 149, annual: 1430, accentColor: '#85A0C5', features: ['3 active campaigns', 'Up to 500 customers', '8 vouchers/campaign', 'Item & discount prizes'] },
+  { id: 'enterprise', name: 'Enterprise', monthly: 399, annual: 3830, accentColor: '#59886D', features: ['Unlimited campaigns', 'Unlimited customers', 'All vouchers', 'All prize types incl. cash'] },
 ]
-
 const ADDRESS_LABELS = ['Address line 1 (Street)', 'Address line 2 (Area / Village)', 'City / Town', 'Postal code', 'P.O. Box']
-
 const TABS = [
-  { id: 'profile',      icon: 'business',     label: 'Business Profile' },
-  { id: 'kyb',          icon: 'verified_user', label: 'KYB Verification' },
-  { id: 'team',         icon: 'group',         label: 'Team'             },
-  { id: 'subscription', icon: 'payments',      label: 'Subscription'     },
-  { id: 'security',     icon: 'lock',          label: 'Security'         },
+  { id: 'profile',      label: 'Business Profile' },
+  { id: 'kyb',          label: 'KYB Verification' },
+  { id: 'team',         label: 'Team'             },
+  { id: 'subscription', label: 'Subscription'     },
+  { id: 'security',     label: 'Security'         },
 ]
 
 function validateSlug(val) {
@@ -40,8 +35,80 @@ function validateSlug(val) {
   return null
 }
 
-// ── FileUploadField ───────────────────────────────────────────────────────────
+// ── Sellin tokens ──────────────────────────────────────────────────────────
+const C = {
+  bg:        '#F6F7EE',
+  white:     '#FFFFFF',
+  black:     '#111111',
+  accent:    '#ECEDE1',
+  labelBg:   '#E4E5DD',
+  stroke:    '#D7D8CB',
+  grayLine:  '#D5D9DD',
+  secondary: '#959687',
+  grayMid:   '#898B90',
+  grayLight: '#ECECEC',
+  green:     '#59886D',
+  bgGreen:   '#E4F8EC',
+  red:       '#CC3939',
+  bgRed:     '#F8E4E4',
+  orange:    '#EF8354',
+  bgOrange:  '#F8F0E4',
+  blue:      '#85A0C5',
+}
 
+const inputStyle   = { display: 'block', width: '100%', padding: '9px 12px', fontSize: 13, fontWeight: 500, color: C.black, background: C.white, border: `1px solid ${C.grayLine}`, borderRadius: 8, outline: 'none', fontFamily: 'Inter, system-ui, sans-serif', transition: 'border-color 0.15s' }
+const labelStyle   = { display: 'block', fontSize: 13, fontWeight: 600, color: C.black, marginBottom: 5 }
+const hintStyle    = { fontSize: 11, fontWeight: 500, color: C.grayMid, marginTop: 4 }
+const btnPrimary   = { padding: '9px 16px', fontSize: 13, fontWeight: 600, color: C.white, background: C.black, border: `1px solid ${C.black}`, borderRadius: 8, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 7, fontFamily: 'Inter, system-ui, sans-serif' }
+const btnSecondary = { ...btnPrimary, color: C.black, background: C.white, border: `1px solid ${C.grayLine}` }
+const btnDanger    = { ...btnPrimary, background: C.red,   borderColor: C.red   }
+const btnSuccess   = { ...btnPrimary, background: C.green, borderColor: C.green }
+
+// ── Shared primitives ──────────────────────────────────────────────────────
+function SectionCard({ title, badge, children, noPad }) {
+  return (
+    <div style={{ background: C.white, border: `1px solid ${C.stroke}`, borderRadius: 12, overflow: 'hidden' }}>
+      {title && (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 18px', borderBottom: `1px solid ${C.grayLine}` }}>
+          <p style={{ fontSize: 14, fontWeight: 600, color: C.black, margin: 0, letterSpacing: '-0.4px' }}>{title}</p>
+          {badge}
+        </div>
+      )}
+      <div style={noPad ? {} : { padding: '16px 18px' }}>{children}</div>
+    </div>
+  )
+}
+
+function InfoRow({ label, value, last }) {
+  const empty = !value || value === '—' || value === 'Not provided'
+  return (
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '9px 18px', borderBottom: last ? 'none' : `1px solid ${C.grayLine}` }}>
+      <span style={{ fontSize: 12, fontWeight: 500, color: C.secondary }}>{label}</span>
+      <span style={{ fontSize: 13, fontWeight: 600, color: empty ? C.grayMid : C.black }}>{value || '—'}</span>
+    </div>
+  )
+}
+
+function Modal({ title, onClose, footer, children }) {
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(17,17,17,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20, zIndex: 500, backdropFilter: 'blur(4px)' }}>
+      <div style={{ background: C.white, border: `1px solid ${C.stroke}`, borderRadius: 16, width: '100%', maxWidth: 440, overflow: 'hidden', boxShadow: '0 8px 32px rgba(17,17,17,0.12)', maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 20px', borderBottom: `1px solid ${C.grayLine}`, flexShrink: 0 }}>
+          <p style={{ fontSize: 15, fontWeight: 600, color: C.black, margin: 0 }}>{title}</p>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: C.grayMid, padding: 4, lineHeight: 1, fontSize: 18 }}>✕</button>
+        </div>
+        <div style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 14, overflowY: 'auto' }}>{children}</div>
+        {footer && <div style={{ padding: '14px 20px', borderTop: `1px solid ${C.grayLine}`, display: 'flex', gap: 10, flexShrink: 0 }}>{footer}</div>}
+      </div>
+    </div>
+  )
+}
+
+function ReadOnlyBadge() {
+  return <span style={{ fontSize: 11, fontWeight: 600, color: C.secondary, background: C.grayLight, borderRadius: 6, padding: '3px 8px' }}>Read only</span>
+}
+
+// ── File upload field ──────────────────────────────────────────────────────
 function FileUploadField({ label, businessId, docSlug }) {
   const [uploading, setUploading]       = useState(false)
   const [uploaded, setUploaded]         = useState(false)
@@ -49,42 +116,37 @@ function FileUploadField({ label, businessId, docSlug }) {
   const [uploadError, setUploadError]   = useState('')
 
   async function handleChange(e) {
-    const f = e.target.files[0]
-    if (!f) return
+    const f = e.target.files[0]; if (!f) return
     setUploadError(''); setUploading(true)
     try {
-      const ext  = f.name.split('.').pop()
+      const ext = f.name.split('.').pop()
       const path = `kyb/${businessId}/${docSlug}.${ext}`
       const { error } = await supabase.storage.from('kyb-documents').upload(path, f, { upsert: true })
       if (error) throw error
       setUploaded(true); setUploadedName(f.name)
-    } catch (e) {
-      console.error('Upload error:', e)
-      setUploadError('Upload failed. Please try again.')
-    }
+    } catch (e) { console.error('Upload error:', e); setUploadError('Upload failed. Please try again.') }
     setUploading(false)
   }
-
   function handleRemove() { setUploaded(false); setUploadedName(''); setUploadError('') }
 
   return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: 'var(--space-3) 0', borderBottom: '1.5px solid var(--color-grey-light)' }}>
-      <span style={{ fontSize: 'var(--text-sm)', color: 'var(--color-grey)', flex: 1, marginRight: 'var(--space-4)' }}>{label}</span>
-      {uploadError && <span style={{ fontSize: 'var(--text-xs)', color: '#C0392B', marginRight: 'var(--space-2)' }}>{uploadError}</span>}
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 0', borderBottom: `1px solid ${C.grayLine}` }}>
+      <span style={{ fontSize: 13, fontWeight: 500, color: C.secondary, flex: 1, marginRight: 16 }}>{label}</span>
+      {uploadError && <span style={{ fontSize: 11, fontWeight: 500, color: C.red, marginRight: 8 }}>{uploadError}</span>}
       {uploading ? (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', flexShrink: 0 }}>
-          <div className="spinner spinner-sm spinner-purple" />
-          <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-grey)' }}>Uploading…</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexShrink: 0 }}>
+          <div className="spinner spinner-sm" />
+          <span style={{ fontSize: 12, fontWeight: 500, color: C.secondary }}>Uploading…</span>
         </div>
       ) : uploaded ? (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', flexShrink: 0 }}>
-          <span className="icon-outlined" style={{ fontSize: 16, color: '#2D8B45' }}>check_circle</span>
-          <span style={{ fontSize: 'var(--text-xs)', color: '#2D8B45', fontWeight: 'var(--weight-bold)', maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{uploadedName}</span>
-          <button onClick={handleRemove} className="btn btn-sm btn-danger" style={{ padding: '2px var(--space-2)' }}>Remove</button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexShrink: 0 }}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={C.green} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5" /></svg>
+          <span style={{ fontSize: 11, fontWeight: 600, color: C.green, maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{uploadedName}</span>
+          <button onClick={handleRemove} style={{ ...btnDanger, padding: '3px 8px', fontSize: 11 }}>Remove</button>
         </div>
       ) : (
         <label style={{ cursor: 'pointer', flexShrink: 0 }}>
-          <span className="btn btn-sm btn-secondary">Upload</span>
+          <span style={{ ...btnSecondary, padding: '5px 10px', fontSize: 11 }}>Upload</span>
           <input type="file" accept=".pdf,.jpg,.jpeg,.png" style={{ display: 'none' }} onChange={handleChange} />
         </label>
       )}
@@ -92,21 +154,18 @@ function FileUploadField({ label, businessId, docSlug }) {
   )
 }
 
-// ── Main ──────────────────────────────────────────────────────────────────────
-
+// ── Main ───────────────────────────────────────────────────────────────────
 export default function Settings({ admin, business }) {
   const [tab, setTab]         = useState('profile')
   const [saving, setSaving]   = useState(false)
   const [success, setSuccess] = useState('')
   const [error, setError]     = useState('')
 
-  // Branding
   const [primaryColor, setPrimaryColor]     = useState(business?.primary_color   || '#1B4F72')
   const [secondaryColor, setSecondaryColor] = useState(business?.secondary_color || '#D4AF37')
   const [logoPreview, setLogoPreview]       = useState(business?.logo_url        || null)
   const [heroPreview, setHeroPreview]       = useState(business?.hero_image_url  || null)
 
-  // Team
   const [admins, setAdmins]               = useState([])
   const [adminsLoading, setAdminsLoading] = useState(false)
   const [showInvite, setShowInvite]       = useState(false)
@@ -115,7 +174,6 @@ export default function Settings({ admin, business }) {
   const [inviteRole, setInviteRole]       = useState('admin')
   const [inviting, setInviting]           = useState(false)
 
-  // Subscription
   const [subscription, setSubscription]           = useState(null)
   const [billingCycle, setBillingCycle]           = useState('monthly')
   const [showCancelModal, setShowCancelModal]     = useState(false)
@@ -123,13 +181,11 @@ export default function Settings({ admin, business }) {
   const [cancelling, setCancelling]               = useState(false)
   const [cancelConfirmText, setCancelConfirmText] = useState('')
 
-  // Security — password
   const [currentPassword, setCurrentPassword] = useState('')
   const [newPassword, setNewPassword]         = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [changingPw, setChangingPw]           = useState(false)
 
-  // Security — portal slug
   const [slug, setSlug]             = useState(business?.slug || '')
   const [slugError, setSlugError]   = useState('')
   const [savingSlug, setSavingSlug] = useState(false)
@@ -139,20 +195,16 @@ export default function Settings({ admin, business }) {
     if (tab === 'subscription') loadSubscription()
   }, [tab])
 
+  // ── All business logic — unchanged ────────────────────────────────────
+
   async function loadAdmins() {
     setAdminsLoading(true)
     const { data } = await supabase.from('business_admins').select('*').eq('business_id', business.id)
-    setAdmins(data || [])
-    setAdminsLoading(false)
+    setAdmins(data || []); setAdminsLoading(false)
   }
 
   async function loadSubscription() {
-    const { data } = await supabase.from('business_subscriptions')
-      .select('*, subscription_packages(*)')
-      .eq('business_id', business.id)
-      .eq('status', 'active')
-      .order('created_at', { ascending: false })
-      .limit(1)
+    const { data } = await supabase.from('business_subscriptions').select('*, subscription_packages(*)').eq('business_id', business.id).eq('status', 'active').order('created_at', { ascending: false }).limit(1)
     if (data?.length > 0) { setSubscription(data[0]); setBillingCycle(data[0].billing_cycle || 'monthly') }
   }
 
@@ -161,33 +213,14 @@ export default function Settings({ admin, business }) {
     setTimeout(() => { setSuccess(''); setError('') }, 4000)
   }
 
-  function handleLogoSelect(e) {
-    const file = e.target.files[0]
-    if (!file) return
-    const reader = new FileReader()
-    reader.onload = ev => setLogoPreview(ev.target.result)
-    reader.readAsDataURL(file)
-  }
-
-  function handleHeroSelect(e) {
-    const file = e.target.files[0]
-    if (!file) return
-    const reader = new FileReader()
-    reader.onload = ev => setHeroPreview(ev.target.result)
-    reader.readAsDataURL(file)
-  }
+  function handleLogoSelect(e) { const f = e.target.files[0]; if (!f) return; const r = new FileReader(); r.onload = ev => setLogoPreview(ev.target.result); r.readAsDataURL(f) }
+  function handleHeroSelect(e) { const f = e.target.files[0]; if (!f) return; const r = new FileReader(); r.onload = ev => setHeroPreview(ev.target.result); r.readAsDataURL(f) }
 
   async function saveBranding() {
     setSaving(true)
     try {
-      const { error: err } = await supabase.from('businesses').update({
-        primary_color:   primaryColor,
-        secondary_color: secondaryColor,
-        logo_url:        logoPreview       || business?.logo_url,
-        hero_image_url:  heroPreview       || business?.hero_image_url,
-      }).eq('id', business.id)
-      if (err) throw err
-      flash('Branding updated.')
+      const { error: err } = await supabase.from('businesses').update({ primary_color: primaryColor, secondary_color: secondaryColor, logo_url: logoPreview || business?.logo_url, hero_image_url: heroPreview || business?.hero_image_url }).eq('id', business.id)
+      if (err) throw err; flash('Branding updated.')
     } catch (e) { flash('Could not save branding. Please try again.', true) }
     setSaving(false)
   }
@@ -201,8 +234,7 @@ export default function Settings({ admin, business }) {
       if (existing?.length > 0) { flash('This email is already registered as an admin.', true); setInviting(false); return }
       await supabase.from('business_admins').insert({ business_id: business.id, full_name: inviteName, email: inviteEmail.toLowerCase().trim(), role: inviteRole, auth_user_id: null })
       setShowInvite(false); setInviteName(''); setInviteEmail(''); setInviteRole('admin')
-      await loadAdmins()
-      flash('Admin invited. They must register at /dashboard/register using this email.')
+      await loadAdmins(); flash('Admin invited. They must register at /dashboard/register using this email.')
     } catch (e) { flash('Could not invite admin. Please try again.', true) }
     setInviting(false)
   }
@@ -223,8 +255,7 @@ export default function Settings({ admin, business }) {
       if (signInError) { flash('Current password is incorrect.', true); setChangingPw(false); return }
       const { error: updateError } = await supabase.auth.updateUser({ password: newPassword })
       if (updateError) throw updateError
-      setCurrentPassword(''); setNewPassword(''); setConfirmPassword('')
-      flash('Password updated successfully.')
+      setCurrentPassword(''); setNewPassword(''); setConfirmPassword(''); flash('Password updated successfully.')
     } catch (e) { flash('Could not update password. Please try again.', true) }
     setChangingPw(false)
   }
@@ -240,9 +271,7 @@ export default function Settings({ admin, business }) {
       if (existing) { setSlugError('This slug is already taken. Please choose a different one.'); setSavingSlug(false); return }
       const fullUrl = `https://${cleanSlug}.partna.io`
       const { error: err } = await supabase.from('businesses').update({ slug: cleanSlug, portal_url: fullUrl }).eq('id', business.id)
-      if (err) throw err
-      setSlug(cleanSlug)
-      flash('Portal URL saved. Share ' + fullUrl + ' with your customers.')
+      if (err) throw err; setSlug(cleanSlug); flash('Portal URL saved. Share ' + fullUrl + ' with your customers.')
     } catch (e) { console.error('Save slug error:', e); flash('Could not save portal URL. Please try again.', true) }
     setSavingSlug(false)
   }
@@ -262,418 +291,281 @@ export default function Settings({ admin, business }) {
 
   const addressParts = (business?.address || '').split(', ').filter(Boolean)
 
-  const Card = ({ children, style }) => (
-    <div style={{ background: 'var(--color-white)', border: 'var(--border)', boxShadow: 'var(--shadow-sm)', ...style }}>
-      {children}
-    </div>
-  )
+  // ─────────────────────────────────────────────────────────────────────────
 
-  const SectionHeader = ({ title, badge }) => (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: 'var(--space-4) var(--space-5)', borderBottom: 'var(--border)', background: 'var(--color-black)' }}>
-      <span style={{ fontWeight: 'var(--weight-bold)', fontSize: 'var(--text-sm)', color: 'var(--color-white)' }}>{title}</span>
-      {badge && badge}
-    </div>
-  )
-
-  const InfoRow = ({ label, value, last }) => (
-    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: 'var(--space-2) var(--space-5)', borderBottom: last ? 'none' : '1.5px solid var(--color-grey-light)', background: 'var(--color-white)' }}>
-      <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-grey)' }}>{label}</span>
-      <span style={{ fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-bold)', color: !value || value === '—' || value === 'Not provided' ? 'var(--color-grey-mid)' : 'var(--color-black)' }}>{value || '—'}</span>
-    </div>
-  )
+  const supportLink = <a href="mailto:support@partna.co" style={{ color: C.black, fontWeight: 600, textDecoration: 'underline' }}>support@partna.co</a>
 
   return (
-    <div style={{ display: 'flex', gap: 'var(--space-6)', alignItems: 'flex-start' }}>
+    <div style={{ display: 'flex', gap: 24, alignItems: 'flex-start', fontFamily: 'Inter, system-ui, sans-serif' }}>
 
       {/* ── CANCEL SUBSCRIPTION MODAL ── */}
       {showCancelModal && (
-        <div className="modal-backdrop">
-          <div className="modal modal-sm">
-            <div className="modal-header" style={{ background: '#C0392B' }}>
-              <span className="modal-title">Cancel subscription</span>
-              <button onClick={() => setShowCancelModal(false)} className="modal-close">
-                <span className="icon-outlined icon-sm">close</span>
-              </button>
-            </div>
-            <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
-              <div className="alert alert-danger">
-                <span className="icon-outlined alert-icon">warning</span>
-                <div className="alert-content">
-                  Cancelling will end your subscription at the close of your current billing period.
-                  All campaigns will be paused and customers will lose access to new features.
-                </div>
-              </div>
-              <div className="input-group">
-                <label className="input-label">Reason for cancelling <span style={{ textTransform: 'none', letterSpacing: 0, fontWeight: 'var(--weight-regular)', color: 'var(--color-grey)' }}>(optional)</span></label>
-                <select className="input" value={cancelReason} onChange={e => setCancelReason(e.target.value)}>
-                  <option value="">Select a reason</option>
-                  <option value="too_expensive">Too expensive</option>
-                  <option value="not_using">Not using it enough</option>
-                  <option value="missing_features">Missing features I need</option>
-                  <option value="switching">Switching to another solution</option>
-                  <option value="business_closed">Business closing / pausing</option>
-                  <option value="other">Other</option>
-                </select>
-              </div>
-              <div className="input-group">
-                <label className="input-label">Type <strong>CANCEL</strong> to confirm</label>
-                <input type="text" className="input" value={cancelConfirmText}
-                  onChange={e => setCancelConfirmText(e.target.value.toUpperCase())}
-                  placeholder="CANCEL" style={{ fontFamily: 'monospace', letterSpacing: '0.15em', fontWeight: 'var(--weight-black)' }} />
-              </div>
-            </div>
-            <div className="modal-footer">
-              <button onClick={() => { setShowCancelModal(false); setCancelConfirmText('') }} className="btn btn-secondary" style={{ flex: 1 }}>Keep subscription</button>
-              <button onClick={handleCancelSubscription} disabled={cancelling || cancelConfirmText !== 'CANCEL'} className="btn btn-danger" style={{ flex: 1 }}>
-                {cancelling
-                  ? <><div className="spinner spinner-sm" style={{ borderTopColor: 'var(--color-black)' }} /> Cancelling…</>
-                  : <><span className="icon-outlined icon-sm">cancel</span> Confirm cancellation</>
-                }
-              </button>
-            </div>
+        <Modal title="Cancel subscription" onClose={() => setShowCancelModal(false)}
+          footer={<>
+            <button onClick={() => { setShowCancelModal(false); setCancelConfirmText('') }} style={{ ...btnSecondary, flex: 1, justifyContent: 'center' }}>Keep subscription</button>
+            <button onClick={handleCancelSubscription} disabled={cancelling || cancelConfirmText !== 'CANCEL'} style={{ ...btnDanger, flex: 1, justifyContent: 'center', opacity: cancelling || cancelConfirmText !== 'CANCEL' ? 0.5 : 1 }}>
+              {cancelling ? <><div className="spinner spinner-sm spinner-light" /> Cancelling…</> : 'Confirm cancellation'}
+            </button>
+          </>}>
+          <div style={{ background: C.bgRed, border: `1px solid ${C.red}`, borderRadius: 8, padding: '12px 14px', fontSize: 13, fontWeight: 500, color: C.red, lineHeight: '140%' }}>
+            Cancelling will end your subscription at the close of your current billing period. All campaigns will be paused and customers will lose access to new features.
           </div>
-        </div>
+          <div>
+            <label style={labelStyle}>Reason for cancelling <span style={{ fontWeight: 400, color: C.grayMid }}>(optional)</span></label>
+            <select style={inputStyle} value={cancelReason} onChange={e => setCancelReason(e.target.value)} onFocus={e => e.target.style.borderColor = C.black} onBlur={e => e.target.style.borderColor = C.grayLine}>
+              <option value="">Select a reason</option>
+              <option value="too_expensive">Too expensive</option>
+              <option value="not_using">Not using it enough</option>
+              <option value="missing_features">Missing features I need</option>
+              <option value="switching">Switching to another solution</option>
+              <option value="business_closed">Business closing / pausing</option>
+              <option value="other">Other</option>
+            </select>
+          </div>
+          <div>
+            <label style={labelStyle}>Type <strong>CANCEL</strong> to confirm</label>
+            <input type="text" style={{ ...inputStyle, fontFamily: 'monospace', letterSpacing: '0.12em', fontWeight: 600 }} placeholder="CANCEL" value={cancelConfirmText} onChange={e => setCancelConfirmText(e.target.value.toUpperCase())}
+              onFocus={e => e.target.style.borderColor = C.black} onBlur={e => e.target.style.borderColor = C.grayLine} />
+          </div>
+        </Modal>
       )}
 
       {/* ── INVITE MODAL ── */}
       {showInvite && (
-        <div className="modal-backdrop">
-          <div className="modal modal-sm">
-            <div className="modal-header">
-              <span className="modal-title">Invite admin</span>
-              <button onClick={() => setShowInvite(false)} className="modal-close">
-                <span className="icon-outlined icon-sm">close</span>
-              </button>
+        <Modal title="Invite admin" onClose={() => setShowInvite(false)}
+          footer={<>
+            <button onClick={() => setShowInvite(false)} style={{ ...btnSecondary, flex: 1, justifyContent: 'center' }}>Cancel</button>
+            <button onClick={handleInvite} disabled={inviting} style={{ ...btnPrimary, flex: 1, justifyContent: 'center', opacity: inviting ? 0.75 : 1 }}>
+              {inviting ? <><div className="spinner spinner-sm spinner-light" /> Inviting…</> : 'Send invite'}
+            </button>
+          </>}>
+          {[{ label: 'Full name', val: inviteName, set: setInviteName, type: 'text' }, { label: 'Email address', val: inviteEmail, set: setInviteEmail, type: 'email' }].map(f => (
+            <div key={f.label}>
+              <label style={labelStyle}>{f.label}</label>
+              <input type={f.type} style={inputStyle} value={f.val} onChange={e => f.set(e.target.value)} onFocus={e => e.target.style.borderColor = C.black} onBlur={e => e.target.style.borderColor = C.grayLine} />
             </div>
-            <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
-              <div className="input-group">
-                <label className="input-label">Full name</label>
-                <div className="input-wrapper">
-                  <span className="icon-outlined input-icon-left">person</span>
-                  <input type="text" className="input" value={inviteName} onChange={e => setInviteName(e.target.value)} />
-                </div>
-              </div>
-              <div className="input-group">
-                <label className="input-label">Email address</label>
-                <div className="input-wrapper">
-                  <span className="icon-outlined input-icon-left">mail</span>
-                  <input type="email" className="input" value={inviteEmail} onChange={e => setInviteEmail(e.target.value)} />
-                </div>
-              </div>
-              <div className="input-group">
-                <label className="input-label">Role</label>
-                <select className="input" value={inviteRole} onChange={e => setInviteRole(e.target.value)}>
-                  <option value="admin">Admin — full access</option>
-                  <option value="viewer">Viewer — read only</option>
-                </select>
-              </div>
-              <div className="alert alert-info">
-                <span className="icon-outlined alert-icon">info</span>
-                <div className="alert-content">The invited admin must register at /dashboard/register using this email.</div>
-              </div>
-            </div>
-            <div className="modal-footer">
-              <button onClick={() => setShowInvite(false)} className="btn btn-secondary" style={{ flex: 1 }}>Cancel</button>
-              <button onClick={handleInvite} disabled={inviting} className="btn btn-primary" style={{ flex: 1 }}>
-                {inviting
-                  ? <><div className="spinner spinner-sm" style={{ borderTopColor: 'var(--color-black)' }} /> Inviting…</>
-                  : <><span className="icon-outlined icon-sm">send</span> Send invite</>
-                }
-              </button>
-            </div>
+          ))}
+          <div>
+            <label style={labelStyle}>Role</label>
+            <select style={inputStyle} value={inviteRole} onChange={e => setInviteRole(e.target.value)} onFocus={e => e.target.style.borderColor = C.black} onBlur={e => e.target.style.borderColor = C.grayLine}>
+              <option value="admin">Admin — full access</option>
+              <option value="viewer">Viewer — read only</option>
+            </select>
           </div>
-        </div>
+          <div style={{ background: C.bg, border: `1px solid ${C.grayLine}`, borderRadius: 8, padding: '10px 14px', fontSize: 13, fontWeight: 500, color: C.secondary }}>
+            The invited admin must register at /dashboard/register using this email.
+          </div>
+        </Modal>
       )}
 
       {/* ── TAB SIDEBAR ── */}
-      <div style={{ width: 200, flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
+      <div style={{ width: 196, flexShrink: 0, background: C.white, border: `1px solid ${C.stroke}`, borderRadius: 12, overflow: 'hidden', padding: '6px' }}>
         {TABS.map(t => (
-          <button key={t.id} onClick={() => { setTab(t.id); setError(''); setSuccess('') }} style={{
-            display: 'flex', alignItems: 'center', gap: 'var(--space-3)',
-            padding: 'var(--space-3) var(--space-4)',
-            background: tab === t.id ? 'var(--color-primary)' : 'transparent',
-            border: 'none',
-            color: tab === t.id ? 'var(--color-black)' : 'var(--color-grey)',
-            fontSize: 'var(--text-sm)', fontWeight: tab === t.id ? 'var(--weight-black)' : 'var(--weight-semibold)',
-            cursor: 'pointer', textAlign: 'left',
-            transition: 'all var(--transition-base)',
-            position: 'relative',
-          }}>
-            {tab === t.id && <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 3, background: 'var(--color-black)' }} />}
-            <span className="icon-outlined" style={{ fontSize: 18, flexShrink: 0 }}>{t.icon}</span>
+          <button key={t.id} onClick={() => { setTab(t.id); setError(''); setSuccess('') }}
+            style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '9px 10px', borderRadius: 8, border: 'none', background: tab === t.id ? C.bg : 'transparent', color: tab === t.id ? C.black : C.secondary, fontSize: 13, fontWeight: tab === t.id ? 600 : 500, cursor: 'pointer', textAlign: 'left', transition: 'all 0.12s', fontFamily: 'Inter, system-ui, sans-serif' }}
+            onMouseEnter={e => { if (tab !== t.id) { e.currentTarget.style.background = C.bg; e.currentTarget.style.color = C.black } }}
+            onMouseLeave={e => { if (tab !== t.id) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = C.secondary } }}
+          >
+            <span style={{ width: 4, height: 16, borderRadius: 2, background: tab === t.id ? C.black : 'transparent', flexShrink: 0 }} />
             {t.label}
           </button>
         ))}
       </div>
 
       {/* ── TAB CONTENT ── */}
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 'var(--space-4)', minWidth: 0 }}>
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 16, minWidth: 0 }}>
 
-        {success && (
-          <div className="alert alert-success">
-            <span className="icon-outlined alert-icon">check_circle</span>
-            <div className="alert-content">{success}</div>
-          </div>
-        )}
-        {error && (
-          <div className="alert alert-danger">
-            <span className="icon-outlined alert-icon">error_outline</span>
-            <div className="alert-content">{error}</div>
-          </div>
-        )}
+        {/* Flash messages */}
+        {success && <div style={{ background: C.bgGreen, border: `1px solid ${C.green}`, borderRadius: 8, padding: '12px 16px', fontSize: 13, fontWeight: 500, color: C.green }}>{success}</div>}
+        {error   && <div style={{ background: C.bgRed,   border: `1px solid ${C.red}`,   borderRadius: 8, padding: '12px 16px', fontSize: 13, fontWeight: 500, color: C.red   }}>{error}</div>}
 
-        {/* ══════════════ PROFILE TAB ══════════════ */}
+        {/* ══════════════ PROFILE ══════════════ */}
         {tab === 'profile' && (
           <>
-            {/* Business info */}
-            <Card>
-              <SectionHeader
-                title="Business information"
-                badge={
-                  <span className="badge badge-default no-dot">
-                    <span className="icon-outlined icon-xs">lock</span>
-                    Read only
-                  </span>
-                }
-              />
+            <SectionCard title="Business information" badge={<ReadOnlyBadge />} noPad>
               {[
                 { label: 'Business name',  value: business?.name },
                 { label: 'Sector',         value: business?.sector },
                 { label: 'Business phone', value: business?.phone },
                 { label: 'Website',        value: business?.website || '—' },
               ].map((row, i) => <InfoRow key={i} label={row.label} value={row.value} />)}
-              <div style={{ padding: 'var(--space-3) var(--space-5)', borderTop: 'var(--border)', borderBottom: 'var(--border)', background: 'var(--color-bg)' }}>
-                <div style={{ fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-black)', letterSpacing: 'var(--tracking-widest)', textTransform: 'uppercase', color: 'var(--color-grey)' }}>Business address</div>
+              <div style={{ padding: '8px 18px', background: C.bg, borderTop: `1px solid ${C.grayLine}`, borderBottom: `1px solid ${C.grayLine}` }}>
+                <p style={{ fontSize: 11, fontWeight: 600, color: C.secondary, margin: 0, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Business address</p>
               </div>
-              {addressParts.length === 0 ? (
-                <div style={{ padding: 'var(--space-4) var(--space-5)', fontSize: 'var(--text-sm)', color: 'var(--color-grey-mid)' }}>No address on file</div>
-              ) : (
-                [...addressParts, 'Uganda'].map((part, i) => (
-                  <InfoRow key={i} label={i < addressParts.length ? (ADDRESS_LABELS[i] || 'Other') : 'Country'} value={part} last={i === addressParts.length} />
-                ))
-              )}
-              <div style={{ padding: 'var(--space-3) var(--space-5)', borderTop: '1.5px solid var(--color-grey-light)', background: 'var(--color-bg)', fontSize: 'var(--text-xs)', color: 'var(--color-grey)' }}>
-                To update your business information, contact{' '}
-                <a href="mailto:support@partna.co" style={{ color: 'var(--color-black)', fontWeight: 'var(--weight-bold)', textDecoration: 'underline' }}>support@partna.co</a>
+              {addressParts.length === 0
+                ? <div style={{ padding: '12px 18px', fontSize: 13, fontWeight: 500, color: C.grayMid }}>No address on file</div>
+                : [...addressParts, 'Uganda'].map((part, i) => (
+                    <InfoRow key={i} label={i < addressParts.length ? (ADDRESS_LABELS[i] || 'Other') : 'Country'} value={part} last={i === addressParts.length} />
+                  ))
+              }
+              <div style={{ padding: '9px 18px', background: C.bg, borderTop: `1px solid ${C.grayLine}`, fontSize: 12, fontWeight: 500, color: C.secondary }}>
+                To update your business information, contact {supportLink}
               </div>
-            </Card>
+            </SectionCard>
 
-            {/* Branding */}
-            <Card>
-              <SectionHeader title="Branding" />
-              <div style={{ padding: 'var(--space-5)', display: 'flex', flexDirection: 'column', gap: 'var(--space-5)' }}>
-
-                {/* Logo + colours row */}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 'var(--space-5)' }}>
-                  <div className="input-group">
-                    <label className="input-label">Logo</label>
-                    <label style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 'var(--space-2)', padding: 'var(--space-5)', border: '2px dashed var(--color-grey-mid)', background: 'var(--color-bg)', cursor: 'pointer' }}>
-                      {logoPreview
-                        ? <img src={logoPreview} alt="Logo" style={{ width: 52, height: 52, objectFit: 'contain' }} />
-                        : <><span className="icon-outlined" style={{ fontSize: 28, color: 'var(--color-grey)' }}>upload</span><span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-grey)' }}>Upload logo</span></>
-                      }
+            <SectionCard title="Branding">
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16 }}>
+                  {/* Logo */}
+                  <div>
+                    <label style={labelStyle}>Logo</label>
+                    <label style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '18px', border: `2px dashed ${C.grayLine}`, borderRadius: 10, background: C.bg, cursor: 'pointer' }}>
+                      {logoPreview ? <img src={logoPreview} alt="Logo" style={{ width: 48, height: 48, objectFit: 'contain' }} /> : (
+                        <>
+                          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={C.grayMid} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" /><circle cx="8.5" cy="8.5" r="1.5" /><polyline points="21 15 16 10 5 21" /></svg>
+                          <span style={{ fontSize: 12, fontWeight: 500, color: C.secondary }}>Upload logo</span>
+                        </>
+                      )}
                       <input type="file" accept="image/*" style={{ display: 'none' }} onChange={handleLogoSelect} />
                     </label>
                   </div>
-
-                  <div className="input-group">
-                    <label className="input-label">Primary colour</label>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', padding: 'var(--space-3)', border: 'var(--border)', background: 'var(--color-white)' }}>
-                      <input type="color" value={primaryColor} onChange={e => setPrimaryColor(e.target.value)} style={{ width: 36, height: 36, border: '2px solid var(--color-black)', cursor: 'pointer', padding: 0 }} />
-                      <span style={{ fontFamily: 'monospace', fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-bold)' }}>{primaryColor}</span>
+                  {/* Colours */}
+                  {[
+                    { label: 'Primary colour',   val: primaryColor,   set: setPrimaryColor,   hint: 'Header, buttons, CTAs' },
+                    { label: 'Secondary colour',  val: secondaryColor, set: setSecondaryColor, hint: 'Accents, highlights' },
+                  ].map(({ label, val, set, hint }) => (
+                    <div key={label}>
+                      <label style={labelStyle}>{label}</label>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', border: `1px solid ${C.grayLine}`, borderRadius: 8, background: C.white }}>
+                        <input type="color" value={val} onChange={e => set(e.target.value)} style={{ width: 32, height: 32, border: `1px solid ${C.grayLine}`, borderRadius: 6, cursor: 'pointer', padding: 2 }} />
+                        <span style={{ fontFamily: 'monospace', fontSize: 13, fontWeight: 600, color: C.black }}>{val}</span>
+                      </div>
+                      <p style={hintStyle}>{hint}</p>
                     </div>
-                    <span className="input-hint">Header, buttons, CTAs</span>
-                  </div>
-
-                  <div className="input-group">
-                    <label className="input-label">Secondary colour</label>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', padding: 'var(--space-3)', border: 'var(--border)', background: 'var(--color-white)' }}>
-                      <input type="color" value={secondaryColor} onChange={e => setSecondaryColor(e.target.value)} style={{ width: 36, height: 36, border: '2px solid var(--color-black)', cursor: 'pointer', padding: 0 }} />
-                      <span style={{ fontFamily: 'monospace', fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-bold)' }}>{secondaryColor}</span>
-                    </div>
-                    <span className="input-hint">Accents, highlights</span>
-                  </div>
+                  ))}
                 </div>
 
-                {/* Hero image upload */}
-                <div className="input-group">
-                  <label className="input-label">Portal hero image</label>
-                  <label style={{
-                    display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-                    gap: 'var(--space-2)', padding: heroPreview ? 0 : 'var(--space-6)',
-                    border: '2px dashed var(--color-grey-mid)', background: 'var(--color-bg)',
-                    cursor: 'pointer', overflow: 'hidden', minHeight: 80,
-                  }}>
-                    {heroPreview ? (
-                      <img src={heroPreview} alt="Hero preview" style={{ width: '100%', maxHeight: 180, objectFit: 'cover', display: 'block' }} />
-                    ) : (
+                {/* Hero image */}
+                <div>
+                  <label style={labelStyle}>Portal hero image</label>
+                  <label style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8, padding: heroPreview ? 0 : '24px 20px', border: `2px dashed ${C.grayLine}`, borderRadius: 10, background: C.bg, cursor: 'pointer', overflow: 'hidden', minHeight: 80 }}>
+                    {heroPreview ? <img src={heroPreview} alt="Hero" style={{ width: '100%', maxHeight: 160, objectFit: 'cover', display: 'block' }} /> : (
                       <>
-                        <span className="icon-outlined" style={{ fontSize: 28, color: 'var(--color-grey)' }}>image</span>
-                        <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-grey)', textAlign: 'center' }}>Upload hero image</span>
+                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={C.grayMid} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" /><circle cx="8.5" cy="8.5" r="1.5" /><polyline points="21 15 16 10 5 21" /></svg>
+                        <span style={{ fontSize: 12, fontWeight: 500, color: C.secondary }}>Upload hero image</span>
                       </>
                     )}
                     <input type="file" accept="image/*" style={{ display: 'none' }} onChange={handleHeroSelect} />
                   </label>
-                  <span className="input-hint">
-                    Recommended: 1920 × 600px landscape · PNG or JPG · Max 5MB.
-                    Shown on your customer portal landing page.
-                  </span>
-                  {heroPreview && (
-                    <button onClick={() => setHeroPreview(null)} className="btn btn-sm btn-danger" style={{ alignSelf: 'flex-start', marginTop: 'var(--space-2)' }}>
-                      <span className="icon-outlined icon-xs">close</span>
-                      Remove hero image
-                    </button>
-                  )}
+                  <p style={hintStyle}>Recommended: 1920 × 600px · PNG or JPG · Max 5MB. Shown on your customer portal landing page.</p>
+                  {heroPreview && <button onClick={() => setHeroPreview(null)} style={{ ...btnDanger, padding: '5px 10px', fontSize: 12, marginTop: 8 }}>Remove hero image</button>}
                 </div>
 
-                {/* Portal header preview */}
-                <div style={{ border: 'var(--border)', overflow: 'hidden' }}>
-                  <div style={{ padding: 'var(--space-3) var(--space-4)', background: primaryColor, display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
-                    {logoPreview
-                      ? <img src={logoPreview} alt="" style={{ width: 28, height: 28, objectFit: 'contain' }} />
-                      : <div style={{ width: 28, height: 28, background: secondaryColor, border: '1.5px solid rgba(255,255,255,0.3)' }} />
-                    }
-                    <span style={{ color: '#fff', fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-bold)' }}>{business?.name || 'Your Business'}</span>
-                    <div style={{ marginLeft: 'auto', width: 28, height: 28, background: secondaryColor, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'var(--weight-black)', fontSize: 'var(--text-xs)', color: primaryColor }}>A</div>
+                {/* Preview */}
+                <div style={{ border: `1px solid ${C.grayLine}`, borderRadius: 8, overflow: 'hidden' }}>
+                  <div style={{ padding: '10px 14px', background: primaryColor, display: 'flex', alignItems: 'center', gap: 10 }}>
+                    {logoPreview ? <img src={logoPreview} alt="" style={{ width: 24, height: 24, objectFit: 'contain' }} /> : <div style={{ width: 24, height: 24, background: secondaryColor, borderRadius: 4 }} />}
+                    <span style={{ color: '#fff', fontSize: 13, fontWeight: 600 }}>{business?.name || 'Your Business'}</span>
+                    <div style={{ marginLeft: 'auto', width: 26, height: 26, background: secondaryColor, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 600, fontSize: 11, color: primaryColor }}>A</div>
                   </div>
-                  <div style={{ padding: 'var(--space-2) var(--space-4)', background: 'var(--color-bg)', fontSize: 'var(--text-xs)', color: 'var(--color-grey)', fontWeight: 'var(--weight-bold)' }}>
-                    Customer portal header preview
-                  </div>
+                  <p style={{ fontSize: 11, fontWeight: 500, color: C.secondary, padding: '6px 14px', background: C.bg, margin: 0 }}>Customer portal header preview</p>
                 </div>
               </div>
-            </Card>
+            </SectionCard>
 
-            <button onClick={saveBranding} disabled={saving} className="btn btn-primary btn-lg" style={{ alignSelf: 'flex-start' }}>
-              {saving
-                ? <><div className="spinner spinner-sm" style={{ borderTopColor: 'var(--color-black)' }} /> Saving…</>
-                : <><span className="icon-outlined icon-sm">save</span> Save branding</>
-              }
+            <button onClick={saveBranding} disabled={saving} style={{ ...btnPrimary, alignSelf: 'flex-start', opacity: saving ? 0.75 : 1 }}>
+              {saving ? <><div className="spinner spinner-sm spinner-light" /> Saving…</> : 'Save branding'}
             </button>
           </>
         )}
 
-        {/* ══════════════ KYB TAB ══════════════ */}
+        {/* ══════════════ KYB ══════════════ */}
         {tab === 'kyb' && (
           <>
-            <div className={`alert ${business?.kyb_status === 'verified' ? 'alert-success' : business?.kyb_status === 'pending' ? 'alert-warning' : 'alert-info'}`}>
-              <span className="icon-outlined alert-icon">
-                {business?.kyb_status === 'verified' ? 'verified_user' : business?.kyb_status === 'pending' ? 'hourglass_top' : 'upload'}
-              </span>
-              <div className="alert-content">
-                <div className="alert-title">
-                  {business?.kyb_status === 'verified' ? 'Business verified — full access unlocked'
-                    : business?.kyb_status === 'pending' ? 'Verification pending — typically 1–2 business days'
-                    : 'Upload documents below to begin verification'}
+            {/* Status banner */}
+            {(() => {
+              const status = business?.kyb_status
+              const cfg = status === 'verified'
+                ? { bg: C.bgGreen,  border: C.green,  color: C.green,  title: 'Business verified — full access unlocked',         sub: null }
+                : status === 'pending'
+                ? { bg: C.bgOrange, border: C.orange, color: C.orange, title: 'Verification pending — typically 1–2 business days', sub: 'Verification is required to unlock full platform features and payment processing.' }
+                : { bg: C.bg,       border: C.grayLine, color: C.secondary, title: 'Upload documents below to begin verification',    sub: 'Verification is required to unlock full platform features and payment processing.' }
+              return (
+                <div style={{ background: cfg.bg, border: `1px solid ${cfg.border}`, borderRadius: 8, padding: '12px 16px' }}>
+                  <p style={{ fontSize: 13, fontWeight: 600, color: cfg.color, margin: '0 0 2px' }}>{cfg.title}</p>
+                  {cfg.sub && <p style={{ fontSize: 12, fontWeight: 500, color: cfg.color, margin: 0, opacity: 0.85 }}>{cfg.sub}</p>}
                 </div>
-                {business?.kyb_status !== 'verified' && (
-                  <div>Verification is required to unlock full platform features and payment processing.</div>
-                )}
-              </div>
-            </div>
+              )
+            })()}
 
-            <Card>
-              <SectionHeader
-                title="Legal business details"
-                badge={
-                  <span className="badge badge-default no-dot">
-                    <span className="icon-outlined icon-xs">lock</span>
-                    Read only
-                  </span>
-                }
-              />
+            <SectionCard title="Legal business details" badge={<ReadOnlyBadge />} noPad>
               {[
                 { label: 'Registration type',               value: business?.registration_type ? REG_TYPES.find(r => r.value === business.registration_type)?.label : 'Not provided' },
                 { label: 'Legal business name',             value: business?.legal_name          || 'Not provided' },
                 { label: 'Business registration number',    value: business?.registration_number || 'Not provided' },
                 { label: 'Tax Identification Number (TIN)', value: business?.tin                 || 'Not provided' },
               ].map((row, i, arr) => <InfoRow key={i} label={row.label} value={row.value} last={i === arr.length - 1} />)}
-              <div style={{ padding: 'var(--space-3) var(--space-5)', borderTop: '1.5px solid var(--color-grey-light)', background: 'var(--color-bg)', fontSize: 'var(--text-xs)', color: 'var(--color-grey)' }}>
-                Legal details cannot be edited after submission. Contact{' '}
-                <a href="mailto:support@partna.co" style={{ color: 'var(--color-black)', fontWeight: 'var(--weight-bold)', textDecoration: 'underline' }}>support@partna.co</a>{' '}
-                to make changes.
+              <div style={{ padding: '9px 18px', background: C.bg, borderTop: `1px solid ${C.grayLine}`, fontSize: 12, fontWeight: 500, color: C.secondary }}>
+                Legal details cannot be edited after submission. Contact {supportLink} to make changes.
               </div>
-            </Card>
+            </SectionCard>
 
             {business?.registration_type && KYB_DOCS[business.registration_type] ? (
-              <Card>
-                <SectionHeader title="Required documents" />
-                <div style={{ padding: 'var(--space-5)' }}>
-                  <p style={{ fontSize: 'var(--text-sm)', color: 'var(--color-grey)', marginBottom: 'var(--space-4)' }}>
-                    Upload all required documents. Accepted: PDF, JPEG, PNG · Max 10MB per file.
-                  </p>
-                  {KYB_DOCS[business.registration_type].map((doc, i) => (
-                    <FileUploadField key={i} label={doc} businessId={business.id}
-                      docSlug={doc.toLowerCase().replace(/[^a-z0-9]/g, '_').slice(0, 40)} />
-                  ))}
-                  {business?.kyb_status !== 'verified' && (
-                    <button
-                      onClick={async () => {
-                        await supabase.from('businesses').update({ kyb_status: 'pending' }).eq('id', business.id)
-                        flash('Documents submitted. Verification typically takes 1–2 business days.')
-                      }}
-                      className="btn btn-primary btn-full btn-lg"
-                      style={{ marginTop: 'var(--space-5)' }}
-                    >
-                      <span className="icon-outlined icon-sm">verified_user</span>
-                      Submit for verification
-                    </button>
-                  )}
-                </div>
-              </Card>
+              <SectionCard title="Required documents">
+                <p style={{ fontSize: 13, fontWeight: 500, color: C.secondary, margin: '0 0 14px' }}>
+                  Upload all required documents. Accepted: PDF, JPEG, PNG · Max 10MB per file.
+                </p>
+                {KYB_DOCS[business.registration_type].map((doc, i) => (
+                  <FileUploadField key={i} label={doc} businessId={business.id} docSlug={doc.toLowerCase().replace(/[^a-z0-9]/g, '_').slice(0, 40)} />
+                ))}
+                {business?.kyb_status !== 'verified' && (
+                  <button onClick={async () => { await supabase.from('businesses').update({ kyb_status: 'pending' }).eq('id', business.id); flash('Documents submitted. Verification typically takes 1–2 business days.') }}
+                    style={{ ...btnPrimary, width: '100%', justifyContent: 'center', marginTop: 16, padding: '11px 18px' }}>
+                    Submit for verification
+                  </button>
+                )}
+              </SectionCard>
             ) : (
-              <Card>
-                <div style={{ padding: 'var(--space-10)', textAlign: 'center' }}>
-                  <span className="icon-outlined" style={{ fontSize: 36, color: 'var(--color-grey-mid)', display: 'block', marginBottom: 'var(--space-3)' }}>description</span>
-                  <div style={{ fontWeight: 'var(--weight-bold)', marginBottom: 'var(--space-2)' }}>No registration type on file</div>
-                  <div style={{ fontSize: 'var(--text-sm)', color: 'var(--color-grey)' }}>
-                    Contact <a href="mailto:support@partna.co" style={{ color: 'var(--color-black)', fontWeight: 'var(--weight-bold)', textDecoration: 'underline' }}>support@partna.co</a> to update your KYB details.
+              <SectionCard>
+                <div style={{ padding: '32px 20px', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}>
+                  <div style={{ width: 44, height: 44, borderRadius: 10, background: C.labelBg, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={C.grayMid} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /></svg>
                   </div>
+                  <p style={{ fontSize: 14, fontWeight: 600, color: C.black, margin: 0 }}>No registration type on file</p>
+                  <p style={{ fontSize: 13, fontWeight: 500, color: C.secondary, margin: 0 }}>Contact {supportLink} to update your KYB details.</p>
                 </div>
-              </Card>
+              </SectionCard>
             )}
           </>
         )}
 
-        {/* ══════════════ TEAM TAB ══════════════ */}
+        {/* ══════════════ TEAM ══════════════ */}
         {tab === 'team' && (
           <>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <span style={{ fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-bold)', letterSpacing: 'var(--tracking-wide)', color: 'var(--color-grey)', textTransform: 'uppercase' }}>
-                {admins.length} member{admins.length !== 1 ? 's' : ''}
-              </span>
-              <button onClick={() => setShowInvite(true)} className="btn btn-primary btn-sm">
-                <span className="icon-outlined icon-xs">person_add</span>
-                Invite admin
-              </button>
+              <p style={{ fontSize: 12, fontWeight: 500, color: C.secondary, margin: 0 }}>{admins.length} member{admins.length !== 1 ? 's' : ''}</p>
+              <button onClick={() => setShowInvite(true)} style={{ ...btnPrimary, padding: '7px 14px', fontSize: 12 }}>+ Invite admin</button>
             </div>
             {adminsLoading ? (
-              <div style={{ display: 'flex', justifyContent: 'center', padding: 'var(--space-10)' }}>
-                <div className="spinner spinner-lg spinner-purple" />
-              </div>
+              <div style={{ display: 'flex', justifyContent: 'center', padding: 40 }}><div className="spinner spinner-lg" /></div>
             ) : (
-              <div className="table-wrapper">
-                <table className="table">
-                  <thead><tr><th>Name</th><th>Email</th><th>Role</th><th></th></tr></thead>
+              <div style={{ background: C.white, border: `1px solid ${C.stroke}`, borderRadius: 12, overflow: 'hidden' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                  <thead>
+                    <tr style={{ background: C.bg, borderBottom: `1px solid ${C.grayLine}` }}>
+                      {['Name', 'Email', 'Role', ''].map(h => (
+                        <th key={h} style={{ padding: '10px 14px', textAlign: 'left', fontSize: 11, fontWeight: 600, color: C.secondary, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
                   <tbody>
-                    {admins.map(a => (
-                      <tr key={a.id}>
-                        <td>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
-                            <div style={{ width: 32, height: 32, background: 'var(--color-black)', border: 'var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'var(--weight-black)', fontSize: 'var(--text-xs)', color: 'var(--color-primary)', flexShrink: 0 }}>
-                              {a.full_name?.[0]}
-                            </div>
+                    {admins.map((a, i) => (
+                      <tr key={a.id} style={{ borderBottom: i < admins.length - 1 ? `1px solid ${C.grayLine}` : 'none', background: i % 2 === 0 ? C.white : C.bg }}>
+                        <td style={{ padding: '12px 14px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                            <div style={{ width: 30, height: 30, borderRadius: '50%', background: C.labelBg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 600, fontSize: 12, color: C.black, flexShrink: 0 }}>{a.full_name?.[0]}</div>
                             <div>
-                              <div style={{ fontWeight: 'var(--weight-semibold)', fontSize: 'var(--text-sm)' }}>{a.full_name}</div>
-                              {a.id === admin?.id && <div style={{ fontSize: 10, color: 'var(--color-grey)', fontWeight: 'var(--weight-bold)' }}>You</div>}
+                              <p style={{ fontSize: 13, fontWeight: 600, color: C.black, margin: '0 0 1px' }}>{a.full_name}</p>
+                              {a.id === admin?.id && <p style={{ fontSize: 10, fontWeight: 500, color: C.secondary, margin: 0 }}>You</p>}
                             </div>
                           </div>
                         </td>
-                        <td style={{ fontSize: 'var(--text-sm)', color: 'var(--color-grey)' }}>{a.email}</td>
-                        <td>
-                          <span className={`badge no-dot ${a.role === 'owner' ? 'badge-warning' : 'badge-default'}`} style={{ textTransform: 'capitalize' }}>{a.role}</span>
+                        <td style={{ padding: '12px 14px', fontSize: 13, fontWeight: 500, color: C.secondary }}>{a.email}</td>
+                        <td style={{ padding: '12px 14px' }}>
+                          <span style={{ fontSize: 11, fontWeight: 600, color: a.role === 'owner' ? C.orange : C.grayMid, background: a.role === 'owner' ? C.bgOrange : C.grayLight, borderRadius: 6, padding: '3px 8px', textTransform: 'capitalize' }}>{a.role}</span>
                         </td>
-                        <td style={{ textAlign: 'right' }}>
-                          {a.id !== admin?.id && <button onClick={() => removeAdmin(a.id)} className="btn btn-sm btn-danger">Remove</button>}
+                        <td style={{ padding: '12px 14px', textAlign: 'right' }}>
+                          {a.id !== admin?.id && <button onClick={() => removeAdmin(a.id)} style={{ ...btnDanger, padding: '5px 10px', fontSize: 12 }}>Remove</button>}
                         </td>
                       </tr>
                     ))}
@@ -684,209 +576,153 @@ export default function Settings({ admin, business }) {
           </>
         )}
 
-        {/* ══════════════ SUBSCRIPTION TAB ══════════════ */}
+        {/* ══════════════ SUBSCRIPTION ══════════════ */}
         {tab === 'subscription' && (
           <>
-            <Card>
-              <SectionHeader title="Current plan" />
-              <div style={{ padding: 'var(--space-5)' }}>
-                {subscription ? (
-                  <>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 'var(--space-4)' }}>
-                      <div>
-                        <div style={{ fontSize: 'var(--text-2xl)', fontWeight: 'var(--weight-black)', letterSpacing: 'var(--tracking-tight)' }}>
-                          {subscription.subscription_packages?.name || business?.subscription_package || 'Starter'}
-                        </div>
-                        <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-grey)', marginTop: 4 }}>
-                          Billed {subscription.billing_cycle} · Started {new Date(subscription.started_at).toLocaleDateString('en-UG', { day: 'numeric', month: 'long', year: 'numeric' })}
-                        </div>
-                      </div>
-                      <span className="badge badge-success no-dot">Active</span>
-                    </div>
-                    <button onClick={() => setShowCancelModal(true)} className="btn btn-sm btn-danger">
-                      <span className="icon-outlined icon-xs">cancel</span>
-                      Cancel subscription
-                    </button>
-                  </>
-                ) : (
-                  <p style={{ fontSize: 'var(--text-sm)', color: 'var(--color-grey)' }}>
-                    No active subscription found. Contact <a href="mailto:support@partna.co" style={{ color: 'var(--color-black)', fontWeight: 'var(--weight-bold)', textDecoration: 'underline' }}>support@partna.co</a>
-                  </p>
-                )}
-              </div>
-            </Card>
+            <SectionCard title="Current plan">
+              {subscription ? (
+                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+                  <div>
+                    <p style={{ fontSize: 22, fontWeight: 600, color: C.black, letterSpacing: '-0.8px', margin: '0 0 4px' }}>
+                      {subscription.subscription_packages?.name || business?.subscription_package || 'Starter'}
+                    </p>
+                    <p style={{ fontSize: 12, fontWeight: 500, color: C.secondary, margin: '0 0 14px' }}>
+                      Billed {subscription.billing_cycle} · Started {new Date(subscription.started_at).toLocaleDateString('en-UG', { day: 'numeric', month: 'long', year: 'numeric' })}
+                    </p>
+                    <button onClick={() => setShowCancelModal(true)} style={{ ...btnDanger, padding: '7px 12px', fontSize: 12 }}>Cancel subscription</button>
+                  </div>
+                  <span style={{ fontSize: 11, fontWeight: 600, color: C.green, background: C.bgGreen, borderRadius: 6, padding: '3px 8px' }}>Active</span>
+                </div>
+              ) : (
+                <p style={{ fontSize: 13, fontWeight: 500, color: C.secondary, margin: 0 }}>
+                  No active subscription found. Contact {supportLink}
+                </p>
+              )}
+            </SectionCard>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
-              <span style={{ fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-bold)', letterSpacing: 'var(--tracking-wide)', color: 'var(--color-grey)', textTransform: 'uppercase' }}>View pricing:</span>
-              <div style={{ display: 'flex', border: 'var(--border)', overflow: 'hidden' }}>
-                {['monthly', 'annual'].map((cycle, i) => (
-                  <button key={cycle} onClick={() => setBillingCycle(cycle)} style={{
-                    padding: '6px var(--space-4)',
-                    background: billingCycle === cycle ? 'var(--color-black)' : 'var(--color-white)',
-                    color: billingCycle === cycle ? 'var(--color-white)' : 'var(--color-grey)',
-                    border: 'none', borderLeft: i > 0 ? '1.5px solid var(--color-grey-light)' : 'none',
-                    fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-bold)',
-                    textTransform: 'capitalize', cursor: 'pointer', transition: 'all var(--transition-fast)',
-                  }}>
-                    {cycle}
-                    {cycle === 'annual' && <span style={{ marginLeft: 6, color: billingCycle === 'annual' ? 'var(--color-green)' : 'var(--color-grey)' }}>~20% off</span>}
+            {/* Billing toggle */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <span style={{ fontSize: 12, fontWeight: 500, color: C.secondary }}>View pricing:</span>
+              <div style={{ display: 'flex', gap: 4, background: C.white, border: `1px solid ${C.stroke}`, borderRadius: 10, padding: 4 }}>
+                {['monthly', 'annual'].map(cycle => (
+                  <button key={cycle} onClick={() => setBillingCycle(cycle)} style={{ padding: '6px 14px', borderRadius: 8, border: 'none', background: billingCycle === cycle ? C.black : 'transparent', color: billingCycle === cycle ? C.white : C.secondary, fontSize: 12, fontWeight: 600, cursor: 'pointer', textTransform: 'capitalize', fontFamily: 'Inter, system-ui, sans-serif' }}>
+                    {cycle}{cycle === 'annual' && <span style={{ marginLeft: 5, color: billingCycle === 'annual' ? C.green : C.secondary, fontSize: 11 }}>~20% off</span>}
                   </button>
                 ))}
               </div>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 'var(--space-4)' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
               {PACKAGES.map(p => {
                 const isCurrent = (business?.subscription_package || 'starter') === p.id
                 return (
-                  <div key={p.id} style={{ background: 'var(--color-white)', border: isCurrent ? '3px solid var(--color-black)' : 'var(--border)', boxShadow: isCurrent ? 'var(--shadow-md)' : 'var(--shadow-sm)', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-                    <div style={{ height: 4, background: p.accent }} />
-                    <div style={{ padding: 'var(--space-5)', flex: 1, display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+                  <div key={p.id} style={{ background: C.white, border: `1px solid ${isCurrent ? C.black : C.stroke}`, borderRadius: 12, overflow: 'hidden', display: 'flex', flexDirection: 'column', outline: isCurrent ? `2px solid ${C.black}` : 'none', outlineOffset: 1 }}>
+                    <div style={{ height: 3, background: p.accentColor }} />
+                    <div style={{ padding: '16px 16px', flex: 1, display: 'flex', flexDirection: 'column', gap: 12 }}>
                       <div>
-                        <div style={{ fontWeight: 'var(--weight-black)', fontSize: 'var(--text-base)', marginBottom: 'var(--space-1)' }}>{p.name}</div>
-                        <div style={{ fontSize: 'var(--text-2xl)', fontWeight: 'var(--weight-black)', letterSpacing: 'var(--tracking-tight)', fontVariationSettings: "'wdth' 100, 'opsz' 30" }}>
+                        <p style={{ fontSize: 14, fontWeight: 600, color: C.black, margin: '0 0 4px' }}>{p.name}</p>
+                        <p style={{ fontSize: 22, fontWeight: 600, color: C.black, letterSpacing: '-0.8px', margin: 0 }}>
                           ${billingCycle === 'monthly' ? p.monthly : Math.round(p.annual / 12)}
-                          <span style={{ fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-regular)', color: 'var(--color-grey)' }}>/mo</span>
-                        </div>
+                          <span style={{ fontSize: 11, fontWeight: 500, color: C.secondary }}>/mo</span>
+                        </p>
                       </div>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)', flex: 1 }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 5, flex: 1 }}>
                         {p.features.map((f, i) => (
-                          <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 'var(--space-2)' }}>
-                            <span className="icon-outlined" style={{ fontSize: 14, color: '#2D8B45', flexShrink: 0, marginTop: 1 }}>check</span>
-                            <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-grey)' }}>{f}</span>
+                          <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 6 }}>
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={C.green} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, marginTop: 2 }}><path d="M20 6L9 17l-5-5" /></svg>
+                            <span style={{ fontSize: 12, fontWeight: 500, color: C.secondary }}>{f}</span>
                           </div>
                         ))}
                       </div>
-                      {isCurrent ? (
-                        <div style={{ padding: '4px var(--space-3)', background: 'var(--color-black)', color: 'var(--color-white)', fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-black)', letterSpacing: 'var(--tracking-widest)', textTransform: 'uppercase', textAlign: 'center' }}>
-                          Current plan
-                        </div>
-                      ) : (
-                        <div style={{ padding: '4px var(--space-3)', background: 'var(--color-bg)', border: 'var(--border)', color: 'var(--color-grey)', fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-bold)', textAlign: 'center' }}>
-                          Contact sales to upgrade
-                        </div>
-                      )}
+                      {isCurrent
+                        ? <div style={{ background: C.black, borderRadius: 6, padding: '5px', fontSize: 11, fontWeight: 600, color: C.white, textAlign: 'center', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Current plan</div>
+                        : <div style={{ background: C.bg, border: `1px solid ${C.grayLine}`, borderRadius: 6, padding: '5px', fontSize: 11, fontWeight: 500, color: C.grayMid, textAlign: 'center' }}>Contact sales to upgrade</div>
+                      }
                     </div>
                   </div>
                 )
               })}
             </div>
-            <p style={{ textAlign: 'center', fontSize: 'var(--text-xs)', color: 'var(--color-grey)' }}>
-              To upgrade, contact <a href="mailto:hello@partna.co" style={{ color: 'var(--color-black)', fontWeight: 'var(--weight-bold)', textDecoration: 'underline' }}>hello@partna.co</a>
+            <p style={{ textAlign: 'center', fontSize: 12, fontWeight: 500, color: C.secondary, margin: 0 }}>
+              To upgrade, contact <a href="mailto:hello@partna.co" style={{ color: C.black, fontWeight: 600, textDecoration: 'underline' }}>hello@partna.co</a>
             </p>
           </>
         )}
 
-        {/* ══════════════ SECURITY TAB ══════════════ */}
+        {/* ══════════════ SECURITY ══════════════ */}
         {tab === 'security' && (
           <>
-            <Card>
-              <SectionHeader title="Account" />
-              <div style={{ padding: 'var(--space-5)' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', marginBottom: 'var(--space-5)' }}>
-                  <div style={{ width: 44, height: 44, background: 'var(--color-black)', border: '2px solid var(--color-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'var(--weight-black)', fontSize: 'var(--text-base)', color: 'var(--color-primary)', flexShrink: 0 }}>
-                    {admin?.full_name?.[0]}
-                  </div>
-                  <div>
-                    <div style={{ fontWeight: 'var(--weight-bold)', fontSize: 'var(--text-base)' }}>{admin?.full_name}</div>
-                    <div style={{ fontSize: 'var(--text-sm)', color: 'var(--color-grey)', marginTop: 2 }}>
-                      {admin?.email} · <span style={{ textTransform: 'capitalize' }}>{admin?.role}</span>
-                    </div>
-                  </div>
+            <SectionCard title="Account">
+              {/* Admin info */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 18, paddingBottom: 18, borderBottom: `1px solid ${C.grayLine}` }}>
+                <div style={{ width: 40, height: 40, borderRadius: '50%', background: C.labelBg, border: `1px solid ${C.stroke}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 600, fontSize: 14, color: C.black, flexShrink: 0 }}>
+                  {admin?.full_name?.[0]}
                 </div>
-                <div style={{ fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-black)', letterSpacing: 'var(--tracking-widest)', textTransform: 'uppercase', color: 'var(--color-grey)', marginBottom: 'var(--space-4)', paddingTop: 'var(--space-3)', borderTop: '1.5px solid var(--color-grey-light)' }}>
-                  Change password
-                </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
-                  {[
-                    { label: 'Current password',    value: currentPassword, setter: setCurrentPassword },
-                    { label: 'New password',         value: newPassword,     setter: setNewPassword     },
-                    { label: 'Confirm new password', value: confirmPassword, setter: setConfirmPassword },
-                  ].map((f, i) => (
-                    <div className="input-group" key={i}>
-                      <label className="input-label">{f.label}</label>
-                      <div className="input-wrapper">
-                        <span className="icon-outlined input-icon-left">lock</span>
-                        <input type="password" className="input" value={f.value} onChange={e => f.setter(e.target.value)} />
-                      </div>
-                    </div>
-                  ))}
-                  <button onClick={handleChangePassword} disabled={changingPw} className="btn btn-primary" style={{ alignSelf: 'flex-start' }}>
-                    {changingPw
-                      ? <><div className="spinner spinner-sm" style={{ borderTopColor: 'var(--color-black)' }} /> Updating…</>
-                      : <><span className="icon-outlined icon-sm">lock_reset</span> Update password</>
-                    }
-                  </button>
+                <div>
+                  <p style={{ fontSize: 15, fontWeight: 600, color: C.black, margin: '0 0 2px' }}>{admin?.full_name}</p>
+                  <p style={{ fontSize: 12, fontWeight: 500, color: C.secondary, margin: 0 }}>{admin?.email} · <span style={{ textTransform: 'capitalize' }}>{admin?.role}</span></p>
                 </div>
               </div>
-            </Card>
-
-            <Card>
-              <SectionHeader title="Customer portal URL" />
-              <div style={{ padding: 'var(--space-5)', display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
-                <p style={{ fontSize: 'var(--text-sm)', color: 'var(--color-grey)', margin: 0 }}>
-                  Set a custom subdomain for your branded customer portal. Once set, share the URL with your customers.
-                </p>
-
-                <div className="input-group">
-                  <label className="input-label">Portal subdomain</label>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-                    <div style={{ padding: 'var(--space-2) var(--space-3)', background: 'var(--color-bg)', border: 'var(--border)', fontSize: 'var(--text-sm)', color: 'var(--color-grey)', fontFamily: 'monospace', whiteSpace: 'nowrap', flexShrink: 0 }}>
-                      https://
-                    </div>
-                    <input
-                      type="text"
-                      className={`input ${slugError ? 'input-error' : ''}`}
-                      placeholder="your-institution"
-                      value={slug}
-                      onChange={e => { setSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '')); setSlugError('') }}
-                      style={{ fontFamily: 'monospace', flex: 1 }}
-                    />
-                    <div style={{ padding: 'var(--space-2) var(--space-3)', background: 'var(--color-bg)', border: 'var(--border)', fontSize: 'var(--text-sm)', color: 'var(--color-grey)', fontFamily: 'monospace', whiteSpace: 'nowrap', flexShrink: 0 }}>
-                      .partna.io
-                    </div>
+              <p style={{ fontSize: 12, fontWeight: 600, color: C.secondary, margin: '0 0 12px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Change password</p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                {[
+                  { label: 'Current password',    val: currentPassword, set: setCurrentPassword },
+                  { label: 'New password',         val: newPassword,     set: setNewPassword     },
+                  { label: 'Confirm new password', val: confirmPassword, set: setConfirmPassword },
+                ].map(f => (
+                  <div key={f.label}>
+                    <label style={labelStyle}>{f.label}</label>
+                    <input type="password" style={inputStyle} value={f.val} onChange={e => f.set(e.target.value)}
+                      onFocus={e => e.target.style.borderColor = C.black} onBlur={e => e.target.style.borderColor = C.grayLine} />
                   </div>
-                  {slugError && <span className="input-hint error">{slugError}</span>}
-                  <span className="input-hint">Lowercase letters, numbers, and hyphens only. Minimum 3 characters.</span>
-                </div>
-
-                {slug && !slugError && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', padding: 'var(--space-3) var(--space-4)', background: slug === (business?.slug || '') ? '#EAF3DE' : 'var(--color-bg)', border: `1.5px solid ${slug === (business?.slug || '') ? '#2D8B45' : 'var(--color-grey-light)'}` }}>
-                    <span className="icon-outlined" style={{ fontSize: 16, color: slug === (business?.slug || '') ? '#2D8B45' : 'var(--color-grey)', flexShrink: 0 }}>
-                      {slug === (business?.slug || '') ? 'check_circle' : 'link'}
-                    </span>
-                    <span style={{ fontFamily: 'monospace', fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-bold)', flex: 1, color: 'var(--color-black)' }}>
-                      https://{slug}.partna.io
-                    </span>
-                    {slug === (business?.slug || '') && <span style={{ fontSize: 'var(--text-xs)', color: '#2D8B45', fontWeight: 'var(--weight-bold)' }}>Active</span>}
-                  </div>
-                )}
-
-                <button onClick={handleSaveSlug} disabled={savingSlug || !slug} className="btn btn-primary" style={{ alignSelf: 'flex-start' }}>
-                  {savingSlug
-                    ? <><div className="spinner spinner-sm" style={{ borderTopColor: 'var(--color-black)' }} /> Saving…</>
-                    : <><span className="icon-outlined icon-sm">save</span> Save portal URL</>
-                  }
+                ))}
+                <button onClick={handleChangePassword} disabled={changingPw} style={{ ...btnPrimary, alignSelf: 'flex-start', opacity: changingPw ? 0.75 : 1 }}>
+                  {changingPw ? <><div className="spinner spinner-sm spinner-light" /> Updating…</> : 'Update password'}
                 </button>
-
-                {business?.slug && (
-                  <div style={{ borderTop: '1.5px solid var(--color-grey-light)', paddingTop: 'var(--space-4)' }}>
-                    <div style={{ fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-black)', letterSpacing: 'var(--tracking-widest)', textTransform: 'uppercase', color: 'var(--color-grey)', marginBottom: 'var(--space-3)' }}>
-                      Share with your customers
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', background: 'var(--color-bg)', border: 'var(--border)', padding: 'var(--space-3) var(--space-4)' }}>
-                      <span style={{ fontFamily: 'monospace', fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-bold)', flex: 1 }}>
-                        https://{business.slug}.partna.io
-                      </span>
-                      <button onClick={() => { navigator.clipboard.writeText(`https://${business.slug}.partna.io`); flash('URL copied to clipboard.') }} className="btn btn-sm btn-black">
-                        <span className="icon-outlined icon-xs">content_copy</span>
-                        Copy
-                      </button>
-                    </div>
-                  </div>
-                )}
               </div>
-            </Card>
+            </SectionCard>
+
+            <SectionCard title="Customer portal URL">
+              <p style={{ fontSize: 13, fontWeight: 500, color: C.secondary, margin: '0 0 16px', lineHeight: '140%' }}>
+                Set a custom subdomain for your branded customer portal. Once set, share the URL with your customers.
+              </p>
+              <div>
+                <label style={labelStyle}>Portal subdomain</label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <div style={{ padding: '9px 10px', background: C.bg, border: `1px solid ${C.grayLine}`, borderRadius: '8px 0 0 8px', fontSize: 13, fontWeight: 500, color: C.secondary, fontFamily: 'monospace', whiteSpace: 'nowrap', borderRight: 'none' }}>https://</div>
+                  <input type="text" style={{ ...inputStyle, flex: 1, fontFamily: 'monospace', borderRadius: 0, borderLeft: 'none', borderRight: 'none' }} placeholder="your-institution" value={slug}
+                    onChange={e => { setSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '')); setSlugError('') }}
+                    onFocus={e => e.target.style.borderColor = C.black} onBlur={e => e.target.style.borderColor = C.grayLine} />
+                  <div style={{ padding: '9px 10px', background: C.bg, border: `1px solid ${C.grayLine}`, borderRadius: '0 8px 8px 0', fontSize: 13, fontWeight: 500, color: C.secondary, fontFamily: 'monospace', whiteSpace: 'nowrap', borderLeft: 'none' }}>.partna.io</div>
+                </div>
+                {slugError && <p style={{ fontSize: 12, fontWeight: 500, color: C.red, margin: '4px 0 0' }}>{slugError}</p>}
+                <p style={hintStyle}>Lowercase letters, numbers, and hyphens only. Minimum 3 characters.</p>
+              </div>
+
+              {slug && !slugError && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: slug === (business?.slug || '') ? C.bgGreen : C.bg, border: `1px solid ${slug === (business?.slug || '') ? C.green : C.grayLine}`, borderRadius: 8, marginTop: 12 }}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={slug === (business?.slug || '') ? C.green : C.grayMid} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+                    {slug === (business?.slug || '') ? <path d="M20 6L9 17l-5-5" /> : <><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" /><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" /></>}
+                  </svg>
+                  <span style={{ fontFamily: 'monospace', fontSize: 13, fontWeight: 600, color: C.black, flex: 1 }}>https://{slug}.partna.io</span>
+                  {slug === (business?.slug || '') && <span style={{ fontSize: 11, fontWeight: 600, color: C.green }}>Active</span>}
+                </div>
+              )}
+
+              <button onClick={handleSaveSlug} disabled={savingSlug || !slug} style={{ ...btnPrimary, alignSelf: 'flex-start', marginTop: 14, opacity: savingSlug || !slug ? 0.5 : 1 }}>
+                {savingSlug ? <><div className="spinner spinner-sm spinner-light" /> Saving…</> : 'Save portal URL'}
+              </button>
+
+              {business?.slug && (
+                <div style={{ borderTop: `1px solid ${C.grayLine}`, paddingTop: 16, marginTop: 16 }}>
+                  <p style={{ fontSize: 12, fontWeight: 600, color: C.secondary, margin: '0 0 10px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Share with your customers</p>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: C.bg, border: `1px solid ${C.grayLine}`, borderRadius: 8, padding: '10px 14px' }}>
+                    <span style={{ fontFamily: 'monospace', fontSize: 13, fontWeight: 600, color: C.black, flex: 1 }}>https://{business.slug}.partna.io</span>
+                    <button onClick={() => { navigator.clipboard.writeText(`https://${business.slug}.partna.io`); flash('URL copied to clipboard.') }} style={{ ...btnPrimary, padding: '5px 12px', fontSize: 12 }}>Copy</button>
+                  </div>
+                </div>
+              )}
+            </SectionCard>
           </>
         )}
       </div>
