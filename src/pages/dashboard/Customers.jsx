@@ -1,106 +1,87 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../../supabase'
 
-// ── Helpers ────────────────────────────────────────────────────────────────
-
-function formatUGX(n) {
-  return 'UGX ' + Number(n).toLocaleString('en-UG', { maximumFractionDigits: 0 })
+// ── Helpers — unchanged ────────────────────────────────────────────────────
+function formatUGX(n) { return 'UGX ' + Number(n).toLocaleString('en-UG', { maximumFractionDigits: 0 }) }
+function formatDate(d) { return new Date(d).toLocaleDateString('en-UG', { day: 'numeric', month: 'short', year: 'numeric' }) }
+function txAmountColor(type) { return type === 'deposit' ? '#59886D' : '#CC3939' }
+function txIconBg(type) {
+  if (type === 'deposit')    return { bg: '#E4F8EC', color: '#59886D' }
+  if (type === 'withdrawal') return { bg: '#F8E4E4', color: '#CC3939' }
+  return { bg: '#F8F0E4', color: '#EF8354' }
 }
 
-function formatDate(dateStr) {
-  return new Date(dateStr).toLocaleDateString('en-UG', {
-    day: 'numeric', month: 'short', year: 'numeric',
-  })
+// ── Sellin tokens ──────────────────────────────────────────────────────────
+const C = {
+  bg:       '#F6F7EE',
+  white:    '#FFFFFF',
+  black:    '#111111',
+  accent:   '#ECEDE1',
+  labelBg:  '#E4E5DD',
+  stroke:   '#D7D8CB',
+  grayLine: '#D5D9DD',
+  secondary:'#959687',
+  grayMid:  '#898B90',
+  grayLight:'#ECECEC',
+  green:    '#59886D',
+  bgGreen:  '#E4F8EC',
+  red:      '#CC3939',
+  bgRed:    '#F8E4E4',
+  orange:   '#EF8354',
+  bgOrange: '#F8F0E4',
+  blue:     '#85A0C5',
 }
 
-function txAccent(type) {
-  switch (type) {
-    case 'deposit':    return 'var(--color-green)'
-    case 'withdrawal': return 'var(--color-yellow)'
-    case 'payment':    return 'var(--color-primary)'
-    default:           return 'var(--color-grey-light)'
-  }
-}
-
-function txIcon(type) {
-  switch (type) {
-    case 'deposit':    return 'south'
-    case 'withdrawal': return 'north'
-    case 'payment':    return 'north'
-    default:           return 'swap_vert'
-  }
-}
-
-function txAmountColor(type) {
-  return type === 'deposit' ? '#2D8B45' : '#C0392B'
-}
+const inputStyle = { display: 'block', width: '100%', padding: '9px 12px', fontSize: 13, fontWeight: 500, color: C.black, background: C.white, border: `1px solid ${C.grayLine}`, borderRadius: 8, outline: 'none', fontFamily: 'Inter, system-ui, sans-serif', transition: 'border-color 0.15s' }
 
 export default function Customers({ admin, business }) {
-  const [customers, setCustomers]     = useState([])
-  const [wallets, setWallets]         = useState({})
-  const [campaigns, setCampaigns]     = useState({})
-  const [loading, setLoading]         = useState(true)
-  const [search, setSearch]           = useState('')
-  const [kycFilter, setKycFilter]     = useState('all')
-  const [riskFilter, setRiskFilter]   = useState('all')
-  const [selected, setSelected]       = useState(null)
+  const [customers, setCustomers]       = useState([])
+  const [wallets, setWallets]           = useState({})
+  const [campaigns, setCampaigns]       = useState({})
+  const [loading, setLoading]           = useState(true)
+  const [search, setSearch]             = useState('')
+  const [kycFilter, setKycFilter]       = useState('all')
+  const [riskFilter, setRiskFilter]     = useState('all')
+  const [selected, setSelected]         = useState(null)
   const [customerTxns, setCustomerTxns] = useState([])
-  const [txnLoading, setTxnLoading]   = useState(false)
+  const [txnLoading, setTxnLoading]     = useState(false)
 
   useEffect(() => { if (business) loadData() }, [business])
+
+  // ── All business logic — unchanged ────────────────────────────────────
 
   async function loadData() {
     setLoading(true)
     try {
-      const { data: customerData } = await supabase
-        .from('customers').select('*')
-        .eq('business_id', business.id)
-        .order('created_at', { ascending: false })
-
+      const { data: customerData } = await supabase.from('customers').select('*').eq('business_id', business.id).order('created_at', { ascending: false })
       if (!customerData?.length) { setCustomers([]); setLoading(false); return }
       setCustomers(customerData)
-
       const ids = customerData.map(c => c.id)
-
       const { data: walletData } = await supabase.from('wallets').select('*').in('customer_id', ids)
-      const walletMap = {}
-      walletData?.forEach(w => { walletMap[w.customer_id] = w })
-      setWallets(walletMap)
-
+      const walletMap = {}; walletData?.forEach(w => { walletMap[w.customer_id] = w }); setWallets(walletMap)
       const campaignIds = [...new Set(customerData.map(c => c.campaign_id).filter(Boolean))]
       if (campaignIds.length > 0) {
-        const { data: campaignData } = await supabase
-          .from('campaigns').select('id, name, target_amount').in('id', campaignIds)
-        const campaignMap = {}
-        campaignData?.forEach(c => { campaignMap[c.id] = c })
-        setCampaigns(campaignMap)
+        const { data: campaignData } = await supabase.from('campaigns').select('id, name, target_amount').in('id', campaignIds)
+        const campaignMap = {}; campaignData?.forEach(c => { campaignMap[c.id] = c }); setCampaigns(campaignMap)
       }
-    } catch (e) {
-      console.error('Customers load error:', e)
-    }
+    } catch (e) { console.error('Customers load error:', e) }
     setLoading(false)
   }
 
   async function loadCustomerTxns(customerId) {
     setTxnLoading(true)
-    const { data } = await supabase
-      .from('transactions').select('*')
-      .eq('customer_id', customerId)
-      .order('created_at', { ascending: false }).limit(20)
-    setCustomerTxns(data || [])
-    setTxnLoading(false)
+    const { data } = await supabase.from('transactions').select('*').eq('customer_id', customerId).order('created_at', { ascending: false }).limit(20)
+    setCustomerTxns(data || []); setTxnLoading(false)
   }
 
   function isAtRisk(customer) {
     if (customer.registration_status !== 'complete') return false
-    const wallet = wallets[customer.id]
-    if (!wallet) return true
+    const wallet = wallets[customer.id]; if (!wallet) return true
     return Number(wallet.balance) === 0
   }
 
   function pct(customer) {
-    const wallet   = wallets[customer.id]
-    const campaign = campaigns[customer.campaign_id]
+    const wallet = wallets[customer.id]; const campaign = campaigns[customer.campaign_id]
     if (!wallet || !campaign) return 0
     return Math.min((Number(wallet.balance) / Number(campaign.target_amount)) * 100, 100)
   }
@@ -114,249 +95,140 @@ export default function Customers({ admin, business }) {
     return true
   })
 
+  // ─────────────────────────────────────────────────────────────────────────
+
   return (
-    <div style={{ display: 'flex', gap: 'var(--space-5)', height: '100%', alignItems: 'flex-start' }}>
+    <div style={{ display: 'flex', gap: 20, alignItems: 'flex-start', fontFamily: 'Inter, system-ui, sans-serif' }}>
 
       {/* ── Customer list ── */}
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 'var(--space-4)', minWidth: 0 }}>
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 16, minWidth: 0 }}>
 
         {/* Filter bar */}
-        <div style={{
-          background: 'var(--color-white)',
-          border: 'var(--border)',
-          boxShadow: 'var(--shadow-sm)',
-          padding: 'var(--space-4)',
-          display: 'flex', alignItems: 'center', gap: 'var(--space-3)', flexWrap: 'wrap',
-        }}>
-          <div className="search-wrapper" style={{ flex: 1, minWidth: 180 }}>
-            <span className="icon-outlined search-icon">search</span>
-            <input
-              type="text"
-              className="input search-input"
-              placeholder="Search by name, phone or email…"
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-            />
-            {search && (
-              <button className="search-clear" onClick={() => setSearch('')}>
-                <span className="icon-outlined" style={{ fontSize: 16 }}>close</span>
-              </button>
-            )}
+        <div style={{ background: C.white, border: `1px solid ${C.stroke}`, borderRadius: 12, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          <div style={{ position: 'relative', flex: 1, minWidth: 180 }}>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke={C.grayMid} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }}><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
+            <input style={{ ...inputStyle, paddingLeft: 30 }} type="text" placeholder="Search by name, phone or email…" value={search} onChange={e => setSearch(e.target.value)}
+              onFocus={e => e.target.style.borderColor = C.black} onBlur={e => e.target.style.borderColor = C.grayLine} />
+            {search && <button onClick={() => setSearch('')} style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: C.grayMid, fontSize: 16 }}>✕</button>}
           </div>
-
-          <select className="input" value={kycFilter} onChange={e => setKycFilter(e.target.value)} style={{ width: 'auto', minWidth: 120 }}>
+          <select style={{ ...inputStyle, width: 'auto', minWidth: 120 }} value={kycFilter} onChange={e => setKycFilter(e.target.value)} onFocus={e => e.target.style.borderColor = C.black} onBlur={e => e.target.style.borderColor = C.grayLine}>
             <option value="all">All KYC</option>
             <option value="verified">Verified</option>
             <option value="pending">Pending</option>
           </select>
-
-          <select className="input" value={riskFilter} onChange={e => setRiskFilter(e.target.value)} style={{ width: 'auto', minWidth: 140 }}>
+          <select style={{ ...inputStyle, width: 'auto', minWidth: 140 }} value={riskFilter} onChange={e => setRiskFilter(e.target.value)} onFocus={e => e.target.style.borderColor = C.black} onBlur={e => e.target.style.borderColor = C.grayLine}>
             <option value="all">All customers</option>
             <option value="at_risk">At risk</option>
             <option value="not_at_risk">Not at risk</option>
           </select>
-
-          <span style={{
-            padding: '6px var(--space-3)',
-            background: 'var(--color-bg)',
-            border: 'var(--border)',
-            fontSize: 'var(--text-xs)',
-            fontWeight: 'var(--weight-black)',
-            letterSpacing: 'var(--tracking-wide)',
-            color: 'var(--color-grey)',
-            whiteSpace: 'nowrap',
-          }}>
+          <span style={{ padding: '5px 10px', background: C.bg, border: `1px solid ${C.grayLine}`, borderRadius: 7, fontSize: 12, fontWeight: 500, color: C.secondary, whiteSpace: 'nowrap' }}>
             {filtered.length} customer{filtered.length !== 1 ? 's' : ''}
           </span>
         </div>
 
         {/* Table */}
         {loading ? (
-          <div style={{ display: 'flex', justifyContent: 'center', padding: 'var(--space-16)' }}>
-            <div className="spinner spinner-lg spinner-purple" />
-          </div>
+          <div style={{ display: 'flex', justifyContent: 'center', padding: 64 }}><div className="spinner spinner-lg" /></div>
         ) : filtered.length === 0 ? (
-          <div style={{ background: 'var(--color-white)', border: 'var(--border)', boxShadow: 'var(--shadow-sm)', padding: 'var(--space-16)', textAlign: 'center' }}>
-            <span className="icon-outlined" style={{ fontSize: 40, color: 'var(--color-grey-mid)', display: 'block', marginBottom: 'var(--space-3)' }}>
-              group
-            </span>
-            <div style={{ fontWeight: 'var(--weight-bold)', fontSize: 'var(--text-base)', marginBottom: 'var(--space-2)' }}>
-              {customers.length === 0 ? 'No customers yet' : 'No customers match your filters'}
+          <div style={{ background: C.white, border: `1px solid ${C.stroke}`, borderRadius: 12, padding: '56px 20px', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}>
+            <div style={{ width: 48, height: 48, borderRadius: 12, background: C.labelBg, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={C.grayMid} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" /></svg>
             </div>
-            <div style={{ fontSize: 'var(--text-sm)', color: 'var(--color-grey)' }}>
-              {customers.length === 0
-                ? 'Customers will appear here once they register via your portal.'
-                : 'Try adjusting your search or filters.'}
-            </div>
+            <p style={{ fontSize: 15, fontWeight: 600, color: C.black, margin: 0 }}>{customers.length === 0 ? 'No customers yet' : 'No customers match your filters'}</p>
+            <p style={{ fontSize: 13, fontWeight: 500, color: C.secondary, margin: 0 }}>{customers.length === 0 ? 'Customers will appear here once they register via your portal.' : 'Try adjusting your search or filters.'}</p>
           </div>
         ) : (
-          <div className="table-wrapper">
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>Customer</th>
-                  <th>Contact</th>
-                  <th>KYC</th>
-                  <th>Balance</th>
-                  <th>Progress</th>
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map(c => {
-                  const wallet    = wallets[c.id]
-                  const balance   = wallet ? Number(wallet.balance) : 0
-                  const progress  = pct(c)
-                  const atRisk    = isAtRisk(c)
-                  const isSelected = selected?.id === c.id
-
-                  return (
-                    <tr
-                      key={c.id}
-                      onClick={() => { setSelected(c); loadCustomerTxns(c.id) }}
-                      style={{
-                        cursor: 'pointer',
-                        background: isSelected ? 'rgba(174,122,255,0.06)' : undefined,
-                        borderLeft: isSelected ? '3px solid var(--color-primary)' : '3px solid transparent',
-                      }}
-                    >
-                      {/* Name + risk */}
-                      <td>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
-                          <div style={{
-                            width: 32, height: 32,
-                            background: isSelected ? 'var(--color-primary)' : 'var(--color-black)',
-                            border: 'var(--border)',
-                            display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            fontWeight: 'var(--weight-black)', fontSize: 'var(--text-xs)',
-                            color: isSelected ? 'var(--color-black)' : 'var(--color-primary)',
-                            flexShrink: 0, letterSpacing: 'var(--tracking-tight)',
-                          }}>
-                            {c.first_name?.[0]}{c.last_name?.[0]}
-                          </div>
-                          <div>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', fontWeight: 'var(--weight-semibold)', fontSize: 'var(--text-sm)' }}>
-                              {c.first_name} {c.last_name}
-                              {atRisk && (
-                                <span className="badge badge-danger no-dot" style={{ fontSize: 9 }}>At risk</span>
-                              )}
+          <div style={{ background: C.white, border: `1px solid ${C.stroke}`, borderRadius: 12, overflow: 'hidden' }}>
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                <thead>
+                  <tr style={{ background: C.bg, borderBottom: `1px solid ${C.grayLine}` }}>
+                    {['Customer', 'Contact', 'KYC', 'Balance', 'Progress', ''].map(h => (
+                      <th key={h} style={{ padding: '10px 14px', textAlign: 'left', fontSize: 11, fontWeight: 600, color: C.secondary, textTransform: 'uppercase', letterSpacing: '0.04em', whiteSpace: 'nowrap' }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {filtered.map((c, i) => {
+                    const wallet     = wallets[c.id]
+                    const balance    = wallet ? Number(wallet.balance) : 0
+                    const progress   = pct(c)
+                    const atRisk     = isAtRisk(c)
+                    const isSelected = selected?.id === c.id
+                    const barColor   = progress >= 75 ? C.green : progress >= 50 ? C.orange : C.blue
+                    return (
+                      <tr key={c.id} onClick={() => { setSelected(c); loadCustomerTxns(c.id) }}
+                        style={{ borderBottom: i < filtered.length - 1 ? `1px solid ${C.grayLine}` : 'none', background: isSelected ? 'rgba(133,160,197,0.07)' : i % 2 === 0 ? C.white : C.bg, cursor: 'pointer', borderLeft: `3px solid ${isSelected ? C.black : 'transparent'}`, transition: 'background 0.1s' }}
+                        onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = C.accent }}
+                        onMouseLeave={e => { if (!isSelected) e.currentTarget.style.background = i % 2 === 0 ? C.white : C.bg }}>
+                        <td style={{ padding: '12px 14px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                            <div style={{ width: 32, height: 32, borderRadius: '50%', background: isSelected ? C.black : C.labelBg, border: `1px solid ${C.stroke}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 600, fontSize: 12, color: isSelected ? C.white : C.black, flexShrink: 0 }}>
+                              {c.first_name?.[0]}{c.last_name?.[0]}
                             </div>
-                            <div style={{ fontSize: 10, color: 'var(--color-grey)', fontFamily: 'monospace', fontWeight: 'var(--weight-bold)', marginTop: 1 }}>
-                              {c.draw_code || '—'}
+                            <div>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                <span style={{ fontSize: 13, fontWeight: 600, color: C.black }}>{c.first_name} {c.last_name}</span>
+                                {atRisk && <span style={{ fontSize: 10, fontWeight: 600, color: C.red, background: C.bgRed, borderRadius: 5, padding: '2px 6px' }}>At risk</span>}
+                              </div>
+                              <p style={{ fontSize: 10, fontWeight: 500, color: C.secondary, fontFamily: 'monospace', margin: '1px 0 0' }}>{c.draw_code || '—'}</p>
                             </div>
                           </div>
-                        </div>
-                      </td>
-
-                      {/* Contact */}
-                      <td>
-                        <div style={{ fontSize: 'var(--text-sm)' }}>{c.phone}</div>
-                        <div style={{ fontSize: 10, color: 'var(--color-grey)', marginTop: 1, maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          {c.email}
-                        </div>
-                      </td>
-
-                      {/* KYC */}
-                      <td>
-                        <span className={`badge no-dot ${c.kyc_status === 'verified' ? 'badge-success' : 'badge-warning'}`}>
-                          {c.kyc_status === 'verified' ? 'Verified' : 'Pending'}
-                        </span>
-                      </td>
-
-                      {/* Balance */}
-                      <td style={{ fontWeight: 'var(--weight-bold)', fontSize: 'var(--text-sm)' }}>
-                        {formatUGX(balance)}
-                      </td>
-
-                      {/* Progress */}
-                      <td>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-                          <div className="progress-bar-track" style={{ flex: 1, height: 8 }}>
-                            <div className="progress-bar-fill" style={{
-                              width: `${progress}%`,
-                              background: progress >= 75 ? 'var(--color-green)' : progress >= 50 ? 'var(--color-yellow)' : 'var(--color-primary)',
-                            }} />
+                        </td>
+                        <td style={{ padding: '12px 14px' }}>
+                          <p style={{ fontSize: 13, fontWeight: 500, color: C.black, margin: '0 0 2px' }}>{c.phone}</p>
+                          <p style={{ fontSize: 11, fontWeight: 500, color: C.secondary, margin: 0, maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.email}</p>
+                        </td>
+                        <td style={{ padding: '12px 14px' }}>
+                          {c.kyc_status === 'verified'
+                            ? <span style={{ fontSize: 11, fontWeight: 600, color: C.green,  background: C.bgGreen,  borderRadius: 6, padding: '3px 8px' }}>Verified</span>
+                            : <span style={{ fontSize: 11, fontWeight: 600, color: C.orange, background: C.bgOrange, borderRadius: 6, padding: '3px 8px' }}>Pending</span>
+                          }
+                        </td>
+                        <td style={{ padding: '12px 14px', fontSize: 13, fontWeight: 600, color: C.black, whiteSpace: 'nowrap' }}>{formatUGX(balance)}</td>
+                        <td style={{ padding: '12px 14px', minWidth: 120 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3 }}>
+                            <div style={{ flex: 1, height: 5, background: C.grayLine, borderRadius: 999, overflow: 'hidden' }}>
+                              <div style={{ height: '100%', width: `${progress}%`, background: barColor, borderRadius: 999 }} />
+                            </div>
+                            <span style={{ fontSize: 10, fontWeight: 600, color: C.secondary, whiteSpace: 'nowrap' }}>{progress.toFixed(0)}%</span>
                           </div>
-                          <span style={{ fontSize: 10, color: 'var(--color-grey)', fontWeight: 'var(--weight-bold)', whiteSpace: 'nowrap' }}>
-                            {progress.toFixed(0)}%
-                          </span>
-                        </div>
-                        <div style={{ fontSize: 10, color: 'var(--color-grey)', marginTop: 2 }}>
-                          {formatDate(c.created_at)}
-                        </div>
-                      </td>
-
-                      {/* Arrow */}
-                      <td style={{ textAlign: 'right' }}>
-                        <span className="icon-outlined" style={{ fontSize: 18, color: isSelected ? 'var(--color-primary)' : 'var(--color-grey-mid)' }}>
-                          chevron_right
-                        </span>
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
+                          <p style={{ fontSize: 10, fontWeight: 500, color: C.grayMid, margin: 0 }}>{formatDate(c.created_at)}</p>
+                        </td>
+                        <td style={{ padding: '12px 10px', textAlign: 'right' }}>
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={isSelected ? C.black : C.grayMid} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6" /></svg>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
           </div>
         )}
       </div>
 
       {/* ── Detail panel ── */}
       {selected && (
-        <div style={{
-          width: 300,
-          flexShrink: 0,
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 'var(--space-4)',
-          position: 'sticky',
-          top: 'var(--space-4)',
-        }}>
+        <div style={{ width: 296, flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 12, position: 'sticky', top: 16 }}>
 
           {/* Customer info card */}
-          <div style={{ background: 'var(--color-white)', border: 'var(--border)', boxShadow: 'var(--shadow-sm)', overflow: 'hidden' }}>
-            {/* Header */}
-            <div style={{
-              background: 'var(--color-black)',
-              borderBottom: 'var(--border)',
-              padding: 'var(--space-4)',
-              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-            }}>
-              <span style={{ color: 'var(--color-white)', fontWeight: 'var(--weight-bold)', fontSize: 'var(--text-sm)' }}>
-                Customer details
-              </span>
-              <button onClick={() => setSelected(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex' }}>
-                <span className="icon-outlined" style={{ fontSize: 18, color: 'rgba(255,255,255,0.5)' }}>close</span>
-              </button>
+          <div style={{ background: C.white, border: `1px solid ${C.stroke}`, borderRadius: 12, overflow: 'hidden' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderBottom: `1px solid ${C.grayLine}` }}>
+              <p style={{ fontSize: 14, fontWeight: 600, color: C.black, margin: 0 }}>Customer details</p>
+              <button onClick={() => setSelected(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: C.grayMid, fontSize: 18, lineHeight: 1 }}>✕</button>
             </div>
-
-            {/* Avatar + name */}
-            <div style={{
-              padding: 'var(--space-4)',
-              borderBottom: 'var(--border)',
-              display: 'flex', alignItems: 'center', gap: 'var(--space-3)',
-            }}>
-              <div style={{
-                width: 44, height: 44,
-                background: 'var(--color-primary)',
-                border: '2px solid var(--color-black)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontWeight: 'var(--weight-black)', fontSize: 'var(--text-base)',
-                color: 'var(--color-black)', flexShrink: 0,
-              }}>
+            {/* Avatar */}
+            <div style={{ padding: '14px 16px', borderBottom: `1px solid ${C.grayLine}`, display: 'flex', alignItems: 'center', gap: 12 }}>
+              <div style={{ width: 40, height: 40, borderRadius: '50%', background: C.labelBg, border: `1px solid ${C.stroke}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 600, fontSize: 14, color: C.black, flexShrink: 0 }}>
                 {selected.first_name?.[0]}{selected.last_name?.[0]}
               </div>
               <div>
-                <div style={{ fontWeight: 'var(--weight-bold)', fontSize: 'var(--text-base)' }}>
-                  {selected.first_name} {selected.last_name}
-                </div>
-                <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-grey)', marginTop: 2 }}>
-                  {selected.phone}
-                </div>
+                <p style={{ fontSize: 14, fontWeight: 600, color: C.black, margin: '0 0 2px' }}>{selected.first_name} {selected.last_name}</p>
+                <p style={{ fontSize: 12, fontWeight: 500, color: C.secondary, margin: 0 }}>{selected.phone}</p>
               </div>
             </div>
-
-            {/* Details rows */}
+            {/* Info rows */}
             {[
               { label: 'Email',           value: selected.email },
               { label: 'NIN',             value: selected.nin ? '••••' + selected.nin.slice(-4) : 'Not provided' },
@@ -367,85 +239,47 @@ export default function Customers({ admin, business }) {
               { label: 'Progress',        value: pct(selected).toFixed(1) + '%' },
               { label: 'Registered',      value: formatDate(selected.created_at) },
             ].map((row, i, arr) => (
-              <div key={i} style={{
-                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                padding: 'var(--space-2) var(--space-4)',
-                borderBottom: i < arr.length - 1 ? '1.5px solid var(--color-grey-light)' : 'none',
-                background: i % 2 === 0 ? 'var(--color-white)' : 'var(--color-bg)',
-              }}>
-                <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-grey)' }}>{row.label}</span>
+              <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 16px', borderBottom: i < arr.length - 1 ? `1px solid ${C.grayLine}` : 'none', background: i % 2 === 0 ? C.white : C.bg }}>
+                <span style={{ fontSize: 12, fontWeight: 500, color: C.secondary }}>{row.label}</span>
                 {row.kyc ? (
-                  <span className={`badge no-dot ${selected.kyc_status === 'verified' ? 'badge-success' : 'badge-warning'}`}>
-                    {row.value}
-                  </span>
+                  <span style={{ fontSize: 11, fontWeight: 600, color: selected.kyc_status === 'verified' ? C.green : C.orange, background: selected.kyc_status === 'verified' ? C.bgGreen : C.bgOrange, borderRadius: 6, padding: '2px 8px' }}>{row.value}</span>
                 ) : (
-                  <span style={{
-                    fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-bold)',
-                    fontFamily: row.mono ? 'monospace' : 'inherit',
-                    color: 'var(--color-black)',
-                  }}>
-                    {row.value}
-                  </span>
+                  <span style={{ fontSize: 12, fontWeight: 600, color: C.black, fontFamily: row.mono ? 'monospace' : 'inherit' }}>{row.value}</span>
                 )}
               </div>
             ))}
           </div>
 
-          {/* Transaction history card */}
-          <div style={{ background: 'var(--color-white)', border: 'var(--border)', boxShadow: 'var(--shadow-sm)', overflow: 'hidden' }}>
-            <div style={{
-              background: 'var(--color-black)',
-              borderBottom: 'var(--border)',
-              padding: 'var(--space-3) var(--space-4)',
-            }}>
-              <span style={{ color: 'var(--color-white)', fontWeight: 'var(--weight-bold)', fontSize: 'var(--text-sm)' }}>
-                Transaction history
-              </span>
+          {/* Transaction history */}
+          <div style={{ background: C.white, border: `1px solid ${C.stroke}`, borderRadius: 12, overflow: 'hidden' }}>
+            <div style={{ padding: '12px 16px', borderBottom: `1px solid ${C.grayLine}` }}>
+              <p style={{ fontSize: 14, fontWeight: 600, color: C.black, margin: 0 }}>Transaction history</p>
             </div>
-
             {txnLoading ? (
-              <div style={{ display: 'flex', justifyContent: 'center', padding: 'var(--space-8)' }}>
-                <div className="spinner spinner-purple" />
-              </div>
+              <div style={{ display: 'flex', justifyContent: 'center', padding: 32 }}><div className="spinner" /></div>
             ) : customerTxns.length === 0 ? (
-              <div style={{ padding: 'var(--space-8)', textAlign: 'center', fontSize: 'var(--text-sm)', color: 'var(--color-grey)' }}>
-                No transactions yet
-              </div>
-            ) : (
-              customerTxns.map((txn, i) => (
-                <div key={txn.id} style={{
-                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                  padding: 'var(--space-3) var(--space-4)',
-                  borderBottom: i < customerTxns.length - 1 ? '1.5px solid var(--color-grey-light)' : 'none',
-                  background: i % 2 === 0 ? 'var(--color-white)' : 'var(--color-bg)',
-                }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-                    <div style={{
-                      width: 24, height: 24,
-                      background: txAccent(txn.type),
-                      border: 'var(--border)',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      flexShrink: 0,
-                    }}>
-                      <span className="icon-outlined" style={{ fontSize: 12, color: 'var(--color-black)' }}>
-                        {txIcon(txn.type)}
-                      </span>
+              <div style={{ padding: 32, textAlign: 'center', fontSize: 13, fontWeight: 500, color: C.secondary }}>No transactions yet</div>
+            ) : customerTxns.map((txn, i) => {
+              const { bg, color } = txIconBg(txn.type)
+              return (
+                <div key={txn.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 16px', borderBottom: i < customerTxns.length - 1 ? `1px solid ${C.grayLine}` : 'none', background: i % 2 === 0 ? C.white : C.bg }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
+                    <div style={{ width: 26, height: 26, borderRadius: 7, background: bg, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        {txn.type === 'deposit' ? <><line x1="12" y1="5" x2="12" y2="19" /><polyline points="19 12 12 19 5 12" /></> : <><path d="M22 2L11 13" /><path d="M22 2L15 22l-4-9-9-4 20-7z" /></>}
+                      </svg>
                     </div>
                     <div>
-                      <div style={{ fontWeight: 'var(--weight-semibold)', fontSize: 'var(--text-xs)', textTransform: 'capitalize' }}>
-                        {txn.type === 'payment' ? 'Fee payment' : txn.type}
-                      </div>
-                      <div style={{ fontSize: 10, color: 'var(--color-grey)' }}>
-                        {formatDate(txn.created_at)}
-                      </div>
+                      <p style={{ fontSize: 12, fontWeight: 600, color: C.black, margin: '0 0 1px', textTransform: 'capitalize' }}>{txn.type === 'payment' ? 'Fee payment' : txn.type}</p>
+                      <p style={{ fontSize: 10, fontWeight: 500, color: C.secondary, margin: 0 }}>{formatDate(txn.created_at)}</p>
                     </div>
                   </div>
-                  <span style={{ fontWeight: 'var(--weight-black)', fontSize: 'var(--text-xs)', color: txAmountColor(txn.type) }}>
+                  <span style={{ fontSize: 12, fontWeight: 600, color: txAmountColor(txn.type) }}>
                     {txn.type === 'deposit' ? '+' : '-'}{formatUGX(txn.amount)}
                   </span>
                 </div>
-              ))
-            )}
+              )
+            })}
           </div>
         </div>
       )}
