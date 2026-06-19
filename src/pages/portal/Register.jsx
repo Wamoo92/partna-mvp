@@ -27,141 +27,50 @@ export default function Register() {
 
   const [customerId, setCustomerId] = useState(null)
 
+  // ── Business logic — unchanged ────────────────────────────
+
   async function handleStep1() {
     setError('')
-    if (!firstName || !lastName || !phone || !email) {
-      setError('Please fill in all required fields.')
-      return
-    }
-    if (phone.replace(/\s+/g, '').length < 10) {
-      setError('Please enter a valid phone number.')
-      return
-    }
-    if (!email.includes('@') || !email.includes('.')) {
-      setError('Please enter a valid email address.')
-      return
-    }
-
+    if (!firstName || !lastName || !phone || !email) { setError('Please fill in all required fields.'); return }
+    if (phone.replace(/\s+/g, '').length < 10) { setError('Please enter a valid phone number.'); return }
+    if (!email.includes('@') || !email.includes('.')) { setError('Please enter a valid email address.'); return }
     setLoading(true)
     try {
       const cleanPhone = phone.replace(/\s+/g, '')
       const cleanEmail = email.toLowerCase().trim()
-
-      const { data: bizData } = await supabase
-        .from('businesses')
-        .select('id')
-        .eq('kyb_status', 'verified')
-        .limit(1)
-        .maybeSingle()
-
+      const { data: bizData } = await supabase.from('businesses').select('id').eq('kyb_status', 'verified').limit(1).maybeSingle()
       const resolvedBusinessId = bizData?.id || null
-
-      const { data: existingPhone } = await supabase
-        .from('customers')
-        .select('id')
-        .eq('phone', cleanPhone)
-        .eq('business_id', resolvedBusinessId)
-        .maybeSingle()
-
-      if (existingPhone) {
-        setError('This phone number is already registered. Please log in.')
-        setLoading(false)
-        return
-      }
-
-      const { data: existingEmail } = await supabase
-        .from('customers')
-        .select('id')
-        .eq('email', cleanEmail)
-        .maybeSingle()
-
-      if (existingEmail) {
-        setError('This email address is already registered. Please log in.')
-        setLoading(false)
-        return
-      }
-
+      const { data: existingPhone } = await supabase.from('customers').select('id').eq('phone', cleanPhone).eq('business_id', resolvedBusinessId).maybeSingle()
+      if (existingPhone) { setError('This phone number is already registered. Please log in.'); setLoading(false); return }
+      const { data: existingEmail } = await supabase.from('customers').select('id').eq('email', cleanEmail).maybeSingle()
+      if (existingEmail) { setError('This email address is already registered. Please log in.'); setLoading(false); return }
       let partnaIdentityId = null
-      const { data: existingIdentity } = await supabase
-        .from('partna_identities')
-        .select('id')
-        .eq('phone', cleanPhone)
-        .maybeSingle()
-
+      const { data: existingIdentity } = await supabase.from('partna_identities').select('id').eq('phone', cleanPhone).maybeSingle()
       if (existingIdentity) {
         partnaIdentityId = existingIdentity.id
       } else {
-        const { data: newIdentity, error: identityError } = await supabase
-          .from('partna_identities')
-          .insert({ phone: cleanPhone, first_name: firstName, last_name: lastName })
-          .select()
-          .single()
-
-        if (!identityError && newIdentity) {
-          partnaIdentityId = newIdentity.id
-        }
+        const { data: newIdentity, error: identityError } = await supabase.from('partna_identities').insert({ phone: cleanPhone, first_name: firstName, last_name: lastName }).select().single()
+        if (!identityError && newIdentity) partnaIdentityId = newIdentity.id
       }
-
-      const { data: customer, error: customerError } = await supabase
-        .from('customers')
-        .insert({
-          business_id: resolvedBusinessId,
-          partna_identity_id: partnaIdentityId,
-          full_name: `${firstName} ${lastName}`,
-          first_name: firstName,
-          last_name: lastName,
-          other_names: otherNames || null,
-          phone: cleanPhone,
-          email: cleanEmail,
-          kyc_status: 'pending',
-          registration_status: 'phone_unverified',
-        })
-        .select()
-        .single()
-
-      if (customerError) {
-        console.error('Customer insert error:', customerError)
-        setError('Could not create account. Please try again.')
-        setLoading(false)
-        return
-      }
-
+      const { data: customer, error: customerError } = await supabase.from('customers').insert({
+        business_id: resolvedBusinessId, partna_identity_id: partnaIdentityId,
+        full_name: `${firstName} ${lastName}`, first_name: firstName, last_name: lastName,
+        other_names: otherNames || null, phone: cleanPhone, email: cleanEmail,
+        kyc_status: 'pending', registration_status: 'phone_unverified',
+      }).select().single()
+      if (customerError) { console.error('Customer insert error:', customerError); setError('Could not create account. Please try again.'); setLoading(false); return }
       setCustomerId(customer.id)
-
       const otpCode = Math.floor(10000 + Math.random() * 90000).toString()
       const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString()
-
-      const { data: otpRecord, error: otpError } = await supabase
-        .from('otp_verifications')
-        .insert({ phone: cleanPhone, otp_code: otpCode, status: 'pending', expires_at: expiresAt })
-        .select()
-        .single()
-
-      if (otpError) {
-        console.error('OTP insert error:', otpError)
-        setError('Could not send OTP. Please try again.')
-        setLoading(false)
-        return
-      }
-
+      const { data: otpRecord, error: otpError } = await supabase.from('otp_verifications').insert({ phone: cleanPhone, otp_code: otpCode, status: 'pending', expires_at: expiresAt }).select().single()
+      if (otpError) { console.error('OTP insert error:', otpError); setError('Could not send OTP. Please try again.'); setLoading(false); return }
       setOtpId(otpRecord.id)
-
       const smsRes = await fetch(`${SUPABASE_URL}/functions/v1/send-otp-sms`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
-        },
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${SUPABASE_ANON_KEY}` },
         body: JSON.stringify({ phone: cleanPhone, otp: otpCode }),
       })
-
-      if (!smsRes.ok) {
-        console.error('SMS send failed:', await smsRes.text())
-        setError('OTP SMS could not be sent. Please check your phone number and try again.')
-        setLoading(false)
-        return
-      }
-
+      if (!smsRes.ok) { console.error('SMS send failed:', await smsRes.text()); setError('OTP SMS could not be sent. Please check your phone number and try again.'); setLoading(false); return }
       setStep(2)
     } catch (err) {
       console.error('Unexpected error:', err)
@@ -173,35 +82,15 @@ export default function Register() {
 
   async function handleStep2() {
     setError('')
-    if (!otp || otp.length !== 5) {
-      setError('Please enter the 5-digit OTP.')
-      return
-    }
-
+    if (!otp || otp.length !== 5) { setError('Please enter the 5-digit OTP.'); return }
     setLoading(true)
     try {
-      const { data: otpRecord, error: fetchError } = await supabase
-        .from('otp_verifications').select('*').eq('id', otpId).single()
-
-      if (fetchError || !otpRecord) {
-        setError('OTP not found. Please go back and try again.')
-        setLoading(false)
-        return
-      }
-      if (new Date(otpRecord.expires_at) < new Date()) {
-        setError('OTP has expired. Please go back and request a new one.')
-        setLoading(false)
-        return
-      }
-      if (otpRecord.otp_code !== otp) {
-        setError('Incorrect OTP. Please check and try again.')
-        setLoading(false)
-        return
-      }
-
+      const { data: otpRecord, error: fetchError } = await supabase.from('otp_verifications').select('*').eq('id', otpId).single()
+      if (fetchError || !otpRecord) { setError('OTP not found. Please go back and try again.'); setLoading(false); return }
+      if (new Date(otpRecord.expires_at) < new Date()) { setError('OTP has expired. Please go back and request a new one.'); setLoading(false); return }
+      if (otpRecord.otp_code !== otp) { setError('Incorrect OTP. Please check and try again.'); setLoading(false); return }
       await supabase.from('otp_verifications').update({ status: 'verified' }).eq('id', otpId)
       await supabase.from('customers').update({ registration_status: 'pin_pending' }).eq('id', customerId)
-
       setStep(3)
     } catch (err) {
       console.error('OTP verify error:', err)
@@ -213,43 +102,18 @@ export default function Register() {
 
   async function handleStep3() {
     setError('')
-    if (!pin || pin.length !== 4) {
-      setError('PIN must be exactly 4 digits.')
-      return
-    }
-    if (pin !== confirmPin) {
-      setError('PINs do not match. Please try again.')
-      return
-    }
-
+    if (!pin || pin.length !== 4) { setError('PIN must be exactly 4 digits.'); return }
+    if (pin !== confirmPin) { setError('PINs do not match. Please try again.'); return }
     setLoading(true)
     try {
       const cleanPhone = phone.replace(/\s+/g, '')
       const cleanEmail = email.toLowerCase().trim()
       const password = `pin-${pin}-${cleanPhone}`
-
-      const { data: authData, error: authError } = await supabase.auth.signUp({
-        email: cleanEmail,
-        password,
-      })
-
-      if (authError) {
-        console.error('Auth signup error:', authError)
-        setError('Could not create login. Please try again.')
-        setLoading(false)
-        return
-      }
-
-      await supabase.from('customers').update({
-        auth_user_id: authData.user.id,
-        registration_status: 'complete',
-      }).eq('id', customerId)
-
+      const { data: authData, error: authError } = await supabase.auth.signUp({ email: cleanEmail, password })
+      if (authError) { console.error('Auth signup error:', authError); setError('Could not create login. Please try again.'); setLoading(false); return }
+      await supabase.from('customers').update({ auth_user_id: authData.user.id, registration_status: 'complete' }).eq('id', customerId)
       await supabase.auth.signInWithPassword({ email: cleanEmail, password })
-
-      setTimeout(() => {
-        navigate('/portal/select-campaign', { replace: true })
-      }, 500)
+      setTimeout(() => { navigate('/portal/select-campaign', { replace: true }) }, 500)
     } catch (err) {
       console.error('Step 3 error:', err)
       setError('Something went wrong. Please try again.')
@@ -258,422 +122,285 @@ export default function Register() {
     }
   }
 
-  const stepLabels = ['Personal details', 'Verify phone', 'Set PIN']
-  const stepTitles = ['Create your account', 'Verify your phone', 'Set your PIN']
-  const stepSubs   = ['Step 1 of 3 — Personal details', 'Step 2 of 3 — Phone verification', 'Step 3 of 3 — Security PIN']
+  // ── Step config ───────────────────────────────────────────
+
+  const steps = [
+    { label: 'Personal details', title: 'Create your account',  sub: 'Tell us a bit about yourself to get started.' },
+    { label: 'Verify phone',     title: 'Verify your number',   sub: `We sent a 5-digit code to ${phone}.` },
+    { label: 'Set PIN',          title: 'Set your PIN',         sub: "You'll use this every time you log in." },
+  ]
+  const current = steps[step - 1]
+
+  // ── Inline style tokens — strict Sellin kit ───────────────
+  const input = {
+    display: 'block', width: '100%',
+    padding: '10px 14px',
+    fontSize: 14, fontWeight: 500, color: '#111111',
+    background: '#FFFFFF',
+    border: '1px solid #D5D9DD',
+    borderRadius: 10,
+    outline: 'none',
+    fontFamily: 'Inter, system-ui, sans-serif',
+    transition: 'border-color 0.15s',
+  }
+
+  const label = {
+    display: 'block',
+    fontSize: 14, fontWeight: 600,
+    color: '#111111', letterSpacing: '-0.4px',
+    marginBottom: 6,
+  }
+
+  const btnPrimary = {
+    width: '100%', padding: '11px 18px',
+    fontSize: 14, fontWeight: 600,
+    color: '#FFFFFF', background: '#111111',
+    border: '1px solid #111111', borderRadius: 10,
+    cursor: 'pointer',
+    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+    fontFamily: 'Inter, system-ui, sans-serif',
+  }
+
+  const linkBtn = {
+    background: 'none', border: 'none', padding: 0,
+    fontSize: 14, fontWeight: 600, color: '#111111',
+    cursor: 'pointer', textDecoration: 'underline', textUnderlineOffset: 3,
+    fontFamily: 'Inter, system-ui, sans-serif',
+  }
+
+  function focusInput(e)  { e.target.style.borderColor = '#111111' }
+  function blurInput(e)   { e.target.style.borderColor = '#D5D9DD' }
+
+  // ─────────────────────────────────────────────────────────
 
   return (
-    <div style={{ minHeight: '100vh', background: 'var(--color-bg)', display: 'flex', flexDirection: 'column' }}>
+    <div style={{ minHeight: '100vh', background: '#F6F7EE', display: 'flex', flexDirection: 'column', fontFamily: 'Inter, system-ui, sans-serif' }}>
 
-      {/* ── Header ── */}
+      {/* ── Topbar ── */}
       <header style={{
-        background: 'var(--color-black)',
-        borderBottom: 'var(--border)',
-        padding: 'var(--space-4) var(--space-5)',
-        display: 'flex',
-        alignItems: 'center',
-        gap: 'var(--space-4)',
+        background: '#FFFFFF', borderBottom: '1px solid #D7D8CB',
+        padding: '14px 20px', position: 'sticky', top: 0, zIndex: 50,
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
       }}>
         <button
           onClick={() => step === 1 ? navigate('/portal') : setStep(step - 1)}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            width: 36,
-            height: 36,
-            border: '2px solid rgba(255,255,255,0.25)',
-            background: 'transparent',
-            color: 'var(--color-white)',
-            cursor: 'pointer',
-            flexShrink: 0,
-            transition: 'border-color var(--transition-base)',
-          }}
-          onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--color-primary)'}
-          onMouseLeave={e => e.currentTarget.style.borderColor = 'rgba(255,255,255,0.25)'}
+          style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center' }}
         >
-          <span className="icon-outlined icon-sm">arrow_back</span>
+          {brand.logoUrl
+            ? <img src={brand.logoUrl} alt={brand.businessName} style={{ height: 26, width: 'auto' }} />
+            : <span style={{ fontSize: 18, fontWeight: 600, color: '#111111', letterSpacing: '-1px' }}>{brand.businessName}</span>
+          }
         </button>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
-          {brand.logoUrl && (
-            <div style={{
-              width: 32, height: 32,
-              border: '2px solid var(--color-primary)',
-              background: 'var(--color-primary)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              flexShrink: 0,
-            }}>
-              <img src={brand.logoUrl} alt={brand.businessName}
-                style={{ width: 22, height: 22, objectFit: 'contain' }} />
-            </div>
-          )}
-          <span style={{
-            color: 'var(--color-white)',
-            fontWeight: 'var(--weight-bold)',
-            fontSize: 'var(--text-sm)',
-            letterSpacing: 'var(--tracking-tight)',
-          }}>
-            {brand.businessName}
-          </span>
-        </div>
+        {step === 1 ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 14, fontWeight: 500, color: '#959687' }}>
+            Have an account?&nbsp;
+            <button onClick={() => navigate('/portal/login')} style={linkBtn}>Log in</button>
+          </div>
+        ) : (
+          <button onClick={() => setStep(step - 1)} style={{ ...linkBtn, fontWeight: 500, color: '#959687', textDecoration: 'none' }}>
+            ← Back
+          </button>
+        )}
       </header>
 
-      {/* ── Step banner ── */}
-      <div style={{
-        background: 'var(--color-black)',
-        borderBottom: '3px solid var(--color-primary)',
-        padding: 'var(--space-6) var(--space-5) var(--space-8)',
-      }}>
-        {/* Step tracker */}
-        <div style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 0,
-          marginBottom: 'var(--space-5)',
-        }}>
-          {[1, 2, 3].map((s, i) => (
-            <div key={s} style={{ display: 'flex', alignItems: 'center', flex: s < 3 ? 1 : 0 }}>
-              {/* Circle */}
-              <div style={{
-                width: 28,
-                height: 28,
-                border: s <= step ? '2px solid var(--color-primary)' : '2px solid rgba(255,255,255,0.2)',
-                background: s < step
-                  ? 'var(--color-primary)'
-                  : s === step
-                  ? 'var(--color-black)'
-                  : 'transparent',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                flexShrink: 0,
-                transition: 'all var(--transition-base)',
-              }}>
-                {s < step
-                  ? <span className="icon-outlined" style={{ fontSize: 14, color: 'var(--color-black)' }}>check</span>
-                  : <span style={{
-                      fontSize: 'var(--text-xs)',
-                      fontWeight: 'var(--weight-black)',
-                      color: s === step ? 'var(--color-primary)' : 'rgba(255,255,255,0.3)',
-                    }}>{s}</span>
-                }
+      {/* ── Body ── */}
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '32px 20px 48px' }}>
+        <div style={{ width: '100%', maxWidth: 420, display: 'flex', flexDirection: 'column', gap: 24 }}>
+
+          {/* ── Stepper ── */}
+          <div style={{ display: 'flex', alignItems: 'center' }}>
+            {steps.map((s, i) => {
+              const n = i + 1
+              const done   = n < step
+              const active = n === step
+              return (
+                <div key={n} style={{ display: 'flex', alignItems: 'center', flex: n < steps.length ? 1 : 0 }}>
+                  <div style={{
+                    width: 28, height: 28, borderRadius: '50%', flexShrink: 0,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: 12, fontWeight: 600,
+                    background: done || active ? '#111111' : '#FFFFFF',
+                    border: `1px solid ${done || active ? '#111111' : '#D5D9DD'}`,
+                    color: done || active ? '#FFFFFF' : '#898B90',
+                    transition: 'all 0.2s',
+                  }}>
+                    {done ? '✓' : n}
+                  </div>
+                  {n < steps.length && (
+                    <div style={{ flex: 1, height: 1, background: done ? '#111111' : '#D5D9DD', transition: 'background 0.3s' }} />
+                  )}
+                </div>
+              )
+            })}
+          </div>
+
+          {/* ── Heading ── */}
+          <div>
+            <p style={{ fontSize: 12, fontWeight: 500, color: '#959687', marginBottom: 8 }}>
+              Step {step} of 3 — {current.label}
+            </p>
+            <h1 style={{ fontSize: 24, fontWeight: 600, color: '#111111', letterSpacing: '-1px', lineHeight: '130%', marginBottom: 6, margin: '0 0 6px' }}>
+              {current.title}
+            </h1>
+            <p style={{ fontSize: 14, fontWeight: 500, color: '#959687', lineHeight: '140%', margin: 0 }}>
+              {current.sub}
+            </p>
+          </div>
+
+          {/* ── Form card ── */}
+          <div style={{
+            background: '#FFFFFF', border: '1px solid #D7D8CB',
+            borderRadius: 12, padding: 24,
+            display: 'flex', flexDirection: 'column', gap: 16,
+          }}>
+
+            {/* Error */}
+            {error && (
+              <div style={{ background: '#F8E4E4', borderRadius: 8, padding: '12px 14px', fontSize: 14, fontWeight: 500, color: '#CC3939', lineHeight: '140%' }}>
+                {error}
               </div>
-              {/* Connector line */}
-              {s < 3 && (
-                <div style={{
-                  flex: 1,
-                  height: 2,
-                  background: s < step ? 'var(--color-primary)' : 'rgba(255,255,255,0.15)',
-                  transition: 'background var(--transition-slow)',
-                }} />
-              )}
-            </div>
-          ))}
+            )}
+
+            {/* ── STEP 1 — Personal details ── */}
+            {step === 1 && (
+              <>
+                <div style={{ display: 'flex', gap: 12 }}>
+                  <div style={{ flex: 1 }}>
+                    <label style={label}>First name <span style={{ color: '#CC3939' }}>*</span></label>
+                    <input style={input} type="text" placeholder="John"
+                      value={firstName} onChange={e => setFirstName(e.target.value)}
+                      onFocus={focusInput} onBlur={blurInput} />
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <label style={label}>Last name <span style={{ color: '#CC3939' }}>*</span></label>
+                    <input style={input} type="text" placeholder="Doe"
+                      value={lastName} onChange={e => setLastName(e.target.value)}
+                      onFocus={focusInput} onBlur={blurInput} />
+                  </div>
+                </div>
+
+                <div>
+                  <label style={label}>
+                    Other names&nbsp;
+                    <span style={{ fontWeight: 500, color: '#898B90' }}>(optional)</span>
+                  </label>
+                  <input style={input} type="text" placeholder="Middle name"
+                    value={otherNames} onChange={e => setOtherNames(e.target.value)}
+                    onFocus={focusInput} onBlur={blurInput} />
+                </div>
+
+                <div>
+                  <label style={label}>Phone number <span style={{ color: '#CC3939' }}>*</span></label>
+                  <input style={input} type="tel" placeholder="+256 7XX XXX XXX"
+                    value={phone} onChange={e => setPhone(e.target.value)}
+                    onFocus={focusInput} onBlur={blurInput} />
+                </div>
+
+                <div>
+                  <label style={label}>Email address <span style={{ color: '#CC3939' }}>*</span></label>
+                  <input style={input} type="email" placeholder="john@email.com"
+                    value={email} onChange={e => setEmail(e.target.value)}
+                    onFocus={focusInput} onBlur={blurInput} />
+                  <p style={{ fontSize: 12, fontWeight: 500, color: '#898B90', margin: '4px 0 0' }}>
+                    Used for account recovery only.
+                  </p>
+                </div>
+
+                <button style={btnPrimary} onClick={handleStep1} disabled={loading}>
+                  {loading
+                    ? <><div className="spinner spinner-sm spinner-light" /> Sending code…</>
+                    : 'Continue'
+                  }
+                </button>
+              </>
+            )}
+
+            {/* ── STEP 2 — OTP ── */}
+            {step === 2 && (
+              <>
+                <div style={{ background: '#F6F7EE', border: '1px solid #D5D9DD', borderRadius: 8, padding: '12px 14px', fontSize: 14, fontWeight: 500, color: '#959687', lineHeight: '140%' }}>
+                  A 5-digit code was sent to <strong style={{ color: '#111111', fontWeight: 600 }}>{phone}</strong>.
+                </div>
+
+                <div>
+                  <label style={{ ...label, textAlign: 'center' }}>Verification code</label>
+                  <input
+                    style={{ ...input, textAlign: 'center', letterSpacing: '0.4em', fontSize: 28, fontWeight: 600 }}
+                    type="text" inputMode="numeric" maxLength={5} placeholder="·····"
+                    value={otp}
+                    onChange={e => setOtp(e.target.value.replace(/\D/g, '').slice(0, 5))}
+                    onFocus={focusInput} onBlur={blurInput}
+                  />
+                </div>
+
+                <button style={btnPrimary} onClick={handleStep2} disabled={loading}>
+                  {loading
+                    ? <><div className="spinner spinner-sm spinner-light" /> Verifying…</>
+                    : 'Verify code'
+                  }
+                </button>
+
+                <p style={{ textAlign: 'center', fontSize: 14, fontWeight: 500, color: '#959687', margin: 0 }}>
+                  Didn't receive it?&nbsp;
+                  <button onClick={() => { setStep(1); setOtp('') }} style={linkBtn}>Go back</button>
+                </p>
+              </>
+            )}
+
+            {/* ── STEP 3 — PIN ── */}
+            {step === 3 && (
+              <>
+                <div style={{ background: '#E4F8EC', borderRadius: 8, padding: '12px 14px', fontSize: 14, fontWeight: 500, color: '#59886D', lineHeight: '140%' }}>
+                  Phone verified. Create a 4-digit PIN to log in.
+                </div>
+
+                <div>
+                  <label style={{ ...label, textAlign: 'center' }}>Create PIN</label>
+                  <input
+                    style={{ ...input, textAlign: 'center', letterSpacing: '0.5em', fontSize: 28, fontWeight: 600 }}
+                    type="password" inputMode="numeric" maxLength={4} placeholder="····"
+                    value={pin}
+                    onChange={e => setPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                    onFocus={focusInput} onBlur={blurInput}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ ...label, textAlign: 'center' }}>Confirm PIN</label>
+                  <input
+                    style={{ ...input, textAlign: 'center', letterSpacing: '0.5em', fontSize: 28, fontWeight: 600 }}
+                    type="password" inputMode="numeric" maxLength={4} placeholder="····"
+                    value={confirmPin}
+                    onChange={e => setConfirmPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                    onFocus={focusInput} onBlur={blurInput}
+                  />
+                </div>
+
+                {pin.length === 4 && confirmPin.length === 4 && (
+                  <p style={{ textAlign: 'center', fontSize: 14, fontWeight: 600, margin: 0, color: pin === confirmPin ? '#59886D' : '#CC3939' }}>
+                    {pin === confirmPin ? '✓ PINs match' : '✗ PINs do not match'}
+                  </p>
+                )}
+
+                <button style={btnPrimary} onClick={handleStep3} disabled={loading}>
+                  {loading
+                    ? <><div className="spinner spinner-sm spinner-light" /> Creating account…</>
+                    : 'Create account'
+                  }
+                </button>
+              </>
+            )}
+
+          </div>
+          {/* end card */}
+
         </div>
-
-        {/* Step label pill */}
-        <div style={{
-          display: 'inline-block',
-          background: 'var(--color-primary)',
-          border: 'var(--border)',
-          padding: '3px var(--space-3)',
-          fontSize: 'var(--text-xs)',
-          fontWeight: 'var(--weight-black)',
-          letterSpacing: 'var(--tracking-widest)',
-          textTransform: 'uppercase',
-          color: 'var(--color-black)',
-          marginBottom: 'var(--space-3)',
-        }}>
-          {stepSubs[step - 1]}
-        </div>
-
-        <h1 style={{
-          color: 'var(--color-white)',
-          fontSize: 'var(--text-2xl)',
-          fontWeight: 'var(--weight-black)',
-          lineHeight: 'var(--leading-tight)',
-          letterSpacing: 'var(--tracking-tight)',
-          fontVariationSettings: "'wdth' 110, 'opsz' 30",
-        }}>
-          {stepTitles[step - 1]}
-        </h1>
-      </div>
-
-      {/* ── Form area ── */}
-      <div style={{
-        flex: 1,
-        padding: 'var(--space-6) var(--space-5)',
-        display: 'flex',
-        flexDirection: 'column',
-        gap: 'var(--space-4)',
-      }}>
-
-        {/* ── STEP 1 — Personal details ── */}
-        {step === 1 && (
-          <>
-            {error && (
-              <div className="alert alert-danger">
-                <span className="icon-outlined alert-icon">error_outline</span>
-                <div className="alert-content">{error}</div>
-              </div>
-            )}
-
-            <div style={{ display: 'flex', gap: 'var(--space-3)' }}>
-              <div className="input-group" style={{ flex: 1 }}>
-                <label className="input-label">
-                  First name <span className="required">*</span>
-                </label>
-                <input type="text" className="input" placeholder="John"
-                  value={firstName} onChange={e => setFirstName(e.target.value)} />
-              </div>
-              <div className="input-group" style={{ flex: 1 }}>
-                <label className="input-label">
-                  Last name <span className="required">*</span>
-                </label>
-                <input type="text" className="input" placeholder="Doe"
-                  value={lastName} onChange={e => setLastName(e.target.value)} />
-              </div>
-            </div>
-
-            <div className="input-group">
-              <label className="input-label">
-                Other names{' '}
-                <span style={{ textTransform: 'none', letterSpacing: 0, fontWeight: 'var(--weight-regular)', color: 'var(--color-grey)' }}>
-                  (optional)
-                </span>
-              </label>
-              <input type="text" className="input" placeholder="Middle name"
-                value={otherNames} onChange={e => setOtherNames(e.target.value)} />
-            </div>
-
-            <div className="input-group">
-              <label className="input-label">
-                Phone number <span className="required">*</span>
-              </label>
-              <div className="input-wrapper">
-                <span className="icon-outlined input-icon-left">phone</span>
-                <input type="tel" className="input" placeholder="+256 7XX XXX XXX"
-                  value={phone} onChange={e => setPhone(e.target.value)} />
-              </div>
-            </div>
-
-            <div className="input-group">
-              <label className="input-label">
-                Email address <span className="required">*</span>
-              </label>
-              <div className="input-wrapper">
-                <span className="icon-outlined input-icon-left">mail</span>
-                <input type="email" className="input" placeholder="johndoe@email.com"
-                  value={email} onChange={e => setEmail(e.target.value)} />
-              </div>
-              <span className="input-hint">Used for account recovery if you forget your PIN.</span>
-            </div>
-
-            <button
-              onClick={handleStep1}
-              disabled={loading}
-              className="btn btn-primary btn-full btn-lg"
-              style={{ marginTop: 'var(--space-2)' }}
-            >
-              {loading
-                ? <><div className="spinner spinner-sm" style={{ borderTopColor: 'var(--color-black)' }} /> Sending OTP…</>
-                : <><span className="icon-outlined icon-sm">arrow_forward</span> Continue</>
-              }
-            </button>
-
-            <div style={{ textAlign: 'center' }}>
-              <span style={{ fontSize: 'var(--text-sm)', color: 'var(--color-grey)' }}>
-                Already have an account?{' '}
-              </span>
-              <button
-                onClick={() => navigate('/portal/login')}
-                style={{
-                  background: 'none', border: 'none',
-                  fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-bold)',
-                  color: 'var(--color-black)', cursor: 'pointer',
-                  textDecoration: 'underline', textUnderlineOffset: 3,
-                }}>
-                Log in
-              </button>
-            </div>
-          </>
-        )}
-
-        {/* ── STEP 2 — OTP verification ── */}
-        {step === 2 && (
-          <>
-            <div className="alert alert-info" style={{ background: '#E8F4FD' }}>
-              <span className="icon-outlined alert-icon" style={{ color: '#1565C0' }}>sms</span>
-              <div className="alert-content">
-                A 5-digit OTP has been sent via SMS to <strong>{phone}</strong>.
-                Enter it below to verify your number.
-              </div>
-            </div>
-
-            {error && (
-              <div className="alert alert-danger">
-                <span className="icon-outlined alert-icon">error_outline</span>
-                <div className="alert-content">{error}</div>
-              </div>
-            )}
-
-            <div className="input-group">
-              <label className="input-label">Enter OTP</label>
-              <input
-                type="text"
-                inputMode="numeric"
-                maxLength={5}
-                className="input"
-                placeholder="_ _ _ _ _"
-                value={otp}
-                onChange={e => setOtp(e.target.value.replace(/\D/g, '').slice(0, 5))}
-                style={{
-                  textAlign: 'center',
-                  letterSpacing: '0.4em',
-                  fontSize: 'var(--text-2xl)',
-                  fontWeight: 'var(--weight-black)',
-                  fontVariationSettings: "'wdth' 100, 'opsz' 30",
-                }}
-              />
-            </div>
-
-            <div style={{ textAlign: 'center' }}>
-              <span style={{ fontSize: 'var(--text-sm)', color: 'var(--color-grey)' }}>
-                Didn't receive it?{' '}
-              </span>
-              <button
-                onClick={() => { setStep(1); setOtp('') }}
-                style={{
-                  background: 'none', border: 'none',
-                  fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-bold)',
-                  color: 'var(--color-black)', cursor: 'pointer',
-                  textDecoration: 'underline', textUnderlineOffset: 3,
-                }}>
-                Go back and resend
-              </button>
-            </div>
-
-            <button
-              onClick={handleStep2}
-              disabled={loading}
-              className="btn btn-primary btn-full btn-lg"
-              style={{ marginTop: 'var(--space-2)' }}
-            >
-              {loading
-                ? <><div className="spinner spinner-sm" style={{ borderTopColor: 'var(--color-black)' }} /> Verifying…</>
-                : <><span className="icon-outlined icon-sm">verified</span> Verify OTP</>
-              }
-            </button>
-          </>
-        )}
-
-        {/* ── STEP 3 — Set PIN ── */}
-        {step === 3 && (
-          <>
-            <div className="alert alert-success">
-              <span className="icon-outlined alert-icon">check_circle</span>
-              <div className="alert-content">
-                Phone verified. Create a 4-digit PIN you'll use to log in every time.
-              </div>
-            </div>
-
-            {error && (
-              <div className="alert alert-danger">
-                <span className="icon-outlined alert-icon">error_outline</span>
-                <div className="alert-content">{error}</div>
-              </div>
-            )}
-
-            <div className="input-group">
-              <label className="input-label">Create PIN</label>
-              <input
-                type="password"
-                inputMode="numeric"
-                maxLength={4}
-                className="input"
-                placeholder="••••"
-                value={pin}
-                onChange={e => setPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
-                style={{
-                  textAlign: 'center',
-                  letterSpacing: '0.5em',
-                  fontSize: 'var(--text-2xl)',
-                  fontWeight: 'var(--weight-black)',
-                }}
-              />
-            </div>
-
-            <div className="input-group">
-              <label className="input-label">Confirm PIN</label>
-              <input
-                type="password"
-                inputMode="numeric"
-                maxLength={4}
-                className="input"
-                placeholder="••••"
-                value={confirmPin}
-                onChange={e => setConfirmPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
-                style={{
-                  textAlign: 'center',
-                  letterSpacing: '0.5em',
-                  fontSize: 'var(--text-2xl)',
-                  fontWeight: 'var(--weight-black)',
-                }}
-              />
-            </div>
-
-            {/* PIN match indicator */}
-            {pin.length === 4 && confirmPin.length === 4 && (
-              <div style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 'var(--space-2)',
-                fontSize: 'var(--text-sm)',
-                fontWeight: 'var(--weight-bold)',
-                color: pin === confirmPin ? '#2D8B45' : '#C0392B',
-              }}>
-                <span className="icon-outlined icon-sm">
-                  {pin === confirmPin ? 'check_circle' : 'cancel'}
-                </span>
-                {pin === confirmPin ? 'PINs match' : 'PINs do not match'}
-              </div>
-            )}
-
-            <button
-              onClick={handleStep3}
-              disabled={loading}
-              className="btn btn-primary btn-full btn-lg"
-              style={{ marginTop: 'var(--space-2)' }}
-            >
-              {loading
-                ? <><div className="spinner spinner-sm" style={{ borderTopColor: 'var(--color-black)' }} /> Creating account…</>
-                : <><span className="icon-outlined icon-sm">person_add</span> Create account</>
-              }
-            </button>
-          </>
-        )}
       </div>
 
       {/* ── Footer ── */}
-      <footer style={{
-        padding: 'var(--space-4) var(--space-5)',
-        borderTop: '1.5px solid var(--color-grey-light)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        gap: 'var(--space-2)',
-      }}>
-        <img src="/partna-icon.svg" alt="Partna" style={{ width: 18, height: 18, opacity: 0.4 }} />
-        <span style={{
-          fontSize: 'var(--text-xs)',
-          fontWeight: 'var(--weight-bold)',
-          letterSpacing: 'var(--tracking-wider)',
-          textTransform: 'uppercase',
-          color: 'var(--color-grey)',
-        }}>
-          Powered by Partna
-        </span>
+      <footer style={{ padding: '16px 20px', borderTop: '1px solid #D5D9DD', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <span style={{ fontSize: 12, fontWeight: 500, color: '#898B90' }}>Powered by Partna</span>
       </footer>
 
     </div>
