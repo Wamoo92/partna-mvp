@@ -55,19 +55,16 @@ export default function Landing() {
   const steps = [
     {
       num: 1,
-      label: 'For parents',
       title: 'Register with your name, phone number and NIN.',
       desc:  'Create your account in minutes. We verify your identity securely using your National ID.',
     },
     {
       num: 2,
-      label: 'For students',
       title: 'Select a term and add a student.',
       desc:  'Choose the fee term you are saving toward and link the student you are paying for.',
     },
     {
       num: 3,
-      label: 'For families',
       title: 'Deposit, pay your fees in full or in parts, and earn card cashback rewards.',
       desc:  'Add funds to your wallet, make full or partial payments anytime, and earn cashback when you spend with partner merchants.',
     },
@@ -307,22 +304,7 @@ export default function Landing() {
             Getting started is quick and simple.
           </h2>
 
-          {/* Step tabs */}
-          <div style={{ display: 'flex', justifyContent: 'center', gap: 0, marginBottom: 48, borderBottom: '1px solid #e5e7eb' }}>
-            {steps.map((s, i) => (
-              <button key={i} onClick={() => setActiveStep(i)} style={{
-                padding: '10px 24px',
-                border: 'none', background: 'none',
-                borderBottom: activeStep === i ? `2px solid ${primary}` : '2px solid transparent',
-                color: activeStep === i ? primary : '#6b7280',
-                fontSize: 14, fontWeight: activeStep === i ? 700 : 500,
-                cursor: 'pointer', transition: 'all 0.15s',
-                marginBottom: -1,
-              }}>
-                {s.label}
-              </button>
-            ))}
-          </div>
+
 
           {/* Active step content */}
           <div style={{
@@ -504,9 +486,22 @@ export default function Landing() {
           </p>
 
           {/* Copyright */}
-          <p style={{ fontSize: 12, color: '#9ca3af' }}>
-            © {year} {brand.businessName}. Powered by Partna.
+          <p style={{ fontSize: 12, color: '#9ca3af', marginBottom: 20 }}>
+            © {year} {brand.businessName}.
           </p>
+
+          {/* Powered by Partna */}
+          <a
+            href="https://www.partna.io"
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 8, textDecoration: 'none', opacity: 0.55, transition: 'opacity 0.15s' }}
+            onMouseEnter={e => e.currentTarget.style.opacity = '1'}
+            onMouseLeave={e => e.currentTarget.style.opacity = '0.55'}
+          >
+            <span style={{ fontSize: 11, color: '#6b7280', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase' }}>Powered by</span>
+            <img src="/partna-logo@2x.png" alt="Partna" style={{ height: 18, width: 'auto', objectFit: 'contain' }} />
+          </a>
         </div>
       </footer>
 
