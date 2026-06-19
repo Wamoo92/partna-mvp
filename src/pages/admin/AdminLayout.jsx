@@ -1,120 +1,115 @@
 import { useNavigate, useLocation } from 'react-router-dom'
 
 const NAV_ITEMS = [
-  { label: 'Dashboard',    icon: 'dashboard',     path: '/admin/dashboard'   },
-  { label: 'Businesses',   icon: 'business',      path: '/admin/businesses'  },
-  { label: 'Customers',    icon: 'group',         path: '/admin/customers'   },
-  { label: 'Transactions', icon: 'swap_vert',     path: '/admin/transactions'},
-  { label: 'Revenue',      icon: 'payments',      path: '/admin/revenue'     },
-  { label: 'KYB Queue',    icon: 'verified_user', path: '/admin/kyb'         },
-  { label: 'Rewards',      icon: 'redeem',        path: '/admin/rewards'     },
-  { label: 'Settings',     icon: 'settings',      path: '/admin/settings'    },
+  { label: 'Dashboard',    path: '/admin/dashboard'    },
+  { label: 'Businesses',   path: '/admin/businesses'   },
+  { label: 'Customers',    path: '/admin/customers'    },
+  { label: 'Transactions', path: '/admin/transactions' },
+  { label: 'Revenue',      path: '/admin/revenue'      },
+  { label: 'KYB Queue',    path: '/admin/kyb'          },
+  { label: 'Rewards',      path: '/admin/rewards'      },
+  { label: 'Settings',     path: '/admin/settings'     },
 ]
 
-// Wired up when KYBQueue is built
 function KYBBadge() { return null }
+
+// ── Sellin tokens ──────────────────────────────────────────────────────────
+const C = {
+  bg:        '#F6F7EE',
+  white:     '#FFFFFF',
+  black:     '#111111',
+  labelBg:   '#E4E5DD',
+  stroke:    '#D7D8CB',
+  grayLine:  '#D5D9DD',
+  secondary: '#959687',
+  grayMid:   '#898B90',
+  grayLight: '#ECECEC',
+  green:     '#59886D',
+  red:       '#CC3939',
+}
+
+// ── Nav icons as inline SVGs ───────────────────────────────────────────────
+function NavIcon({ label, active }) {
+  const color = active ? C.black : C.secondary
+  const w = 18
+
+  const icons = {
+    Dashboard:    <><rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" /></>,
+    Businesses:   <><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /><polyline points="9 22 9 12 15 12 15 22" /></>,
+    Customers:    <><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" /></>,
+    Transactions: <><line x1="12" y1="5" x2="12" y2="19" /><polyline points="19 12 12 19 5 12" /></>,
+    Revenue:      <><rect x="1" y="4" width="22" height="16" rx="2" /><line x1="1" y1="10" x2="23" y2="10" /></>,
+    'KYB Queue':  <><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /></>,
+    Rewards:      <><path d="M20 12v10H4V12" /><path d="M22 7H2v5h20V7z" /><path d="M12 22V7" /><path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z" /><path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z" /></>,
+    Settings:     <><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" /></>,
+  }
+
+  return (
+    <svg width={w} height={w} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={active ? 2 : 1.5} strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+      {icons[label]}
+    </svg>
+  )
+}
 
 export default function AdminLayout({ admin, signOut, children }) {
   const navigate = useNavigate()
   const location = useLocation()
 
   function isActive(path) { return location.pathname.startsWith(path) }
-
   const activeLabel = NAV_ITEMS.find(n => isActive(n.path))?.label || 'Admin'
 
   return (
-    <div style={{ minHeight: '100vh', display: 'flex', background: 'var(--color-bg)' }}>
+    <div style={{ minHeight: '100vh', display: 'flex', background: C.bg, fontFamily: 'Inter, system-ui, sans-serif' }}>
 
       {/* ── Sidebar ── */}
       <aside style={{
-        width: 224,
-        minHeight: '100vh',
-        flexShrink: 0,
-        background: 'var(--color-black)',
-        borderRight: 'var(--border)',
-        display: 'flex',
-        flexDirection: 'column',
-        position: 'sticky',
-        top: 0,
+        width: 224, minHeight: '100vh', flexShrink: 0,
+        background: C.white, borderRight: `1px solid ${C.stroke}`,
+        display: 'flex', flexDirection: 'column',
+        position: 'sticky', top: 0, height: '100vh', overflowY: 'auto',
       }}>
 
         {/* Logo */}
         <div style={{
-          padding: 'var(--space-5) var(--space-4)',
-          borderBottom: '1px solid rgba(255,255,255,0.08)',
-          display: 'flex',
-          alignItems: 'center',
-          gap: 'var(--space-3)',
-          minHeight: 'var(--topbar-height)',
+          padding: '16px 18px',
+          borderBottom: `1px solid ${C.stroke}`,
+          display: 'flex', alignItems: 'center', gap: 10,
+          minHeight: 60,
         }}>
-          <img src="/partna-icon.svg" alt="Partna" style={{ width: 32, height: 32, flexShrink: 0 }} />
+          <div style={{ width: 28, height: 28, borderRadius: 8, background: C.black, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#F6F7EE" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 2L2 7l10 5 10-5-10-5z" /><path d="M2 17l10 5 10-5" /><path d="M2 12l10 5 10-5" />
+            </svg>
+          </div>
           <div>
-            <div style={{
-              color: 'var(--color-white)',
-              fontWeight: 'var(--weight-black)',
-              fontSize: 'var(--text-base)',
-              letterSpacing: 'var(--tracking-tight)',
-              fontVariationSettings: "'wdth' 110, 'opsz' 16",
-            }}>
-              Part<span style={{ color: 'var(--color-primary)' }}>na</span>
-            </div>
-            <div style={{
-              fontSize: 'var(--text-xs)',
-              color: 'rgba(255,255,255,0.35)',
-              fontWeight: 'var(--weight-bold)',
-              letterSpacing: 'var(--tracking-wide)',
-              textTransform: 'uppercase',
-            }}>
-              Admin
-            </div>
+            <p style={{ fontSize: 14, fontWeight: 600, color: C.black, letterSpacing: '-0.4px', margin: 0 }}>Partna</p>
+            <p style={{ fontSize: 11, fontWeight: 500, color: C.secondary, margin: 0, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Admin</p>
           </div>
         </div>
 
         {/* Nav */}
-        <nav style={{
-          flex: 1,
-          padding: 'var(--space-3) var(--space-2)',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 2,
-          marginTop: 'var(--space-2)',
-        }}>
+        <nav style={{ flex: 1, padding: '10px 8px', display: 'flex', flexDirection: 'column', gap: 2 }}>
           {NAV_ITEMS.map(item => {
             const active = isActive(item.path)
             return (
               <button
                 key={item.path}
                 onClick={() => navigate(item.path)}
-                title={item.label}
                 style={{
-                  width: '100%',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 'var(--space-3)',
-                  padding: 'var(--space-3)',
-                  background: active ? 'var(--color-primary)' : 'transparent',
-                  border: 'none',
-                  color: active ? 'var(--color-black)' : 'rgba(255,255,255,0.55)',
-                  fontSize: 'var(--text-sm)',
-                  fontWeight: active ? 'var(--weight-black)' : 'var(--weight-semibold)',
-                  cursor: 'pointer',
-                  textAlign: 'left',
-                  transition: 'background var(--transition-base), color var(--transition-base)',
-                  position: 'relative',
+                  width: '100%', display: 'flex', alignItems: 'center', gap: 10,
+                  padding: '9px 10px', borderRadius: 8,
+                  background: active ? C.bg : 'transparent',
+                  border: 'none', cursor: 'pointer', textAlign: 'left',
+                  fontSize: 14, fontWeight: active ? 600 : 500,
+                  color: active ? C.black : C.secondary,
+                  transition: 'all 0.12s',
+                  fontFamily: 'Inter, system-ui, sans-serif',
                 }}
-                onMouseEnter={e => { if (!active) { e.currentTarget.style.background = 'rgba(255,255,255,0.06)'; e.currentTarget.style.color = 'var(--color-white)' }}}
-                onMouseLeave={e => { if (!active) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'rgba(255,255,255,0.55)' }}}
+                onMouseEnter={e => { if (!active) { e.currentTarget.style.background = C.bg; e.currentTarget.style.color = C.black } }}
+                onMouseLeave={e => { if (!active) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = C.secondary } }}
               >
-                {active && (
-                  <div style={{
-                    position: 'absolute', left: 0, top: 0, bottom: 0,
-                    width: 3, background: 'var(--color-black)',
-                  }} />
-                )}
-                <span className="icon-outlined" style={{ fontSize: 20, flexShrink: 0 }}>{item.icon}</span>
-                <span style={{ letterSpacing: active ? 'var(--tracking-tight)' : 'var(--tracking-normal)', fontVariationSettings: "'wdth' 100, 'opsz' 14" }}>
-                  {item.label}
-                </span>
+                <NavIcon label={item.label} active={active} />
+                <span>{item.label}</span>
                 {item.path === '/admin/kyb' && <KYBBadge />}
               </button>
             )
@@ -122,65 +117,37 @@ export default function AdminLayout({ admin, signOut, children }) {
         </nav>
 
         {/* Admin footer */}
-        <div style={{
-          borderTop: '1px solid rgba(255,255,255,0.08)',
-          padding: 'var(--space-4) var(--space-3)',
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', marginBottom: 'var(--space-3)' }}>
-            <div style={{
-              width: 32, height: 32,
-              background: 'var(--color-primary)',
-              border: '1.5px solid rgba(255,255,255,0.2)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontWeight: 'var(--weight-black)',
-              fontSize: 'var(--text-xs)',
-              color: 'var(--color-black)',
-              flexShrink: 0,
-            }}>
+        <div style={{ borderTop: `1px solid ${C.stroke}`, padding: '12px 10px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {/* Admin user row */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '4px 4px 8px' }}>
+            <div style={{ width: 30, height: 30, borderRadius: '50%', background: C.labelBg, border: `1px solid ${C.stroke}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 600, fontSize: 12, color: C.black, flexShrink: 0 }}>
               {admin?.email?.[0]?.toUpperCase() || 'A'}
             </div>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{
-                color: 'var(--color-white)',
-                fontSize: 'var(--text-sm)',
-                fontWeight: 'var(--weight-bold)',
-                whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-              }}>
+              <p style={{ fontSize: 13, fontWeight: 600, color: C.black, margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                 {admin?.email || 'Admin'}
-              </div>
-              <div style={{
-                fontSize: 'var(--text-xs)',
-                color: 'rgba(255,255,255,0.35)',
-                fontWeight: 'var(--weight-bold)',
-                letterSpacing: 'var(--tracking-wide)',
-                textTransform: 'uppercase',
-              }}>
-                Super Admin
-              </div>
+              </p>
+              <p style={{ fontSize: 11, fontWeight: 500, color: C.secondary, margin: 0 }}>Super Admin</p>
             </div>
           </div>
 
+          {/* Sign out */}
           <button
             onClick={() => { signOut(); navigate('/admin/login') }}
             style={{
-              width: '100%',
-              display: 'flex', alignItems: 'center', justifyContent: 'flex-start',
-              gap: 'var(--space-2)',
-              padding: 'var(--space-2) var(--space-3)',
-              background: 'rgba(255,255,255,0.06)',
-              border: '1px solid rgba(255,255,255,0.1)',
-              color: 'rgba(255,255,255,0.55)',
-              fontSize: 'var(--text-xs)',
-              fontWeight: 'var(--weight-bold)',
-              letterSpacing: 'var(--tracking-wide)',
-              textTransform: 'uppercase',
-              cursor: 'pointer',
-              transition: 'background var(--transition-base), color var(--transition-base)',
+              width: '100%', display: 'flex', alignItems: 'center', gap: 8,
+              padding: '8px 10px', borderRadius: 8,
+              background: 'transparent', border: `1px solid ${C.grayLine}`,
+              fontSize: 13, fontWeight: 500, color: C.secondary,
+              cursor: 'pointer', textAlign: 'left', transition: 'all 0.12s',
+              fontFamily: 'Inter, system-ui, sans-serif',
             }}
-            onMouseEnter={e => { e.currentTarget.style.background = 'var(--color-red)'; e.currentTarget.style.color = 'var(--color-black)' }}
-            onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.06)'; e.currentTarget.style.color = 'rgba(255,255,255,0.55)' }}
+            onMouseEnter={e => { e.currentTarget.style.background = '#F8E4E4'; e.currentTarget.style.color = C.red; e.currentTarget.style.borderColor = C.red }}
+            onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = C.secondary; e.currentTarget.style.borderColor = C.grayLine }}
           >
-            <span className="icon-outlined" style={{ fontSize: 16 }}>logout</span>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><polyline points="16 17 21 12 16 7" /><line x1="21" y1="12" x2="9" y2="12" />
+            </svg>
             Sign out
           </button>
         </div>
@@ -191,43 +158,27 @@ export default function AdminLayout({ admin, signOut, children }) {
 
         {/* Topbar */}
         <header style={{
-          height: 'var(--topbar-height)',
-          background: 'var(--color-white)',
-          borderBottom: 'var(--border)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          padding: '0 var(--space-6)',
-          position: 'sticky',
-          top: 0,
-          zIndex: 'var(--z-sticky)',
+          height: 60, background: C.white, borderBottom: `1px solid ${C.stroke}`,
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: '0 24px', position: 'sticky', top: 0, zIndex: 100,
         }}>
-          <h1 style={{
-            fontSize: 'var(--text-lg)',
-            fontWeight: 'var(--weight-black)',
-            letterSpacing: 'var(--tracking-tight)',
-            fontVariationSettings: "'wdth' 100, 'opsz' 20",
-            color: 'var(--color-black)',
-          }}>
+          <h1 style={{ fontSize: 18, fontWeight: 600, color: C.black, letterSpacing: '-0.8px', margin: 0 }}>
             {activeLabel}
           </h1>
-          <div style={{
-            padding: '4px var(--space-3)',
-            background: 'var(--color-black)',
-            border: '1.5px solid var(--color-primary)',
-            fontSize: 'var(--text-xs)',
-            fontWeight: 'var(--weight-black)',
-            letterSpacing: 'var(--tracking-widest)',
-            textTransform: 'uppercase',
-            color: 'var(--color-primary)',
+          <span style={{
+            fontSize: 11, fontWeight: 600, color: C.secondary,
+            background: C.labelBg, borderRadius: 6, padding: '3px 10px',
+            textTransform: 'uppercase', letterSpacing: '0.04em',
           }}>
             Partna Internal
-          </div>
+          </span>
         </header>
 
-        <main style={{ flex: 1, padding: 'var(--space-6)', overflowY: 'auto' }}>
+        {/* Page content */}
+        <main style={{ flex: 1, padding: 24, overflowY: 'auto' }}>
           {children}
         </main>
+
       </div>
     </div>
   )

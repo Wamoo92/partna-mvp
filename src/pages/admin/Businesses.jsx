@@ -2,52 +2,84 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../supabase'
 
-// ── Helpers ────────────────────────────────────────────────────────────────
-
+// ── Helpers — unchanged ────────────────────────────────────────────────────
 function formatUGX(n) {
   if (n >= 1000000) return 'UGX ' + (n / 1000000).toFixed(1) + 'M'
   if (n >= 1000)    return 'UGX ' + (n / 1000).toFixed(0) + 'K'
   return 'UGX ' + Number(n).toLocaleString('en-UG', { maximumFractionDigits: 0 })
 }
-
 function formatDate(d) {
   if (!d) return '—'
   return new Date(d).toLocaleDateString('en-UG', { day: 'numeric', month: 'short', year: 'numeric' })
 }
 
-const KYB_BADGE = {
-  verified: 'badge-success',
-  pending:  'badge-warning',
-  rejected: 'badge-danger',
-  skipped:  'badge-default',
+// ── Sellin tokens ──────────────────────────────────────────────────────────
+const C = {
+  bg:        '#F6F7EE',
+  white:     '#FFFFFF',
+  black:     '#111111',
+  accent:    '#ECEDE1',
+  labelBg:   '#E4E5DD',
+  stroke:    '#D7D8CB',
+  grayLine:  '#D5D9DD',
+  secondary: '#959687',
+  grayMid:   '#898B90',
+  grayLight: '#ECECEC',
+  green:     '#59886D',
+  bgGreen:   '#E4F8EC',
+  red:       '#CC3939',
+  bgRed:     '#F8E4E4',
+  orange:    '#EF8354',
+  bgOrange:  '#F8F0E4',
+  blue:      '#85A0C5',
 }
 
-const STATUS_BADGE = {
-  active:      'badge-success',
-  suspended:   'badge-danger',
-  deactivated: 'badge-default',
+function Badge({ value, type }) {
+  const cfg = {
+    // KYB
+    verified:    { bg: C.bgGreen,  color: C.green  },
+    pending:     { bg: C.bgOrange, color: C.orange  },
+    rejected:    { bg: C.bgRed,    color: C.red     },
+    skipped:     { bg: C.grayLight, color: C.grayMid },
+    // Status
+    active:      { bg: C.bgGreen,  color: C.green  },
+    suspended:   { bg: C.bgRed,    color: C.red     },
+    deactivated: { bg: C.grayLight, color: C.grayMid },
+  }[value] || { bg: C.grayLight, color: C.grayMid }
+
+  return (
+    <span style={{ fontSize: 11, fontWeight: 600, color: cfg.color, background: cfg.bg, borderRadius: 6, padding: '3px 8px', textTransform: 'capitalize', whiteSpace: 'nowrap' }}>
+      {value || 'unknown'}
+    </span>
+  )
+}
+
+const selectStyle = {
+  padding: '8px 12px', fontSize: 13, fontWeight: 500, color: '#111111',
+  background: '#FFFFFF', border: '1px solid #D5D9DD', borderRadius: 8,
+  outline: 'none', fontFamily: 'Inter, system-ui, sans-serif', cursor: 'pointer',
 }
 
 export default function Businesses() {
   const navigate = useNavigate()
 
-  const [businesses, setBusinesses] = useState([])
-  const [loading, setLoading]       = useState(true)
-  const [search, setSearch]         = useState('')
-  const [filterSector, setFilterSector]   = useState('')
-  const [filterKYB, setFilterKYB]         = useState('')
-  const [filterStatus, setFilterStatus]   = useState('')
-  const [sortBy, setSortBy]   = useState('created_at')
-  const [sortDir, setSortDir] = useState('desc')
+  const [businesses, setBusinesses]     = useState([])
+  const [loading, setLoading]           = useState(true)
+  const [search, setSearch]             = useState('')
+  const [filterSector, setFilterSector] = useState('')
+  const [filterKYB, setFilterKYB]       = useState('')
+  const [filterStatus, setFilterStatus] = useState('')
+  const [sortBy, setSortBy]             = useState('created_at')
+  const [sortDir, setSortDir]           = useState('desc')
 
   useEffect(() => { loadBusinesses() }, [])
 
+  // ── Business logic — unchanged ─────────────────────────────────────────
   async function loadBusinesses() {
     setLoading(true)
     try {
       const { data: bizData } = await supabase.from('businesses').select('*').order('created_at', { ascending: false })
       if (!bizData) { setLoading(false); return }
-
       const enriched = await Promise.all(bizData.map(async biz => {
         const { count: customerCount } = await supabase.from('customers').select('*', { count: 'exact', head: true }).eq('business_id', biz.id)
         const { data: customerIds }    = await supabase.from('customers').select('id').eq('business_id', biz.id)
@@ -58,7 +90,6 @@ export default function Businesses() {
         }
         return { ...biz, customerCount: customerCount || 0, aum, status: biz.status || 'active' }
       }))
-
       setBusinesses(enriched)
     } catch (e) { console.error('Businesses load error:', e) }
     setLoading(false)
@@ -69,12 +100,7 @@ export default function Businesses() {
     else { setSortBy(col); setSortDir('desc') }
   }
 
-  function SortIcon({ col }) {
-    if (sortBy !== col) return <span className="icon-outlined" style={{ fontSize: 14, color: 'var(--color-grey-mid)' }}>unfold_more</span>
-    return <span className="icon-outlined" style={{ fontSize: 14, color: 'var(--color-black)' }}>{sortDir === 'asc' ? 'arrow_upward' : 'arrow_downward'}</span>
-  }
-
-  const sectors = [...new Set(businesses.map(b => b.sector).filter(Boolean))]
+  const sectors    = [...new Set(businesses.map(b => b.sector).filter(Boolean))]
   const hasFilters = search || filterSector || filterKYB || filterStatus
 
   const filtered = businesses
@@ -93,157 +119,183 @@ export default function Businesses() {
       return 0
     })
 
+  // ─────────────────────────────────────────────────────────────────────────
+
   if (loading) return (
-    <div style={{ display: 'flex', justifyContent: 'center', padding: 'var(--space-20)' }}>
-      <div className="spinner spinner-lg spinner-purple" />
+    <div style={{ display: 'flex', justifyContent: 'center', padding: 80 }}>
+      <div className="spinner spinner-lg" />
     </div>
   )
 
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-5)' }}>
+  function SortChevron({ col }) {
+    if (sortBy !== col) return <span style={{ color: C.grayLight, fontSize: 11 }}>↕</span>
+    return <span style={{ color: C.black, fontSize: 11 }}>{sortDir === 'asc' ? '↑' : '↓'}</span>
+  }
 
-      {/* ── Filters ── */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', flexWrap: 'wrap' }}>
-        <div className="search-wrapper" style={{ flex: 1, minWidth: 200 }}>
-          <span className="icon-outlined search-icon">search</span>
-          <input type="text" className="input search-input" placeholder="Search by name or email…" value={search} onChange={e => setSearch(e.target.value)} />
-          {search && <button className="search-clear" onClick={() => setSearch('')}><span className="icon-outlined" style={{ fontSize: 16 }}>close</span></button>}
+  const COLS = [
+    { label: 'Business',   col: 'name'                 },
+    { label: 'Sector',     col: 'sector'               },
+    { label: 'Plan',       col: 'subscription_package' },
+    { label: 'KYB',        col: 'kyb_status'           },
+    { label: 'Customers',  col: 'customerCount'        },
+    { label: 'AUM',        col: 'aum'                  },
+    { label: 'Status',     col: 'status'               },
+    { label: 'Registered', col: 'created_at'           },
+  ]
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 20, fontFamily: 'Inter, system-ui, sans-serif' }}>
+
+      {/* ── Filter bar ── */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+
+        {/* Search */}
+        <div style={{ position: 'relative', flex: 1, minWidth: 200 }}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={C.grayMid} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ position: 'absolute', left: 11, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }}>
+            <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
+          </svg>
+          <input
+            type="text" placeholder="Search by name or email…"
+            value={search} onChange={e => setSearch(e.target.value)}
+            style={{ ...selectStyle, width: '100%', paddingLeft: 34 }}
+            onFocus={e => e.target.style.borderColor = C.black}
+            onBlur={e => e.target.style.borderColor = C.grayLine}
+          />
+          {search && (
+            <button onClick={() => setSearch('')} style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: C.grayMid, padding: 0, lineHeight: 1 }}>✕</button>
+          )}
         </div>
-        <select className="input" value={filterSector} onChange={e => setFilterSector(e.target.value)} style={{ width: 'auto', minWidth: 140 }}>
+
+        <select style={selectStyle} value={filterSector} onChange={e => setFilterSector(e.target.value)}>
           <option value="">All sectors</option>
           {sectors.map(s => <option key={s} value={s}>{s}</option>)}
         </select>
-        <select className="input" value={filterKYB} onChange={e => setFilterKYB(e.target.value)} style={{ width: 'auto', minWidth: 130 }}>
+
+        <select style={selectStyle} value={filterKYB} onChange={e => setFilterKYB(e.target.value)}>
           <option value="">All KYB</option>
           <option value="verified">Verified</option>
           <option value="pending">Pending</option>
           <option value="rejected">Rejected</option>
           <option value="skipped">Skipped</option>
         </select>
-        <select className="input" value={filterStatus} onChange={e => setFilterStatus(e.target.value)} style={{ width: 'auto', minWidth: 140 }}>
+
+        <select style={selectStyle} value={filterStatus} onChange={e => setFilterStatus(e.target.value)}>
           <option value="">All statuses</option>
           <option value="active">Active</option>
           <option value="suspended">Suspended</option>
           <option value="deactivated">Deactivated</option>
         </select>
+
         {hasFilters && (
-          <button onClick={() => { setSearch(''); setFilterSector(''); setFilterKYB(''); setFilterStatus('') }} className="btn btn-sm btn-danger">
-            <span className="icon-outlined icon-xs">close</span> Clear
+          <button onClick={() => { setSearch(''); setFilterSector(''); setFilterKYB(''); setFilterStatus('') }}
+            style={{ padding: '8px 12px', fontSize: 12, fontWeight: 600, color: C.red, background: C.bgRed, border: `1px solid ${C.red}`, borderRadius: 8, cursor: 'pointer', fontFamily: 'Inter, system-ui, sans-serif' }}>
+            Clear
           </button>
         )}
-        <span style={{ fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-black)', letterSpacing: 'var(--tracking-wide)', color: 'var(--color-grey)', whiteSpace: 'nowrap' }}>
+
+        <span style={{ fontSize: 12, fontWeight: 500, color: C.secondary, whiteSpace: 'nowrap' }}>
           {filtered.length} of {businesses.length}
         </span>
       </div>
 
       {/* ── Table ── */}
-      <div className="table-wrapper">
-        <table className="table">
-          <thead>
-            <tr>
-              {[
-                { label: 'Business',    col: 'name'                 },
-                { label: 'Sector',      col: 'sector'               },
-                { label: 'Plan',        col: 'subscription_package' },
-                { label: 'KYB',         col: 'kyb_status'           },
-                { label: 'Customers',   col: 'customerCount'        },
-                { label: 'AUM',         col: 'aum'                  },
-                { label: 'Status',      col: 'status'               },
-                { label: 'Registered',  col: 'created_at'           },
-              ].map(col => (
-                <th key={col.col} onClick={() => handleSort(col.col)} style={{ cursor: 'pointer', userSelect: 'none' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                    {col.label}
-                    <SortIcon col={col.col} />
-                  </div>
-                </th>
-              ))}
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.length === 0 ? (
-              <tr>
-                <td colSpan={9} style={{ textAlign: 'center', padding: 'var(--space-12)', fontSize: 'var(--text-sm)', color: 'var(--color-grey)' }}>
-                  No businesses found
-                </td>
-              </tr>
-            ) : filtered.map(biz => (
-              <tr key={biz.id}>
-                {/* Business */}
-                <td>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
-                    {biz.logo_url && !biz.logo_url.startsWith('/') ? (
-                      <img src={biz.logo_url} alt={biz.name} style={{ width: 32, height: 32, objectFit: 'contain', flexShrink: 0, background: 'var(--color-bg)', padding: 2 }} />
-                    ) : (
-                      <div style={{
-                        width: 32, height: 32, flexShrink: 0,
-                        background: 'var(--color-black)',
-                        border: 'var(--border)',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        fontWeight: 'var(--weight-black)', fontSize: 'var(--text-xs)',
-                        color: 'var(--color-primary)',
-                      }}>
-                        {biz.name?.[0]}
-                      </div>
-                    )}
-                    <div>
-                      <div style={{ fontWeight: 'var(--weight-semibold)', fontSize: 'var(--text-sm)' }}>{biz.name}</div>
-                      <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-grey)' }}>{biz.admin_email}</div>
-                    </div>
-                  </div>
-                </td>
-                {/* Sector */}
-                <td style={{ fontSize: 'var(--text-sm)', color: 'var(--color-grey)' }}>{biz.sector || '—'}</td>
-                {/* Plan */}
-                <td>
-                  {biz.subscription_package ? (
-                    <span style={{
-                      fontFamily: 'monospace', fontWeight: 'var(--weight-black)', fontSize: 'var(--text-xs)',
-                      background: 'var(--color-black)', color: 'var(--color-primary)',
-                      padding: '2px var(--space-2)', textTransform: 'capitalize',
-                    }}>
-                      {biz.subscription_package}
+      <div style={{ background: C.white, border: `1px solid ${C.stroke}`, borderRadius: 12, overflow: 'hidden' }}>
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+            <thead>
+              <tr style={{ background: C.bg, borderBottom: `1px solid ${C.grayLine}` }}>
+                {COLS.map(({ label, col }) => (
+                  <th key={col} onClick={() => handleSort(col)} style={{ padding: '10px 16px', textAlign: 'left', fontSize: 11, fontWeight: 600, color: C.secondary, textTransform: 'uppercase', letterSpacing: '0.04em', whiteSpace: 'nowrap', cursor: 'pointer', userSelect: 'none' }}>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                      {label} <SortChevron col={col} />
                     </span>
-                  ) : (
-                    <span style={{ fontSize: 'var(--text-sm)', color: 'var(--color-grey)' }}>—</span>
-                  )}
-                </td>
-                {/* KYB */}
-                <td>
-                  <span className={`badge no-dot ${KYB_BADGE[biz.kyb_status] || 'badge-default'}`} style={{ textTransform: 'capitalize' }}>
-                    {biz.kyb_status || 'unknown'}
-                  </span>
-                </td>
-                {/* Customers */}
-                <td style={{ fontWeight: 'var(--weight-bold)', fontSize: 'var(--text-sm)' }}>
-                  {biz.customerCount}
-                </td>
-                {/* AUM */}
-                <td style={{ fontWeight: 'var(--weight-bold)', fontSize: 'var(--text-sm)', color: '#2D8B45' }}>
-                  {formatUGX(biz.aum)}
-                </td>
-                {/* Status */}
-                <td>
-                  <span className={`badge no-dot ${STATUS_BADGE[biz.status] || 'badge-default'}`} style={{ textTransform: 'capitalize' }}>
-                    {biz.status || 'active'}
-                  </span>
-                </td>
-                {/* Registered */}
-                <td style={{ fontSize: 'var(--text-sm)', color: 'var(--color-grey)' }}>
-                  {formatDate(biz.created_at)}
-                </td>
-                {/* Action */}
-                <td>
-                  <button onClick={() => navigate(`/admin/businesses/${biz.id}`)} className="btn btn-sm btn-secondary">
-                    View
-                  </button>
-                </td>
+                  </th>
+                ))}
+                <th style={{ padding: '10px 16px' }} />
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {filtered.length === 0 ? (
+                <tr>
+                  <td colSpan={9} style={{ textAlign: 'center', padding: '48px 20px', fontSize: 14, fontWeight: 500, color: C.secondary }}>
+                    No businesses found
+                  </td>
+                </tr>
+              ) : filtered.map((biz, i) => (
+                <tr key={biz.id} style={{ borderBottom: i < filtered.length - 1 ? `1px solid ${C.grayLine}` : 'none', background: i % 2 === 0 ? C.white : C.bg, transition: 'background 0.1s' }}
+                  onMouseEnter={e => e.currentTarget.style.background = C.accent}
+                  onMouseLeave={e => e.currentTarget.style.background = i % 2 === 0 ? C.white : C.bg}
+                >
+                  {/* Business name + email */}
+                  <td style={{ padding: '12px 16px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                      {biz.logo_url && !biz.logo_url.startsWith('/') ? (
+                        <img src={biz.logo_url} alt={biz.name} style={{ width: 30, height: 30, objectFit: 'contain', flexShrink: 0, borderRadius: 6, background: C.bg }} />
+                      ) : (
+                        <div style={{ width: 30, height: 30, borderRadius: 8, background: C.black, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 600, fontSize: 12, color: '#F6F7EE', flexShrink: 0 }}>
+                          {biz.name?.[0]}
+                        </div>
+                      )}
+                      <div>
+                        <p style={{ fontSize: 13, fontWeight: 600, color: C.black, margin: '0 0 2px' }}>{biz.name}</p>
+                        <p style={{ fontSize: 11, fontWeight: 500, color: C.secondary, margin: 0 }}>{biz.admin_email}</p>
+                      </div>
+                    </div>
+                  </td>
+
+                  {/* Sector */}
+                  <td style={{ padding: '12px 16px', fontSize: 13, fontWeight: 500, color: C.secondary, whiteSpace: 'nowrap' }}>
+                    {biz.sector || '—'}
+                  </td>
+
+                  {/* Plan */}
+                  <td style={{ padding: '12px 16px' }}>
+                    {biz.subscription_package ? (
+                      <span style={{ fontFamily: 'monospace', fontSize: 11, fontWeight: 600, color: C.white, background: C.black, borderRadius: 6, padding: '3px 8px', textTransform: 'capitalize' }}>
+                        {biz.subscription_package}
+                      </span>
+                    ) : <span style={{ fontSize: 13, color: C.grayMid }}>—</span>}
+                  </td>
+
+                  {/* KYB */}
+                  <td style={{ padding: '12px 16px' }}><Badge value={biz.kyb_status} /></td>
+
+                  {/* Customers */}
+                  <td style={{ padding: '12px 16px', fontSize: 13, fontWeight: 600, color: C.black }}>
+                    {biz.customerCount}
+                  </td>
+
+                  {/* AUM */}
+                  <td style={{ padding: '12px 16px', fontSize: 13, fontWeight: 600, color: C.green }}>
+                    {formatUGX(biz.aum)}
+                  </td>
+
+                  {/* Status */}
+                  <td style={{ padding: '12px 16px' }}><Badge value={biz.status} /></td>
+
+                  {/* Registered */}
+                  <td style={{ padding: '12px 16px', fontSize: 12, fontWeight: 500, color: C.secondary, whiteSpace: 'nowrap' }}>
+                    {formatDate(biz.created_at)}
+                  </td>
+
+                  {/* Action */}
+                  <td style={{ padding: '12px 16px' }}>
+                    <button
+                      onClick={() => navigate(`/admin/businesses/${biz.id}`)}
+                      style={{ padding: '6px 14px', fontSize: 12, fontWeight: 600, color: C.black, background: C.white, border: `1px solid ${C.grayLine}`, borderRadius: 8, cursor: 'pointer', fontFamily: 'Inter, system-ui, sans-serif', whiteSpace: 'nowrap' }}
+                      onMouseEnter={e => e.currentTarget.style.background = C.bg}
+                      onMouseLeave={e => e.currentTarget.style.background = C.white}
+                    >
+                      View →
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
+
     </div>
   )
 }
