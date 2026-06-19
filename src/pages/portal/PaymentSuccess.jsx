@@ -1,10 +1,25 @@
 import { useNavigate, useSearchParams } from 'react-router-dom'
+import { useBrand } from '../../lib/BrandContext'
 
 function formatUGX(n) {
   return 'UGX ' + Number(n).toLocaleString('en-UG', { maximumFractionDigits: 0 })
 }
 
+const C = {
+  bg:       '#F6F7EE',
+  white:    '#FFFFFF',
+  black:    '#111111',
+  labelBg:  '#E4E5DD',
+  stroke:   '#D7D8CB',
+  grayLine: '#D5D9DD',
+  secondary:'#959687',
+  grayMid:  '#898B90',
+  green:    '#59886D',
+  bgGreen:  '#E4F8EC',
+}
+
 export default function PaymentSuccess() {
+  const brand    = useBrand()
   const navigate = useNavigate()
   const [params] = useSearchParams()
 
@@ -12,89 +27,122 @@ export default function PaymentSuccess() {
   const amount       = params.get('amount')
   const enrollmentId = params.get('enrollmentId') || null
 
-  return (
-    <div style={{ minHeight: '100vh', background: 'var(--color-bg)', display: 'flex', flexDirection: 'column' }}>
+  const btnPrimary = {
+    width: '100%', padding: '11px 18px',
+    fontSize: 14, fontWeight: 600,
+    color: C.white, background: C.black,
+    border: `1px solid ${C.black}`, borderRadius: 10,
+    cursor: 'pointer',
+    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+    fontFamily: 'Inter, system-ui, sans-serif',
+  }
 
+  const btnSecondary = {
+    width: '100%', padding: '11px 18px',
+    fontSize: 14, fontWeight: 600,
+    color: C.black, background: C.white,
+    border: `1px solid ${C.grayLine}`, borderRadius: 10,
+    cursor: 'pointer',
+    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+    fontFamily: 'Inter, system-ui, sans-serif',
+  }
+
+  return (
+    <div style={{ minHeight: '100vh', background: C.bg, display: 'flex', flexDirection: 'column', fontFamily: 'Inter, system-ui, sans-serif' }}>
+
+      {/* ── Topbar ── */}
       <header style={{
-        background: 'var(--color-black)', borderBottom: 'var(--border)',
-        padding: 'var(--space-4) var(--space-5)',
+        background: C.white, borderBottom: `1px solid ${C.stroke}`,
+        padding: '14px 20px',
+        display: 'flex', alignItems: 'center',
       }}>
-        <div style={{ color: 'var(--color-white)', fontWeight: 'var(--weight-bold)', fontSize: 'var(--text-sm)' }}>
-          Payment confirmed
-        </div>
+        {brand.logoUrl
+          ? <img src={brand.logoUrl} alt={brand.businessName} style={{ height: 26, width: 'auto' }} />
+          : <span style={{ fontSize: 18, fontWeight: 600, color: C.black, letterSpacing: '-1px' }}>{brand.businessName}</span>
+        }
       </header>
 
-      <div style={{
-        background: 'var(--color-black)',
-        borderBottom: '3px solid var(--color-green)',
-        padding: 'var(--space-8) var(--space-5)',
-        textAlign: 'center',
-      }}>
-        <div style={{
-          width: 64, height: 64,
-          background: 'var(--color-green)',
-          border: '3px solid var(--color-white)',
-          boxShadow: 'var(--shadow-md)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          margin: '0 auto var(--space-4)',
-        }}>
-          <span className="icon-outlined" style={{ fontSize: 32, color: 'var(--color-black)' }}>check</span>
+      {/* ── Body ── */}
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '48px 20px' }}>
+        <div style={{ width: '100%', maxWidth: 420, display: 'flex', flexDirection: 'column', gap: 16 }}>
+
+          {/* ── Success card ── */}
+          <div style={{
+            background: C.white, border: `1px solid ${C.stroke}`,
+            borderRadius: 12, padding: '32px 24px',
+            display: 'flex', flexDirection: 'column', alignItems: 'center',
+            textAlign: 'center', gap: 12,
+          }}>
+            {/* Check circle */}
+            <div style={{
+              width: 60, height: 60, borderRadius: '50%',
+              background: C.green,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}>
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M20 6L9 17l-5-5" />
+              </svg>
+            </div>
+
+            <h1 style={{ fontSize: 24, fontWeight: 600, color: C.black, letterSpacing: '-1px', margin: 0 }}>
+              Payment received
+            </h1>
+            <p style={{ fontSize: 14, fontWeight: 500, color: C.secondary, margin: 0 }}>
+              Your savings balance has been updated.
+            </p>
+
+            {/* Reference pill */}
+            {reference && (
+              <div style={{
+                background: C.labelBg, borderRadius: 8,
+                padding: '6px 16px',
+                fontFamily: 'monospace', fontWeight: 600,
+                fontSize: 13, letterSpacing: '0.08em', color: C.black,
+              }}>
+                {reference}
+              </div>
+            )}
+
+            {/* Amount */}
+            {amount && (
+              <div style={{ marginTop: 4 }}>
+                <p style={{ fontSize: 11, fontWeight: 500, color: C.secondary, margin: '0 0 4px', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                  Amount deposited
+                </p>
+                <p style={{ fontSize: 32, fontWeight: 600, color: C.green, letterSpacing: '-1px', margin: 0 }}>
+                  {formatUGX(amount)}
+                </p>
+              </div>
+            )}
+          </div>
+
+          {/* ── Actions ── */}
+          <button
+            style={btnPrimary}
+            onClick={() => navigate('/portal/home', { state: { enrollmentId } })}
+            onMouseEnter={e => e.currentTarget.style.opacity = '0.85'}
+            onMouseLeave={e => e.currentTarget.style.opacity = '1'}
+          >
+            Back to home
+          </button>
+
+          <button
+            style={btnSecondary}
+            onClick={() => navigate('/portal/transactions', { state: { enrollmentId } })}
+            onMouseEnter={e => e.currentTarget.style.background = '#ECEDE1'}
+            onMouseLeave={e => e.currentTarget.style.background = C.white}
+          >
+            View transactions
+          </button>
+
         </div>
-        <h1 style={{
-          color: 'var(--color-white)', fontSize: 'var(--text-2xl)',
-          fontWeight: 'var(--weight-black)', letterSpacing: 'var(--tracking-tight)',
-          marginBottom: 'var(--space-2)',
-        }}>
-          Payment received
-        </h1>
-        <p style={{ color: 'rgba(255,255,255,0.55)', fontSize: 'var(--text-sm)' }}>
-          Your savings balance has been updated
-        </p>
-        {reference && (
-          <div style={{
-            display: 'inline-block', marginTop: 'var(--space-3)',
-            background: 'var(--color-primary)', border: 'var(--border)',
-            padding: '4px var(--space-4)',
-            fontFamily: 'monospace', fontWeight: 'var(--weight-black)',
-            fontSize: 'var(--text-sm)', letterSpacing: '0.1em', color: 'var(--color-black)',
-          }}>
-            {reference}
-          </div>
-        )}
       </div>
 
-      <div style={{ flex: 1, padding: 'var(--space-5)', display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+      {/* ── Footer ── */}
+      <footer style={{ padding: '16px 20px', borderTop: `1px solid ${C.grayLine}`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <span style={{ fontSize: 12, fontWeight: 500, color: C.grayMid }}>Powered by Partna</span>
+      </footer>
 
-        {amount && (
-          <div style={{
-            background: 'var(--color-white)', border: 'var(--border)',
-            padding: 'var(--space-5)', textAlign: 'center',
-          }}>
-            <div style={{ fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-bold)', letterSpacing: 'var(--tracking-widest)', textTransform: 'uppercase', color: 'var(--color-grey)', marginBottom: 'var(--space-2)' }}>
-              Amount deposited
-            </div>
-            <div style={{ fontSize: 'var(--text-3xl)', fontWeight: 'var(--weight-black)', color: '#2D8B45', letterSpacing: 'var(--tracking-tight)' }}>
-              {formatUGX(amount)}
-            </div>
-          </div>
-        )}
-
-        <button
-          onClick={() => navigate('/portal/home', { state: { enrollmentId } })}
-          className="btn btn-black btn-full btn-lg"
-        >
-          <span className="icon-outlined icon-sm">home</span>
-          Back to home
-        </button>
-
-        <button
-          onClick={() => navigate('/portal/transactions', { state: { enrollmentId } })}
-          className="btn btn-secondary btn-full"
-        >
-          <span className="icon-outlined icon-sm">receipt_long</span>
-          View transactions
-        </button>
-      </div>
     </div>
   )
 }

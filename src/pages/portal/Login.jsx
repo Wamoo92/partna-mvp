@@ -11,7 +11,6 @@ export default function Login() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
-  // Forgot PIN states
   const [showForgot, setShowForgot] = useState(false)
   const [forgotPhone, setForgotPhone] = useState('')
   const [forgotLoading, setForgotLoading] = useState(false)
@@ -19,58 +18,26 @@ export default function Login() {
   const [forgotError, setForgotError] = useState('')
   const [maskedEmail, setMaskedEmail] = useState('')
 
+  // ── Business logic — unchanged ────────────────────────────
+
   async function handleLogin() {
     setError('')
-    if (!phone || !pin) {
-      setError('Please enter your phone number and PIN.')
-      return
-    }
-    if (pin.length !== 4) {
-      setError('PIN must be 4 digits.')
-      return
-    }
-
+    if (!phone || !pin) { setError('Please enter your phone number and PIN.'); return }
+    if (pin.length !== 4) { setError('PIN must be 4 digits.'); return }
     setLoading(true)
     try {
       const cleanPhone = phone.replace(/\s+/g, '')
-
       const { data: customers } = await supabase
         .from('customers')
         .select('email, registration_status')
         .eq('phone', cleanPhone)
-
-      if (!customers || customers.length === 0) {
-        setError('Phone number not found. Please check and try again.')
-        setLoading(false)
-        return
-      }
-
+      if (!customers || customers.length === 0) { setError('Phone number not found. Please check and try again.'); setLoading(false); return }
       const customer = customers[0]
-
-      if (!customer.email) {
-        setError('Account not fully set up. Please register again.')
-        setLoading(false)
-        return
-      }
-
-      if (customer.registration_status !== 'complete') {
-        setError('Account registration is incomplete. Please complete registration.')
-        setLoading(false)
-        return
-      }
-
+      if (!customer.email) { setError('Account not fully set up. Please register again.'); setLoading(false); return }
+      if (customer.registration_status !== 'complete') { setError('Account registration is incomplete. Please complete registration.'); setLoading(false); return }
       const password = `pin-${pin}-${cleanPhone}`
-      const { error: signInError } = await supabase.auth.signInWithPassword({
-        email: customer.email,
-        password,
-      })
-
-      if (signInError) {
-        setError('Incorrect PIN. Please try again.')
-        setLoading(false)
-        return
-      }
-
+      const { error: signInError } = await supabase.auth.signInWithPassword({ email: customer.email, password })
+      if (signInError) { setError('Incorrect PIN. Please try again.'); setLoading(false); return }
       navigate('/portal/home')
     } catch (err) {
       console.error('Login error:', err)
@@ -83,42 +50,15 @@ export default function Login() {
   async function handleForgotPIN() {
     setForgotError('')
     const cleanPhone = forgotPhone.replace(/\s+/g, '')
-    if (!cleanPhone) {
-      setForgotError('Please enter your phone number.')
-      return
-    }
-
+    if (!cleanPhone) { setForgotError('Please enter your phone number.'); return }
     setForgotLoading(true)
     try {
-      const { data: customers } = await supabase
-        .from('customers')
-        .select('email')
-        .eq('phone', cleanPhone)
-
-      if (!customers || customers.length === 0) {
-        setForgotError('No account found with that phone number.')
-        setForgotLoading(false)
-        return
-      }
-
+      const { data: customers } = await supabase.from('customers').select('email').eq('phone', cleanPhone)
+      if (!customers || customers.length === 0) { setForgotError('No account found with that phone number.'); setForgotLoading(false); return }
       const customerEmail = customers[0].email
-      if (!customerEmail) {
-        setForgotError('No email address found for this account.')
-        setForgotLoading(false)
-        return
-      }
-
-      const { error: resetError } = await supabase.auth.resetPasswordForEmail(
-        customerEmail,
-        { redirectTo: `${window.location.origin}/portal/reset-pin` }
-      )
-
-      if (resetError) {
-        setForgotError('Could not send reset email. Please try again.')
-        setForgotLoading(false)
-        return
-      }
-
+      if (!customerEmail) { setForgotError('No email address found for this account.'); setForgotLoading(false); return }
+      const { error: resetError } = await supabase.auth.resetPasswordForEmail(customerEmail, { redirectTo: `${window.location.origin}/portal/reset-pin` })
+      if (resetError) { setForgotError('Could not send reset email. Please try again.'); setForgotLoading(false); return }
       const [local, domain] = customerEmail.split('@')
       const masked = local.slice(0, 3) + '***@' + domain
       setMaskedEmail(masked)
@@ -141,335 +81,252 @@ export default function Login() {
     }
   }
 
-  return (
-    <div style={{ minHeight: '100vh', background: 'var(--color-bg)', display: 'flex', flexDirection: 'column' }}>
+  // ── Shared inline tokens — strict Sellin kit ──────────────
+  const input = {
+    display: 'block', width: '100%',
+    padding: '10px 14px',
+    fontSize: 14, fontWeight: 500, color: '#111111',
+    background: '#FFFFFF',
+    border: '1px solid #D5D9DD',
+    borderRadius: 10, outline: 'none',
+    fontFamily: 'Inter, system-ui, sans-serif',
+    transition: 'border-color 0.15s',
+  }
 
-      {/* ── Header ── */}
+  const label = {
+    display: 'block',
+    fontSize: 14, fontWeight: 600,
+    color: '#111111', letterSpacing: '-0.4px',
+    marginBottom: 6,
+  }
+
+  const btnPrimary = {
+    width: '100%', padding: '11px 18px',
+    fontSize: 14, fontWeight: 600,
+    color: '#FFFFFF', background: '#111111',
+    border: '1px solid #111111', borderRadius: 10,
+    cursor: 'pointer',
+    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+    fontFamily: 'Inter, system-ui, sans-serif',
+    transition: 'opacity 0.15s',
+  }
+
+  const btnSecondary = {
+    width: '100%', padding: '11px 18px',
+    fontSize: 14, fontWeight: 600,
+    color: '#111111', background: '#FFFFFF',
+    border: '1px solid #D5D9DD', borderRadius: 10,
+    cursor: 'pointer',
+    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+    fontFamily: 'Inter, system-ui, sans-serif',
+    transition: 'background 0.15s',
+  }
+
+  const linkBtn = {
+    background: 'none', border: 'none', padding: 0,
+    fontSize: 14, fontWeight: 600, color: '#111111',
+    cursor: 'pointer',
+    textDecoration: 'underline', textUnderlineOffset: 3,
+    fontFamily: 'Inter, system-ui, sans-serif',
+  }
+
+  function focusInput(e)  { e.target.style.borderColor = '#111111' }
+  function blurInput(e)   { e.target.style.borderColor = '#D5D9DD' }
+
+  // ─────────────────────────────────────────────────────────
+
+  return (
+    <div style={{ minHeight: '100vh', background: '#F6F7EE', display: 'flex', flexDirection: 'column', fontFamily: 'Inter, system-ui, sans-serif' }}>
+
+      {/* ── Topbar ── */}
       <header style={{
-        background: 'var(--color-black)',
-        borderBottom: 'var(--border)',
-        padding: 'var(--space-4) var(--space-5)',
-        display: 'flex',
-        alignItems: 'center',
-        gap: 'var(--space-4)',
+        background: '#FFFFFF', borderBottom: '1px solid #D7D8CB',
+        padding: '14px 20px', position: 'sticky', top: 0, zIndex: 50,
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
       }}>
         <button
           onClick={handleBack}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            width: 36,
-            height: 36,
-            border: '2px solid rgba(255,255,255,0.25)',
-            background: 'transparent',
-            color: 'var(--color-white)',
-            cursor: 'pointer',
-            flexShrink: 0,
-            transition: 'border-color var(--transition-base)',
-          }}
-          onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--color-primary)'}
-          onMouseLeave={e => e.currentTarget.style.borderColor = 'rgba(255,255,255,0.25)'}
+          style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center' }}
         >
-          <span className="icon-outlined icon-sm">arrow_back</span>
+          {brand.logoUrl
+            ? <img src={brand.logoUrl} alt={brand.businessName} style={{ height: 26, width: 'auto' }} />
+            : <span style={{ fontSize: 18, fontWeight: 600, color: '#111111', letterSpacing: '-1px' }}>{brand.businessName}</span>
+          }
         </button>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
-          {brand.logoUrl && (
-            <div style={{
-              width: 32,
-              height: 32,
-              border: '2px solid var(--color-primary)',
-              background: 'var(--color-primary)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              flexShrink: 0,
-            }}>
-              <img src={brand.logoUrl} alt={brand.businessName}
-                style={{ width: 22, height: 22, objectFit: 'contain' }} />
-            </div>
-          )}
-          <span style={{
-            color: 'var(--color-white)',
-            fontWeight: 'var(--weight-bold)',
-            fontSize: 'var(--text-sm)',
-            letterSpacing: 'var(--tracking-tight)',
-          }}>
-            {brand.businessName}
-          </span>
-        </div>
+        <button onClick={() => navigate('/portal/register')} style={{ ...linkBtn, fontWeight: 500, color: '#959687', textDecoration: 'none', fontSize: 14 }}>
+          Register
+        </button>
       </header>
 
-      {/* ── Page title bar ── */}
-      <div style={{
-        background: 'var(--color-black)',
-        borderBottom: '3px solid var(--color-primary)',
-        padding: 'var(--space-6) var(--space-5) var(--space-8)',
-      }}>
-        <div style={{
-          display: 'inline-block',
-          background: 'var(--color-primary)',
-          border: 'var(--border)',
-          padding: '3px var(--space-3)',
-          fontSize: 'var(--text-xs)',
-          fontWeight: 'var(--weight-black)',
-          letterSpacing: 'var(--tracking-widest)',
-          textTransform: 'uppercase',
-          color: 'var(--color-black)',
-          marginBottom: 'var(--space-3)',
-        }}>
-          {showForgot ? 'Reset PIN' : 'Log In'}
-        </div>
-        <h1 style={{
-          color: 'var(--color-white)',
-          fontSize: 'var(--text-2xl)',
-          fontWeight: 'var(--weight-black)',
-          lineHeight: 'var(--leading-tight)',
-          letterSpacing: 'var(--tracking-tight)',
-          fontVariationSettings: "'wdth' 110, 'opsz' 30",
-          marginBottom: 'var(--space-2)',
-        }}>
-          {showForgot ? 'Forgot your PIN?' : 'Welcome back.'}
-        </h1>
-        <p style={{
-          color: 'rgba(255,255,255,0.55)',
-          fontSize: 'var(--text-sm)',
-        }}>
-          {showForgot
-            ? 'Enter your phone number to receive a reset link.'
-            : 'Log in to your savings account.'}
-        </p>
-      </div>
+      {/* ── Body ── */}
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '40px 20px 48px' }}>
+        <div style={{ width: '100%', maxWidth: 420, display: 'flex', flexDirection: 'column', gap: 24 }}>
 
-      {/* ── Form area ── */}
-      <div style={{
-        flex: 1,
-        padding: 'var(--space-6) var(--space-5)',
-        display: 'flex',
-        flexDirection: 'column',
-        gap: 'var(--space-4)',
-      }}>
-
-        {/* ── LOGIN FORM ── */}
-        {!showForgot && (
-          <>
-            {error && (
-              <div className="alert alert-danger">
-                <span className="icon-outlined alert-icon">error_outline</span>
-                <div className="alert-content">{error}</div>
-              </div>
-            )}
-
-            <div className="input-group">
-              <label className="input-label">Phone number</label>
-              <div className="input-wrapper">
-                <span className="icon-outlined input-icon-left">phone</span>
-                <input
-                  type="tel"
-                  className="input"
-                  placeholder="+256 7XX XXX XXX"
-                  value={phone}
-                  onChange={e => setPhone(e.target.value)}
-                />
-              </div>
-            </div>
-
-            <div className="input-group">
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <label className="input-label">4-digit PIN</label>
-                <button
-                  onClick={() => { setShowForgot(true); setForgotPhone(phone); setError('') }}
-                  style={{
-                    background: 'none',
-                    border: 'none',
-                    fontSize: 'var(--text-xs)',
-                    fontWeight: 'var(--weight-bold)',
-                    letterSpacing: 'var(--tracking-wide)',
-                    textTransform: 'uppercase',
-                    color: 'var(--color-primary)',
-                    cursor: 'pointer',
-                    textDecoration: 'underline',
-                    textUnderlineOffset: 3,
-                  }}>
-                  Forgot PIN?
-                </button>
-              </div>
-              <div className="input-wrapper">
-                <span className="icon-outlined input-icon-left">lock</span>
-                <input
-                  type="password"
-                  inputMode="numeric"
-                  maxLength={4}
-                  className="input"
-                  placeholder="••••"
-                  value={pin}
-                  onChange={e => setPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
-                  style={{ letterSpacing: '0.3em' }}
-                />
-              </div>
-            </div>
-
-            <button
-              onClick={handleLogin}
-              disabled={loading}
-              className="btn btn-primary btn-full btn-lg"
-              style={{ marginTop: 'var(--space-2)' }}
-            >
-              {loading
-                ? <><div className="spinner spinner-sm" style={{ borderTopColor: 'var(--color-black)' }} /> Logging in…</>
-                : <><span className="icon-outlined icon-sm">login</span> Log in</>
+          {/* ── Heading ── */}
+          <div>
+            <p style={{ fontSize: 12, fontWeight: 500, color: '#959687', marginBottom: 8, margin: '0 0 8px' }}>
+              {showForgot ? 'Reset PIN' : 'Welcome back'}
+            </p>
+            <h1 style={{ fontSize: 24, fontWeight: 600, color: '#111111', letterSpacing: '-1px', lineHeight: '130%', margin: '0 0 6px' }}>
+              {showForgot ? 'Forgot your PIN?' : 'Log in to your account.'}
+            </h1>
+            <p style={{ fontSize: 14, fontWeight: 500, color: '#959687', lineHeight: '140%', margin: 0 }}>
+              {showForgot
+                ? 'Enter your phone number and we\'ll send a reset link to your email.'
+                : 'Enter your phone number and 4-digit PIN.'
               }
-            </button>
-
-            <div style={{ textAlign: 'center', marginTop: 'var(--space-2)' }}>
-              <span style={{ fontSize: 'var(--text-sm)', color: 'var(--color-grey)' }}>
-                Don't have an account?{' '}
-              </span>
-              <button
-                onClick={() => navigate('/portal/register')}
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  fontSize: 'var(--text-sm)',
-                  fontWeight: 'var(--weight-bold)',
-                  color: 'var(--color-black)',
-                  cursor: 'pointer',
-                  textDecoration: 'underline',
-                  textUnderlineOffset: 3,
-                }}>
-                Register
-              </button>
-            </div>
-          </>
-        )}
-
-        {/* ── FORGOT PIN FORM ── */}
-        {showForgot && !forgotSuccess && (
-          <>
-            {forgotError && (
-              <div className="alert alert-danger">
-                <span className="icon-outlined alert-icon">error_outline</span>
-                <div className="alert-content">{forgotError}</div>
-              </div>
-            )}
-
-            <div className="input-group">
-              <label className="input-label">Phone number</label>
-              <div className="input-wrapper">
-                <span className="icon-outlined input-icon-left">phone</span>
-                <input
-                  type="tel"
-                  className="input"
-                  placeholder="+256 7XX XXX XXX"
-                  value={forgotPhone}
-                  onChange={e => setForgotPhone(e.target.value)}
-                />
-              </div>
-              <span className="input-hint">
-                We'll send a reset link to the email address linked to this phone number.
-              </span>
-            </div>
-
-            <button
-              onClick={handleForgotPIN}
-              disabled={forgotLoading}
-              className="btn btn-primary btn-full btn-lg"
-              style={{ marginTop: 'var(--space-2)' }}
-            >
-              {forgotLoading
-                ? <><div className="spinner spinner-sm" style={{ borderTopColor: 'var(--color-black)' }} /> Sending…</>
-                : <><span className="icon-outlined icon-sm">send</span> Send reset link</>
-              }
-            </button>
-
-            <button
-              onClick={() => { setShowForgot(false); setForgotError(''); setForgotPhone('') }}
-              className="btn btn-secondary btn-full"
-            >
-              <span className="icon-outlined icon-sm">arrow_back</span>
-              Back to login
-            </button>
-          </>
-        )}
-
-        {/* ── FORGOT PIN SUCCESS ── */}
-        {showForgot && forgotSuccess && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
-            {/* Success card */}
-            <div className="card card-green" style={{ textAlign: 'center', padding: 'var(--space-8) var(--space-6)' }}>
-              <div style={{
-                width: 56,
-                height: 56,
-                background: 'var(--color-black)',
-                border: 'var(--border)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                margin: '0 auto var(--space-4)',
-              }}>
-                <span className="icon-outlined" style={{ fontSize: 28, color: 'var(--color-white)' }}>
-                  mark_email_read
-                </span>
-              </div>
-              <h2 style={{
-                fontSize: 'var(--text-xl)',
-                fontWeight: 'var(--weight-black)',
-                marginBottom: 'var(--space-2)',
-                fontVariationSettings: "'wdth' 100, 'opsz' 24",
-              }}>
-                Check your email
-              </h2>
-              <p style={{ fontSize: 'var(--text-sm)', color: 'var(--color-grey)', marginBottom: 'var(--space-3)' }}>
-                We've sent a PIN reset link to
-              </p>
-              <div style={{
-                display: 'inline-block',
-                background: 'var(--color-black)',
-                color: 'var(--color-white)',
-                padding: '4px var(--space-4)',
-                fontSize: 'var(--text-sm)',
-                fontWeight: 'var(--weight-bold)',
-                letterSpacing: 'var(--tracking-wide)',
-                marginBottom: 'var(--space-4)',
-              }}>
-                {maskedEmail}
-              </div>
-              <p style={{ fontSize: 'var(--text-xs)', color: 'var(--color-grey)' }}>
-                Click the link in the email to set a new PIN. The link expires in 1 hour.
-              </p>
-            </div>
-
-            <button
-              onClick={() => { setShowForgot(false); setForgotSuccess(false); setForgotPhone('') }}
-              className="btn btn-black btn-full btn-lg"
-            >
-              <span className="icon-outlined icon-sm">arrow_back</span>
-              Back to login
-            </button>
+            </p>
           </div>
-        )}
+
+          {/* ── Form card ── */}
+          <div style={{
+            background: '#FFFFFF', border: '1px solid #D7D8CB',
+            borderRadius: 12, padding: 24,
+            display: 'flex', flexDirection: 'column', gap: 16,
+          }}>
+
+            {/* ── LOGIN FORM ── */}
+            {!showForgot && (
+              <>
+                {error && (
+                  <div style={{ background: '#F8E4E4', borderRadius: 8, padding: '12px 14px', fontSize: 14, fontWeight: 500, color: '#CC3939', lineHeight: '140%' }}>
+                    {error}
+                  </div>
+                )}
+
+                <div>
+                  <label style={label}>Phone number</label>
+                  <input
+                    style={input} type="tel" placeholder="+256 7XX XXX XXX"
+                    value={phone} onChange={e => setPhone(e.target.value)}
+                    onFocus={focusInput} onBlur={blurInput}
+                  />
+                </div>
+
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                    <label style={{ ...label, marginBottom: 0 }}>4-digit PIN</label>
+                    <button
+                      onClick={() => { setShowForgot(true); setForgotPhone(phone); setError('') }}
+                      style={{ ...linkBtn, fontSize: 13, color: '#959687', fontWeight: 500 }}
+                    >
+                      Forgot PIN?
+                    </button>
+                  </div>
+                  <input
+                    style={{ ...input, textAlign: 'center', letterSpacing: '0.4em', fontSize: 22, fontWeight: 600 }}
+                    type="password" inputMode="numeric" maxLength={4} placeholder="····"
+                    value={pin} onChange={e => setPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                    onFocus={focusInput} onBlur={blurInput}
+                  />
+                </div>
+
+                <button
+                  style={btnPrimary} onClick={handleLogin} disabled={loading}
+                  onMouseEnter={e => e.currentTarget.style.opacity = '0.85'}
+                  onMouseLeave={e => e.currentTarget.style.opacity = '1'}
+                >
+                  {loading
+                    ? <><div className="spinner spinner-sm spinner-light" /> Logging in…</>
+                    : 'Log in'
+                  }
+                </button>
+
+                <p style={{ textAlign: 'center', fontSize: 14, fontWeight: 500, color: '#959687', margin: 0 }}>
+                  Don't have an account?{' '}
+                  <button onClick={() => navigate('/portal/register')} style={linkBtn}>Register</button>
+                </p>
+              </>
+            )}
+
+            {/* ── FORGOT PIN FORM ── */}
+            {showForgot && !forgotSuccess && (
+              <>
+                {forgotError && (
+                  <div style={{ background: '#F8E4E4', borderRadius: 8, padding: '12px 14px', fontSize: 14, fontWeight: 500, color: '#CC3939', lineHeight: '140%' }}>
+                    {forgotError}
+                  </div>
+                )}
+
+                <div>
+                  <label style={label}>Phone number</label>
+                  <input
+                    style={input} type="tel" placeholder="+256 7XX XXX XXX"
+                    value={forgotPhone} onChange={e => setForgotPhone(e.target.value)}
+                    onFocus={focusInput} onBlur={blurInput}
+                  />
+                  <p style={{ fontSize: 12, fontWeight: 500, color: '#898B90', margin: '4px 0 0' }}>
+                    We'll send a reset link to the email linked to this number.
+                  </p>
+                </div>
+
+                <button
+                  style={btnPrimary} onClick={handleForgotPIN} disabled={forgotLoading}
+                  onMouseEnter={e => e.currentTarget.style.opacity = '0.85'}
+                  onMouseLeave={e => e.currentTarget.style.opacity = '1'}
+                >
+                  {forgotLoading
+                    ? <><div className="spinner spinner-sm spinner-light" /> Sending…</>
+                    : 'Send reset link'
+                  }
+                </button>
+
+                <button
+                  style={btnSecondary}
+                  onClick={() => { setShowForgot(false); setForgotError(''); setForgotPhone('') }}
+                  onMouseEnter={e => e.currentTarget.style.background = '#F6F7EE'}
+                  onMouseLeave={e => e.currentTarget.style.background = '#FFFFFF'}
+                >
+                  Back to log in
+                </button>
+              </>
+            )}
+
+            {/* ── FORGOT PIN SUCCESS ── */}
+            {showForgot && forgotSuccess && (
+              <>
+                <div style={{ background: '#E4F8EC', borderRadius: 8, padding: '20px 16px', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}>
+                  {/* Check icon */}
+                  <div style={{ width: 44, height: 44, borderRadius: '50%', background: '#59886D', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#ffffff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M20 6L9 17l-5-5" />
+                    </svg>
+                  </div>
+                  <p style={{ fontSize: 16, fontWeight: 600, color: '#111111', margin: 0, letterSpacing: '-0.5px' }}>
+                    Check your email
+                  </p>
+                  <p style={{ fontSize: 14, fontWeight: 500, color: '#959687', margin: 0, lineHeight: '140%' }}>
+                    We sent a reset link to
+                  </p>
+                  <div style={{ background: '#FFFFFF', border: '1px solid #D5D9DD', borderRadius: 8, padding: '6px 16px', fontSize: 14, fontWeight: 600, color: '#111111' }}>
+                    {maskedEmail}
+                  </div>
+                  <p style={{ fontSize: 12, fontWeight: 500, color: '#898B90', margin: 0, lineHeight: '140%' }}>
+                    Click the link in the email to set a new PIN. The link expires in 1 hour.
+                  </p>
+                </div>
+
+                <button
+                  style={btnSecondary}
+                  onClick={() => { setShowForgot(false); setForgotSuccess(false); setForgotPhone('') }}
+                  onMouseEnter={e => e.currentTarget.style.background = '#F6F7EE'}
+                  onMouseLeave={e => e.currentTarget.style.background = '#FFFFFF'}
+                >
+                  Back to log in
+                </button>
+              </>
+            )}
+
+          </div>
+          {/* end card */}
+
+        </div>
       </div>
 
       {/* ── Footer ── */}
-      <footer style={{
-        padding: 'var(--space-4) var(--space-5)',
-        borderTop: '1.5px solid var(--color-grey-light)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        gap: 'var(--space-2)',
-      }}>
-        <img src="/partna-icon.svg" alt="Partna" style={{ width: 18, height: 18, opacity: 0.4 }} />
-        <span style={{
-          fontSize: 'var(--text-xs)',
-          fontWeight: 'var(--weight-bold)',
-          letterSpacing: 'var(--tracking-wider)',
-          textTransform: 'uppercase',
-          color: 'var(--color-grey)',
-        }}>
-          Powered by Partna
-        </span>
+      <footer style={{ padding: '16px 20px', borderTop: '1px solid #D5D9DD', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <span style={{ fontSize: 12, fontWeight: 500, color: '#898B90' }}>Powered by Partna</span>
       </footer>
 
     </div>

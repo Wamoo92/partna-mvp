@@ -9,12 +9,13 @@ export default function KYC({ customer }) {
   const brand    = useBrand()
   const navigate = useNavigate()
 
-  // step 0 = intro, step 1 = enter NIN, step 2 = result
   const [step, setStep]       = useState(0)
   const [nin, setNin]         = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError]     = useState('')
-  const [result, setResult]   = useState(null) // { verified, notFound, unavailable, verifiedName }
+  const [result, setResult]   = useState(null)
+
+  // ── Business logic — unchanged ────────────────────────────
 
   async function handleVerify() {
     setError('')
@@ -31,18 +32,15 @@ export default function KYC({ customer }) {
           nin:        nin.toUpperCase().trim(),
           firstName:  customer.first_name  || '',
           lastName:   customer.last_name   || '',
-          dob:        customer.dob         || '', // YYYY-MM-DD
+          dob:        customer.dob         || '',
         }),
       })
-
       const data = await res.json()
-
       if (!res.ok) {
         setError(data.error || 'Verification failed. Please try again.')
         setLoading(false)
         return
       }
-
       setResult(data)
       setStep(2)
     } catch (e) {
@@ -52,185 +50,264 @@ export default function KYC({ customer }) {
     setLoading(false)
   }
 
-  return (
-    <div style={{ minHeight: '100vh', background: 'var(--color-bg)', display: 'flex', flexDirection: 'column' }}>
+  // ── Shared inline tokens — strict Sellin kit ──────────────
 
-      {/* ── Header ── */}
+  const inputStyle = {
+    display: 'block', width: '100%',
+    padding: '10px 14px',
+    fontSize: 14, fontWeight: 500, color: '#111111',
+    background: '#FFFFFF',
+    border: '1px solid #D5D9DD',
+    borderRadius: 10, outline: 'none',
+    fontFamily: 'Inter, system-ui, sans-serif',
+    transition: 'border-color 0.15s',
+  }
+
+  const labelStyle = {
+    display: 'block',
+    fontSize: 14, fontWeight: 600,
+    color: '#111111', letterSpacing: '-0.4px',
+    marginBottom: 6,
+  }
+
+  const btnPrimary = {
+    width: '100%', padding: '11px 18px',
+    fontSize: 14, fontWeight: 600,
+    color: '#FFFFFF', background: '#111111',
+    border: '1px solid #111111', borderRadius: 10,
+    cursor: 'pointer',
+    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+    fontFamily: 'Inter, system-ui, sans-serif',
+  }
+
+  const btnSecondary = {
+    width: '100%', padding: '11px 18px',
+    fontSize: 14, fontWeight: 600,
+    color: '#111111', background: '#FFFFFF',
+    border: '1px solid #D5D9DD', borderRadius: 10,
+    cursor: 'pointer',
+    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+    fontFamily: 'Inter, system-ui, sans-serif',
+  }
+
+  function focusInput(e)  { e.target.style.borderColor = '#111111' }
+  function blurInput(e)   { e.target.style.borderColor = '#D5D9DD' }
+
+  // Step title / subtitle helpers
+  const stepTitle = step === 0 ? 'Verify your identity'
+    : step === 1 ? 'Enter your NIN'
+    : result?.verified ? 'Identity verified'
+    : result?.unavailable ? 'Service unavailable'
+    : 'Verification failed'
+
+  const stepSub = step === 0 ? 'Unlock all platform features by verifying your National ID.'
+    : step === 1 ? 'Your NIN is printed on the front of your Uganda National ID card.'
+    : result?.verified ? `Welcome, ${result.verifiedName || customer.first_name}. All features are now unlocked.`
+    : result?.unavailable ? 'The ID authority is temporarily unavailable. Please try again shortly.'
+    : 'We could not verify the details you entered. Please check and try again.'
+
+  // ─────────────────────────────────────────────────────────
+
+  return (
+    <div style={{ minHeight: '100vh', background: '#F6F7EE', display: 'flex', flexDirection: 'column', fontFamily: 'Inter, system-ui, sans-serif' }}>
+
+      {/* ── Topbar ── */}
       <header style={{
-        background: 'var(--color-black)', borderBottom: 'var(--border)',
-        padding: 'var(--space-4) var(--space-5)',
-        display: 'flex', alignItems: 'center', gap: 'var(--space-4)',
+        background: '#FFFFFF', borderBottom: '1px solid #D7D8CB',
+        padding: '14px 20px', position: 'sticky', top: 0, zIndex: 50,
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
       }}>
         <button
-          onClick={() => step === 0 ? navigate('/portal/home') : setStep(step - 1)}
-          style={{
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            width: 36, height: 36, border: '2px solid rgba(255,255,255,0.25)',
-            background: 'transparent', color: 'var(--color-white)',
-            cursor: 'pointer', flexShrink: 0,
-          }}
-          onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--color-primary)'}
-          onMouseLeave={e => e.currentTarget.style.borderColor = 'rgba(255,255,255,0.25)'}
+          onClick={() => step === 0 ? navigate('/portal/home') : step === 2 ? navigate('/portal/home') : setStep(step - 1)}
+          style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center' }}
         >
-          <span className="icon-outlined icon-sm">
-            {step === 2 ? 'home' : 'arrow_back'}
-          </span>
+          {brand.logoUrl
+            ? <img src={brand.logoUrl} alt={brand.businessName} style={{ height: 26, width: 'auto' }} />
+            : <span style={{ fontSize: 18, fontWeight: 600, color: '#111111', letterSpacing: '-1px' }}>{brand.businessName}</span>
+          }
         </button>
-        <div style={{ color: 'var(--color-white)', fontWeight: 'var(--weight-bold)', fontSize: 'var(--text-sm)' }}>
+
+        <span style={{ fontSize: 14, fontWeight: 500, color: '#959687' }}>
           Identity Verification
-        </div>
+        </span>
       </header>
 
-      {/* ── Banner ── */}
-      <div style={{
-        background: 'var(--color-black)',
-        borderBottom: `3px solid ${
-          step === 2 && result?.verified  ? 'var(--color-green)'
-          : step === 2 && !result?.verified ? 'var(--color-red)'
-          : 'var(--color-primary)'
-        }`,
-        padding: 'var(--space-8) var(--space-5)',
-        textAlign: 'center',
-      }}>
-        <div style={{
-          width: 64, height: 64,
-          background: step === 2 && result?.verified  ? 'var(--color-green)'
-                    : step === 2 && !result?.verified ? 'var(--color-red)'
-                    : 'var(--color-primary)',
-          border: '3px solid var(--color-white)',
-          boxShadow: 'var(--shadow-md)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          margin: '0 auto var(--space-4)',
-        }}>
-          <span className="icon-outlined" style={{ fontSize: 32, color: 'var(--color-black)' }}>
-            {step === 2 && result?.verified  ? 'verified_user'
-             : step === 2 && !result?.verified ? 'gpp_bad'
-             : 'badge'}
-          </span>
-        </div>
-        <h1 style={{
-          color: 'var(--color-white)', fontSize: 'var(--text-2xl)',
-          fontWeight: 'var(--weight-black)', letterSpacing: 'var(--tracking-tight)',
-          marginBottom: 'var(--space-2)',
-        }}>
-          {step === 0 ? 'Verify your identity'
-           : step === 1 ? 'Enter your NIN'
-           : result?.verified ? 'Identity verified'
-           : result?.unavailable ? 'Service unavailable'
-           : 'Verification failed'}
-        </h1>
-        <p style={{ color: 'rgba(255,255,255,0.55)', fontSize: 'var(--text-sm)' }}>
-          {step === 0 ? 'Verify your National ID to unlock all platform features'
-           : step === 1 ? 'Your NIN is on your physical National ID card'
-           : result?.verified ? `Welcome, ${result.verifiedName || customer.first_name}`
-           : result?.unavailable ? 'The ID authority is temporarily unavailable'
-           : 'We could not verify the details you entered'}
-        </p>
-      </div>
-
       {/* ── Body ── */}
-      <div style={{ flex: 1, padding: 'var(--space-5)', display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '32px 20px 48px' }}>
+        <div style={{ width: '100%', maxWidth: 420, display: 'flex', flexDirection: 'column', gap: 24 }}>
 
-        {/* ── STEP 0: Intro ── */}
-        {step === 0 && (
-          <>
-            <div>
-              <div style={{ fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-black)', letterSpacing: 'var(--tracking-widest)', textTransform: 'uppercase', color: 'var(--color-grey)', marginBottom: 'var(--space-2)' }}>
-                What you'll need
-              </div>
-              <div style={{ border: 'var(--border)', boxShadow: 'var(--shadow-sm)', overflow: 'hidden' }}>
+          {/* ── Step indicator (steps 0 and 1 only) ── */}
+          {step < 2 && (
+            <div style={{ display: 'flex', alignItems: 'center' }}>
+              {[0, 1].map((s) => {
+                const done   = s < step
+                const active = s === step
+                const n      = s + 1
+                return (
+                  <div key={s} style={{ display: 'flex', alignItems: 'center', flex: s < 1 ? 1 : 0 }}>
+                    <div style={{
+                      width: 28, height: 28, borderRadius: '50%', flexShrink: 0,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      fontSize: 12, fontWeight: 600,
+                      background: done || active ? '#111111' : '#FFFFFF',
+                      border: `1px solid ${done || active ? '#111111' : '#D5D9DD'}`,
+                      color: done || active ? '#FFFFFF' : '#898B90',
+                      transition: 'all 0.2s',
+                    }}>
+                      {done ? '✓' : n}
+                    </div>
+                    {s < 1 && (
+                      <div style={{ flex: 1, height: 1, background: done ? '#111111' : '#D5D9DD', transition: 'background 0.3s' }} />
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          )}
+
+          {/* ── Heading ── */}
+          <div>
+            <p style={{ fontSize: 12, fontWeight: 500, color: '#959687', margin: '0 0 8px' }}>
+              {step === 0 ? 'Step 1 of 2 — Overview'
+               : step === 1 ? 'Step 2 of 2 — Verification'
+               : 'Verification complete'}
+            </p>
+            <h1 style={{ fontSize: 24, fontWeight: 600, color: '#111111', letterSpacing: '-1px', lineHeight: '130%', margin: '0 0 6px' }}>
+              {stepTitle}
+            </h1>
+            <p style={{ fontSize: 14, fontWeight: 500, color: '#959687', lineHeight: '140%', margin: 0 }}>
+              {stepSub}
+            </p>
+          </div>
+
+          {/* ── STEP 0: Intro ── */}
+          {step === 0 && (
+            <>
+              {/* What you'll need */}
+              <div style={{ background: '#FFFFFF', border: '1px solid #D7D8CB', borderRadius: 12, overflow: 'hidden' }}>
+                <div style={{ padding: '14px 18px', borderBottom: '1px solid #D5D9DD' }}>
+                  <p style={{ fontSize: 12, fontWeight: 600, color: '#959687', margin: 0, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                    What you'll need
+                  </p>
+                </div>
                 {[
-                  { icon: 'badge',   text: 'Your Uganda National ID card' },
-                  { icon: 'looks_one', text: 'Your NIN number (printed on the front of your ID)' },
+                  {
+                    title: 'Your Uganda National ID card',
+                    sub: 'The physical card issued by NIRA',
+                    icon: (
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#111111" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                        <rect x="2" y="5" width="20" height="14" rx="2" />
+                        <path d="M2 10h20" />
+                        <path d="M6 15h4M14 15h4" />
+                      </svg>
+                    ),
+                  },
+                  {
+                    title: 'Your NIN number',
+                    sub: 'Printed on the front of your ID card',
+                    icon: (
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#111111" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M12 2a5 5 0 1 0 0 10A5 5 0 0 0 12 2z" />
+                        <path d="M4 20c0-4 3.6-7 8-7s8 3 8 7" />
+                      </svg>
+                    ),
+                  },
                 ].map((item, i, arr) => (
                   <div key={i} style={{
-                    display: 'flex', alignItems: 'center', gap: 'var(--space-3)',
-                    padding: 'var(--space-4)',
-                    borderBottom: i < arr.length - 1 ? '1.5px solid var(--color-grey-light)' : 'none',
-                    background: i % 2 === 0 ? 'var(--color-white)' : 'var(--color-bg)',
+                    display: 'flex', alignItems: 'center', gap: 14,
+                    padding: '14px 18px',
+                    borderBottom: i < arr.length - 1 ? '1px solid #D5D9DD' : 'none',
                   }}>
-                    <div style={{
-                      width: 36, height: 36, flexShrink: 0,
-                      background: 'var(--color-black)', border: 'var(--border)',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    }}>
-                      <span className="icon-outlined" style={{ fontSize: 18, color: 'var(--color-white)' }}>{item.icon}</span>
+                    <div style={{ width: 36, height: 36, borderRadius: 8, background: '#E4E5DD', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                      {item.icon}
                     </div>
-                    <span style={{ fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-medium)' }}>{item.text}</span>
+                    <div>
+                      <p style={{ fontSize: 14, fontWeight: 600, color: '#111111', margin: '0 0 2px' }}>{item.title}</p>
+                      <p style={{ fontSize: 12, fontWeight: 500, color: '#959687', margin: 0 }}>{item.sub}</p>
+                    </div>
                   </div>
                 ))}
               </div>
-            </div>
 
-            <div style={{
-              padding: 'var(--space-4)',
-              background: 'var(--color-white)', border: 'var(--border)',
-              display: 'flex', alignItems: 'flex-start', gap: 'var(--space-3)',
-            }}>
-              <span className="icon-outlined" style={{ fontSize: 20, color: 'var(--color-primary)', flexShrink: 0, marginTop: 1 }}>
-                bolt
-              </span>
+              {/* Info card */}
+              <div style={{ background: '#FFFFFF', border: '1px solid #D7D8CB', borderRadius: 12, padding: '16px 18px', display: 'flex', gap: 12 }}>
+                <div style={{ width: 36, height: 36, borderRadius: 8, background: '#E4E5DD', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#111111" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="12" cy="12" r="10" />
+                    <path d="M12 8v4m0 4h.01" />
+                  </svg>
+                </div>
+                <div>
+                  <p style={{ fontSize: 14, fontWeight: 600, color: '#111111', margin: '0 0 4px' }}>Verified in seconds</p>
+                  <p style={{ fontSize: 13, fontWeight: 500, color: '#959687', margin: 0, lineHeight: '140%' }}>
+                    We verify your NIN directly with NIRA. No photos required. Results are instant. Powered by SmileID.
+                  </p>
+                </div>
+              </div>
+
+              {/* Security note */}
+              <div style={{ background: '#F6F7EE', border: '1px solid #D5D9DD', borderRadius: 8, padding: '12px 14px', fontSize: 13, fontWeight: 500, color: '#959687', lineHeight: '140%' }}>
+                Your information is encrypted and used only for identity verification.
+              </div>
+
+              <button
+                style={btnPrimary} onClick={() => setStep(1)}
+                onMouseEnter={e => e.currentTarget.style.opacity = '0.85'}
+                onMouseLeave={e => e.currentTarget.style.opacity = '1'}
+              >
+                Start verification
+              </button>
+
+              <button
+                style={btnSecondary} onClick={() => navigate('/portal/payment-source')}
+                onMouseEnter={e => e.currentTarget.style.background = '#F6F7EE'}
+                onMouseLeave={e => e.currentTarget.style.background = '#FFFFFF'}
+              >
+                Skip for now
+              </button>
+
+              <p style={{ textAlign: 'center', fontSize: 12, fontWeight: 500, color: '#898B90', margin: 0 }}>
+                Skipping will limit your access to platform features. You can complete verification later from your Profile.
+              </p>
+            </>
+          )}
+
+          {/* ── STEP 1: Enter NIN ── */}
+          {step === 1 && (
+            <div style={{ background: '#FFFFFF', border: '1px solid #D7D8CB', borderRadius: 12, padding: 24, display: 'flex', flexDirection: 'column', gap: 16 }}>
+
+              {error && (
+                <div style={{ background: '#F8E4E4', borderRadius: 8, padding: '12px 14px', fontSize: 14, fontWeight: 500, color: '#CC3939', lineHeight: '140%' }}>
+                  {error}
+                </div>
+              )}
+
               <div>
-                <div style={{ fontWeight: 'var(--weight-bold)', fontSize: 'var(--text-sm)', marginBottom: 'var(--space-1)' }}>
-                  Verified in seconds
-                </div>
-                <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-grey)', lineHeight: 'var(--leading-normal)' }}>
-                  We verify your NIN directly with the National Identification and Registration Authority (NIRA). No photos required. Results are instant.
-                </div>
-              </div>
-            </div>
-
-            <div className="alert alert-info">
-              <span className="icon-outlined alert-icon">security</span>
-              <div className="alert-content">
-                Your information is encrypted and used only for identity verification. Powered by SmileID — a trusted African identity verification provider.
-              </div>
-            </div>
-
-            <button onClick={() => setStep(1)} className="btn btn-primary btn-full btn-lg">
-              <span className="icon-outlined icon-sm">arrow_forward</span>
-              Start verification
-            </button>
-
-            <button onClick={() => navigate('/portal/payment-source')} className="btn btn-secondary btn-full">
-              Skip for now
-            </button>
-
-            <p style={{ textAlign: 'center', fontSize: 'var(--text-xs)', color: 'var(--color-grey)' }}>
-              Skipping will limit your access to platform features. You can complete verification later from your Profile.
-            </p>
-          </>
-        )}
-
-        {/* ── STEP 1: Enter NIN ── */}
-        {step === 1 && (
-          <>
-            <div className="input-group">
-              <label className="input-label">National ID Number (NIN)</label>
-              <div className="input-wrapper">
-                <span className="icon-outlined input-icon-left">badge</span>
+                <label style={labelStyle}>National ID Number (NIN)</label>
                 <input
+                  style={{ ...inputStyle, textTransform: 'uppercase', letterSpacing: '0.08em', fontFamily: 'monospace' }}
                   type="text"
-                  className="input"
                   placeholder="CM9001XXXXXXXXX"
                   value={nin}
                   onChange={e => setNin(e.target.value.toUpperCase().replace(/\s/g, ''))}
-                  style={{ textTransform: 'uppercase', letterSpacing: 'var(--tracking-wide)', fontFamily: 'monospace' }}
                   maxLength={20}
                   autoCapitalize="characters"
                   autoCorrect="off"
                   spellCheck="false"
+                  onFocus={focusInput} onBlur={blurInput}
                 />
+                <p style={{ fontSize: 12, fontWeight: 500, color: '#898B90', margin: '4px 0 0' }}>
+                  Enter the NIN exactly as it appears on your ID. Uganda NIDs typically start with CM or CF.
+                </p>
               </div>
-              <span className="input-hint">Enter the NIN exactly as it appears on your National ID card. Uganda NIDs typically start with CM or CF.</span>
-            </div>
 
-            {/* Pre-filled info we'll send to NIRA */}
-            <div>
-              <div style={{ fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-black)', letterSpacing: 'var(--tracking-widest)', textTransform: 'uppercase', color: 'var(--color-grey)', marginBottom: 'var(--space-2)' }}>
-                Details we'll verify
-              </div>
-              <div style={{ border: 'var(--border)', overflow: 'hidden' }}>
+              {/* Details summary */}
+              <div style={{ background: '#F6F7EE', border: '1px solid #D5D9DD', borderRadius: 10, overflow: 'hidden' }}>
+                <div style={{ padding: '10px 14px', borderBottom: '1px solid #D5D9DD' }}>
+                  <p style={{ fontSize: 12, fontWeight: 600, color: '#959687', margin: 0, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                    Details we'll verify
+                  </p>
+                </div>
                 {[
                   { label: 'First name', value: customer.first_name },
                   { label: 'Last name',  value: customer.last_name  },
@@ -238,152 +315,158 @@ export default function KYC({ customer }) {
                 ].map((row, i, arr) => (
                   <div key={i} style={{
                     display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                    padding: 'var(--space-3) var(--space-4)',
-                    borderBottom: i < arr.length - 1 ? '1.5px solid var(--color-grey-light)' : 'none',
-                    background: i % 2 === 0 ? 'var(--color-white)' : 'var(--color-bg)',
+                    padding: '10px 14px',
+                    borderBottom: i < arr.length - 1 ? '1px solid #D5D9DD' : 'none',
                   }}>
-                    <span style={{ fontSize: 'var(--text-sm)', color: 'var(--color-grey)' }}>{row.label}</span>
-                    <span style={{ fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-bold)', fontFamily: row.mono ? 'monospace' : 'inherit', letterSpacing: row.mono ? 'var(--tracking-wide)' : 'normal' }}>
+                    <span style={{ fontSize: 13, fontWeight: 500, color: '#959687' }}>{row.label}</span>
+                    <span style={{ fontSize: 13, fontWeight: 600, color: '#111111', fontFamily: row.mono ? 'monospace' : 'inherit', letterSpacing: row.mono ? '0.06em' : 'normal' }}>
                       {row.value}
                     </span>
                   </div>
                 ))}
               </div>
+
+              <button
+                style={btnPrimary}
+                onClick={() => {
+                  if (nin.length < 5) { setError('Please enter a valid NIN.'); return }
+                  setError('')
+                  handleVerify()
+                }}
+                disabled={loading}
+                onMouseEnter={e => e.currentTarget.style.opacity = '0.85'}
+                onMouseLeave={e => e.currentTarget.style.opacity = '1'}
+              >
+                {loading
+                  ? <><div className="spinner spinner-sm spinner-light" /> Verifying with NIRA…</>
+                  : 'Verify my identity'
+                }
+              </button>
             </div>
+          )}
 
-            {error && (
-              <div className="alert alert-danger">
-                <span className="icon-outlined alert-icon">error_outline</span>
-                <div className="alert-content">{error}</div>
-              </div>
-            )}
+          {/* ── STEP 2: Result ── */}
+          {step === 2 && result && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
 
-            <button
-              onClick={() => {
-                if (nin.length < 5) { setError('Please enter a valid NIN.'); return }
-                setError('')
-                handleVerify()
-              }}
-              disabled={loading}
-              className="btn btn-primary btn-full btn-lg"
-              style={{ marginTop: 'var(--space-2)' }}
-            >
-              {loading
-                ? <><div className="spinner spinner-sm" style={{ borderTopColor: 'var(--color-black)' }} /> Verifying with NIRA…</>
-                : <><span className="icon-outlined icon-sm">verified_user</span> Verify my identity</>
-              }
-            </button>
-          </>
-        )}
-
-        {/* ── STEP 2: Result ── */}
-        {step === 2 && result && (
-          <>
-            {result.verified ? (
-              <>
-                <div style={{ border: 'var(--border)', overflow: 'hidden' }}>
-                  {[
-                    { label: 'Status',    value: 'Verified by NIRA', color: '#2D8B45' },
-                    { label: 'Name on ID', value: result.verifiedName || `${customer.first_name} ${customer.last_name}` },
-                    { label: 'NIN',       value: nin, mono: true },
-                  ].map((row, i, arr) => (
-                    <div key={i} style={{
-                      display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                      padding: 'var(--space-3) var(--space-4)',
-                      borderBottom: i < arr.length - 1 ? '1.5px solid var(--color-grey-light)' : 'none',
-                      background: i % 2 === 0 ? 'var(--color-white)' : 'var(--color-bg)',
-                    }}>
-                      <span style={{ fontSize: 'var(--text-sm)', color: 'var(--color-grey)' }}>{row.label}</span>
-                      <span style={{ fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-bold)', color: row.color || 'var(--color-black)', fontFamily: row.mono ? 'monospace' : 'inherit' }}>
-                        {row.value}
-                      </span>
+              {/* Verified */}
+              {result.verified && (
+                <>
+                  <div style={{ background: '#E4F8EC', borderRadius: 12, padding: '20px 18px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, textAlign: 'center' }}>
+                    <div style={{ width: 48, height: 48, borderRadius: '50%', background: '#59886D', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#ffffff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M20 6L9 17l-5-5" />
+                      </svg>
                     </div>
-                  ))}
-                </div>
-
-                <div className="alert alert-success">
-                  <span className="icon-outlined alert-icon">check_circle</span>
-                  <div className="alert-content">
-                    Your identity has been verified. All platform features are now unlocked.
+                    <p style={{ fontSize: 16, fontWeight: 600, color: '#111111', margin: 0 }}>Identity verified</p>
+                    <p style={{ fontSize: 14, fontWeight: 500, color: '#59886D', margin: 0 }}>All platform features are now unlocked.</p>
                   </div>
-                </div>
 
-                <button onClick={() => navigate('/portal/payment-source')} className="btn btn-primary btn-full btn-lg">
-                  <span className="icon-outlined icon-sm">arrow_forward</span>
-                  Continue
-                </button>
-              </>
-            ) : result.unavailable ? (
-              <>
-                <div className="alert alert-warning">
-                  <span className="icon-outlined alert-icon">warning</span>
-                  <div className="alert-content">
+                  <div style={{ background: '#FFFFFF', border: '1px solid #D7D8CB', borderRadius: 12, overflow: 'hidden' }}>
+                    {[
+                      { label: 'Status',    value: 'Verified by NIRA', color: '#59886D' },
+                      { label: 'Name on ID', value: result.verifiedName || `${customer.first_name} ${customer.last_name}` },
+                      { label: 'NIN',        value: nin, mono: true },
+                    ].map((row, i, arr) => (
+                      <div key={i} style={{
+                        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                        padding: '12px 16px',
+                        borderBottom: i < arr.length - 1 ? '1px solid #D5D9DD' : 'none',
+                      }}>
+                        <span style={{ fontSize: 13, fontWeight: 500, color: '#959687' }}>{row.label}</span>
+                        <span style={{ fontSize: 13, fontWeight: 600, color: row.color || '#111111', fontFamily: row.mono ? 'monospace' : 'inherit' }}>
+                          {row.value}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+
+                  <button
+                    style={btnPrimary} onClick={() => navigate('/portal/payment-source')}
+                    onMouseEnter={e => e.currentTarget.style.opacity = '0.85'}
+                    onMouseLeave={e => e.currentTarget.style.opacity = '1'}
+                  >
+                    Continue
+                  </button>
+                </>
+              )}
+
+              {/* Unavailable */}
+              {result.unavailable && (
+                <>
+                  <div style={{ background: '#F8F0E4', border: '1px solid #EF8354', borderRadius: 8, padding: '12px 14px', fontSize: 14, fontWeight: 500, color: '#EF8354', lineHeight: '140%' }}>
                     The NIRA verification system is temporarily unavailable. This is not an issue with your ID. Please try again in a few minutes.
                   </div>
-                </div>
 
-                <button onClick={() => { setStep(1); setResult(null) }} className="btn btn-primary btn-full btn-lg">
-                  <span className="icon-outlined icon-sm">refresh</span>
-                  Try again
-                </button>
+                  <button
+                    style={btnPrimary} onClick={() => { setStep(1); setResult(null) }}
+                    onMouseEnter={e => e.currentTarget.style.opacity = '0.85'}
+                    onMouseLeave={e => e.currentTarget.style.opacity = '1'}
+                  >
+                    Try again
+                  </button>
 
-                <button onClick={() => navigate('/portal/home')} className="btn btn-secondary btn-full">
-                  Continue without verifying
-                </button>
-              </>
-            ) : (
-              <>
-                <div className="alert alert-danger">
-                  <span className="icon-outlined alert-icon">error_outline</span>
-                  <div className="alert-content">
+                  <button
+                    style={btnSecondary} onClick={() => navigate('/portal/home')}
+                    onMouseEnter={e => e.currentTarget.style.background = '#F6F7EE'}
+                    onMouseLeave={e => e.currentTarget.style.background = '#FFFFFF'}
+                  >
+                    Continue without verifying
+                  </button>
+                </>
+              )}
+
+              {/* Failed */}
+              {!result.verified && !result.unavailable && (
+                <>
+                  <div style={{ background: '#F8E4E4', borderRadius: 8, padding: '12px 14px', fontSize: 14, fontWeight: 500, color: '#CC3939', lineHeight: '140%' }}>
                     {result.notFound
                       ? 'The NIN you entered was not found in the NIRA database. Please check your ID card and try again.'
-                      : 'We could not verify your identity. Please check that your NIN matches your ID card exactly and try again.'}
+                      : 'We could not verify your identity. Please check that your NIN matches your ID card exactly.'}
                   </div>
-                </div>
 
-                <div style={{
-                  padding: 'var(--space-4)', background: 'var(--color-white)', border: 'var(--border)',
-                  display: 'flex', flexDirection: 'column', gap: 'var(--space-2)',
-                }}>
-                  <div style={{ fontWeight: 'var(--weight-bold)', fontSize: 'var(--text-sm)' }}>Common reasons for failure</div>
-                  {[
-                    'NIN entered incorrectly — check for 0 vs O, 1 vs I',
-                    'Name mismatch — your registered name must match your ID exactly',
-                    'ID not yet registered in the NIRA database',
-                  ].map((reason, i) => (
-                    <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 'var(--space-2)' }}>
-                      <span className="icon-outlined" style={{ fontSize: 14, color: 'var(--color-grey)', flexShrink: 0, marginTop: 2 }}>chevron_right</span>
-                      <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-grey)', lineHeight: 'var(--leading-normal)' }}>{reason}</span>
-                    </div>
-                  ))}
-                </div>
+                  <div style={{ background: '#FFFFFF', border: '1px solid #D7D8CB', borderRadius: 12, padding: '16px 18px' }}>
+                    <p style={{ fontSize: 14, fontWeight: 600, color: '#111111', margin: '0 0 12px' }}>Common reasons for failure</p>
+                    {[
+                      'NIN entered incorrectly — check for 0 vs O, 1 vs I',
+                      'Name mismatch — your registered name must match your ID exactly',
+                      'ID not yet registered in the NIRA database',
+                    ].map((reason, i) => (
+                      <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginBottom: i < 2 ? 8 : 0 }}>
+                        <div style={{ width: 4, height: 4, borderRadius: '50%', background: '#959687', flexShrink: 0, marginTop: 6 }} />
+                        <span style={{ fontSize: 13, fontWeight: 500, color: '#959687', lineHeight: '140%' }}>{reason}</span>
+                      </div>
+                    ))}
+                  </div>
 
-                <button onClick={() => { setStep(1); setResult(null) }} className="btn btn-primary btn-full btn-lg">
-                  <span className="icon-outlined icon-sm">refresh</span>
-                  Try again
-                </button>
+                  <button
+                    style={btnPrimary} onClick={() => { setStep(1); setResult(null) }}
+                    onMouseEnter={e => e.currentTarget.style.opacity = '0.85'}
+                    onMouseLeave={e => e.currentTarget.style.opacity = '1'}
+                  >
+                    Try again
+                  </button>
 
-                <button onClick={() => navigate('/portal/home')} className="btn btn-secondary btn-full">
-                  Continue without verifying
-                </button>
-              </>
-            )}
-          </>
-        )}
+                  <button
+                    style={btnSecondary} onClick={() => navigate('/portal/home')}
+                    onMouseEnter={e => e.currentTarget.style.background = '#F6F7EE'}
+                    onMouseLeave={e => e.currentTarget.style.background = '#FFFFFF'}
+                  >
+                    Continue without verifying
+                  </button>
+                </>
+              )}
+            </div>
+          )}
+
+        </div>
       </div>
 
       {/* ── Footer ── */}
-      <footer style={{
-        padding: 'var(--space-4) var(--space-5)',
-        borderTop: '1.5px solid var(--color-grey-light)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 'var(--space-2)',
-      }}>
-        <img src="/partna-icon.svg" alt="Partna" style={{ width: 18, height: 18, opacity: 0.4 }} />
-        <span style={{ fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-bold)', letterSpacing: 'var(--tracking-wider)', textTransform: 'uppercase', color: 'var(--color-grey)' }}>
-          Powered by Partna
-        </span>
+      <footer style={{ padding: '16px 20px', borderTop: '1px solid #D5D9DD', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <span style={{ fontSize: 12, fontWeight: 500, color: '#898B90' }}>Powered by Partna</span>
       </footer>
+
     </div>
   )
 }

@@ -12,6 +12,8 @@ export default function PaymentSource({ customer, fromProfile = false }) {
   const [loading, setLoading] = useState(false)
   const [error, setError]     = useState('')
 
+  // ── Business logic — unchanged ────────────────────────────
+
   async function handleSave() {
     setError('')
     const cleanNumber = number.replace(/\s+/g, '')
@@ -19,25 +21,19 @@ export default function PaymentSource({ customer, fromProfile = false }) {
       setError('Please enter a valid mobile money number.')
       return
     }
-
     setLoading(true)
     try {
       const { error: updateError } = await supabase
         .from('customers')
         .update({ payment_network: network, payment_number: cleanNumber })
         .eq('id', customer.id)
-
       if (updateError) {
         setError('Could not save payment source. Please try again.')
         setLoading(false)
         return
       }
-
-      if (fromProfile) {
-        navigate('/portal/profile')
-      } else {
-        navigate('/portal/home', { replace: true })
-      }
+      if (fromProfile) navigate('/portal/profile')
+      else navigate('/portal/home', { replace: true })
     } catch (e) {
       console.error(e)
       setError('Something went wrong. Please try again.')
@@ -50,201 +46,202 @@ export default function PaymentSource({ customer, fromProfile = false }) {
     else navigate('/portal/home')
   }
 
-  return (
-    <div style={{ minHeight: '100vh', background: 'var(--color-bg)', display: 'flex', flexDirection: 'column' }}>
+  // ── Sellin tokens ─────────────────────────────────────────
 
-      {/* ── Header ── */}
+  const inputStyle = {
+    display: 'block', width: '100%',
+    padding: '10px 14px',
+    fontSize: 14, fontWeight: 500, color: '#111111',
+    background: '#FFFFFF', border: '1px solid #D5D9DD',
+    borderRadius: 10, outline: 'none',
+    fontFamily: 'Inter, system-ui, sans-serif',
+    transition: 'border-color 0.15s',
+  }
+
+  const btnPrimary = {
+    width: '100%', padding: '11px 18px',
+    fontSize: 14, fontWeight: 600,
+    color: '#FFFFFF', background: '#111111',
+    border: '1px solid #111111', borderRadius: 10,
+    cursor: 'pointer',
+    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+    fontFamily: 'Inter, system-ui, sans-serif',
+  }
+
+  const btnSecondary = {
+    width: '100%', padding: '11px 18px',
+    fontSize: 14, fontWeight: 600,
+    color: '#111111', background: '#FFFFFF',
+    border: '1px solid #D5D9DD', borderRadius: 10,
+    cursor: 'pointer',
+    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+    fontFamily: 'Inter, system-ui, sans-serif',
+  }
+
+  // ─────────────────────────────────────────────────────────
+
+  return (
+    <div style={{ minHeight: '100vh', background: '#F6F7EE', display: 'flex', flexDirection: 'column', fontFamily: 'Inter, system-ui, sans-serif' }}>
+
+      {/* ── Topbar ── */}
       <header style={{
-        background: 'var(--color-black)',
-        borderBottom: 'var(--border)',
-        padding: 'var(--space-4) var(--space-5)',
-        display: 'flex',
-        alignItems: 'center',
-        gap: 'var(--space-4)',
+        background: '#FFFFFF', borderBottom: '1px solid #D7D8CB',
+        padding: '14px 20px', position: 'sticky', top: 0, zIndex: 50,
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
       }}>
         <button
           onClick={handleBack}
-          style={{
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            width: 36, height: 36,
-            border: '2px solid rgba(255,255,255,0.25)',
-            background: 'transparent',
-            color: 'var(--color-white)',
-            cursor: 'pointer', flexShrink: 0,
-          }}
-          onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--color-primary)'}
-          onMouseLeave={e => e.currentTarget.style.borderColor = 'rgba(255,255,255,0.25)'}
+          style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center' }}
         >
-          <span className="icon-outlined icon-sm">arrow_back</span>
-        </button>
-        <div style={{ color: 'var(--color-white)', fontWeight: 'var(--weight-bold)', fontSize: 'var(--text-sm)' }}>
-          Payment Source
-        </div>
-      </header>
-
-      {/* ── Title banner ── */}
-      <div style={{
-        background: 'var(--color-black)',
-        borderBottom: '3px solid var(--color-primary)',
-        padding: 'var(--space-6) var(--space-5) var(--space-8)',
-      }}>
-        <div style={{
-          display: 'inline-block',
-          background: 'var(--color-primary)',
-          border: 'var(--border)',
-          padding: '3px var(--space-3)',
-          fontSize: 'var(--text-xs)',
-          fontWeight: 'var(--weight-black)',
-          letterSpacing: 'var(--tracking-widest)',
-          textTransform: 'uppercase',
-          color: 'var(--color-black)',
-          marginBottom: 'var(--space-3)',
-        }}>
-          {fromProfile ? 'Edit' : 'Setup'}
-        </div>
-        <h1 style={{
-          color: 'var(--color-white)',
-          fontSize: 'var(--text-2xl)',
-          fontWeight: 'var(--weight-black)',
-          letterSpacing: 'var(--tracking-tight)',
-          fontVariationSettings: "'wdth' 110, 'opsz' 30",
-          marginBottom: 'var(--space-2)',
-        }}>
-          {fromProfile ? 'Update mobile money' : 'Add your mobile money'}
-        </h1>
-        <p style={{ color: 'rgba(255,255,255,0.55)', fontSize: 'var(--text-sm)' }}>
-          Link your mobile money account for faster deposits and withdrawals.
-        </p>
-      </div>
-
-      {/* ── Body ── */}
-      <div style={{
-        flex: 1,
-        padding: 'var(--space-5)',
-        display: 'flex',
-        flexDirection: 'column',
-        gap: 'var(--space-4)',
-      }}>
-
-        {/* Network selector */}
-        <div>
-          <label className="input-label" style={{ display: 'block', marginBottom: 'var(--space-3)' }}>
-            Select network
-          </label>
-          <div style={{ display: 'flex', gap: 'var(--space-3)' }}>
-            {[
-              { id: 'mtn',    logo: '/mtn-logo.svg',    label: 'MTN MoMo'     },
-              { id: 'airtel', logo: '/airtel-logo.svg', label: 'Airtel Money' },
-            ].map(net => (
-              <button
-                key={net.id}
-                onClick={() => setNetwork(net.id)}
-                style={{
-                  flex: 1,
-                  padding: 'var(--space-4)',
-                  display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 'var(--space-2)',
-                  background: network === net.id ? 'var(--color-black)' : 'var(--color-white)',
-                  border: network === net.id ? '3px solid var(--color-black)' : 'var(--border)',
-                  boxShadow: network === net.id ? 'var(--shadow-sm)' : 'none',
-                  cursor: 'pointer',
-                  transition: 'all var(--transition-base)',
-                }}
-              >
-                <img src={net.logo} alt={net.label} style={{ width: 48, height: 48, objectFit: 'contain' }} />
-                <span style={{
-                  fontSize: 'var(--text-xs)',
-                  fontWeight: 'var(--weight-black)',
-                  letterSpacing: 'var(--tracking-wide)',
-                  textTransform: 'uppercase',
-                  color: network === net.id ? 'var(--color-white)' : 'var(--color-black)',
-                }}>
-                  {net.label}
-                </span>
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Phone input */}
-        <div className="input-group">
-          <label className="input-label">Mobile money number</label>
-          <div className="input-wrapper">
-            <span className="icon-outlined input-icon-left">phone</span>
-            <input
-              type="tel"
-              className="input"
-              placeholder="+256 7XX XXX XXX"
-              value={number}
-              onChange={e => setNumber(e.target.value)}
-            />
-          </div>
-          <span className="input-hint">
-            Only this number will be able to add or receive funds from your wallet.
-          </span>
-        </div>
-
-        {/* Info notice */}
-        <div className="alert alert-info">
-          <span className="icon-outlined alert-icon">verified_user</span>
-          <div className="alert-content">
-            In the full version, your mobile money number will be verified against your identity
-            to ensure only your number can transact on your account.
-          </div>
-        </div>
-
-        {error && (
-          <div className="alert alert-danger">
-            <span className="icon-outlined alert-icon">error_outline</span>
-            <div className="alert-content">{error}</div>
-          </div>
-        )}
-
-        <button
-          onClick={handleSave}
-          disabled={loading}
-          className="btn btn-primary btn-full btn-lg"
-          style={{ marginTop: 'var(--space-2)' }}
-        >
-          {loading
-            ? <><div className="spinner spinner-sm" style={{ borderTopColor: 'var(--color-black)' }} /> Saving…</>
-            : <><span className="icon-outlined icon-sm">{fromProfile ? 'save' : 'arrow_forward'}</span> {fromProfile ? 'Save changes' : 'Save and continue'}</>
+          {brand.logoUrl
+            ? <img src={brand.logoUrl} alt={brand.businessName} style={{ height: 26, width: 'auto' }} />
+            : <span style={{ fontSize: 18, fontWeight: 600, color: '#111111', letterSpacing: '-1px' }}>{brand.businessName}</span>
           }
         </button>
+        <span style={{ fontSize: 14, fontWeight: 500, color: '#959687' }}>
+          {fromProfile ? 'Edit payment source' : 'Payment source'}
+        </span>
+      </header>
 
-        {!fromProfile && (
-          <>
-            <button
-              onClick={() => navigate('/portal/home', { replace: true })}
-              className="btn btn-secondary btn-full"
-            >
-              Skip for now
-            </button>
-            <p style={{
-              textAlign: 'center',
-              fontSize: 'var(--text-xs)',
-              color: 'var(--color-grey)',
-              fontWeight: 'var(--weight-medium)',
-            }}>
-              You can add your payment source later from your Profile.
+      {/* ── Body ── */}
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '32px 20px 48px' }}>
+        <div style={{ width: '100%', maxWidth: 420, display: 'flex', flexDirection: 'column', gap: 24 }}>
+
+          {/* ── Heading ── */}
+          <div>
+            <p style={{ fontSize: 12, fontWeight: 500, color: '#959687', margin: '0 0 8px' }}>
+              {fromProfile ? 'Edit' : 'Setup'}
             </p>
-          </>
-        )}
+            <h1 style={{ fontSize: 24, fontWeight: 600, color: '#111111', letterSpacing: '-1px', lineHeight: '130%', margin: '0 0 6px' }}>
+              {fromProfile ? 'Update mobile money' : 'Add your mobile money'}
+            </h1>
+            <p style={{ fontSize: 14, fontWeight: 500, color: '#959687', lineHeight: '140%', margin: 0 }}>
+              Link your mobile money account for faster deposits and withdrawals.
+            </p>
+          </div>
+
+          {/* ── Form card ── */}
+          <div style={{
+            background: '#FFFFFF', border: '1px solid #D7D8CB',
+            borderRadius: 12, padding: 24,
+            display: 'flex', flexDirection: 'column', gap: 20,
+          }}>
+
+            {/* Network selector */}
+            <div>
+              <label style={{ display: 'block', fontSize: 14, fontWeight: 600, color: '#111111', letterSpacing: '-0.4px', marginBottom: 12 }}>
+                Select network
+              </label>
+              <div style={{ display: 'flex', gap: 12 }}>
+                {[
+                  { id: 'mtn',    logo: '/mtn-logo.svg',    label: 'MTN MoMo'     },
+                  { id: 'airtel', logo: '/airtel-logo.svg', label: 'Airtel Money' },
+                ].map(net => (
+                  <button
+                    key={net.id}
+                    onClick={() => setNetwork(net.id)}
+                    style={{
+                      flex: 1, padding: '16px 12px',
+                      display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8,
+                      background: network === net.id ? '#111111' : '#FFFFFF',
+                      border: network === net.id ? '1px solid #111111' : '1px solid #D5D9DD',
+                      borderRadius: 10,
+                      cursor: 'pointer',
+                      transition: 'all 0.15s',
+                    }}
+                  >
+                    <img
+                      src={net.logo}
+                      alt={net.label}
+                      style={{ width: 40, height: 40, objectFit: 'contain' }}
+                    />
+                    <span style={{
+                      fontSize: 12, fontWeight: 600,
+                      color: network === net.id ? '#FFFFFF' : '#111111',
+                      letterSpacing: '-0.2px',
+                    }}>
+                      {net.label}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Phone number */}
+            <div>
+              <label style={{ display: 'block', fontSize: 14, fontWeight: 600, color: '#111111', letterSpacing: '-0.4px', marginBottom: 6 }}>
+                Mobile money number
+              </label>
+              <input
+                style={inputStyle}
+                type="tel"
+                placeholder="+256 7XX XXX XXX"
+                value={number}
+                onChange={e => setNumber(e.target.value)}
+                onFocus={e => e.target.style.borderColor = '#111111'}
+                onBlur={e => e.target.style.borderColor = '#D5D9DD'}
+              />
+              <p style={{ fontSize: 12, fontWeight: 500, color: '#898B90', margin: '4px 0 0' }}>
+                Only this number will be able to add or receive funds from your wallet.
+              </p>
+            </div>
+
+            {/* Info notice */}
+            <div style={{
+              background: '#F6F7EE', border: '1px solid #D5D9DD',
+              borderRadius: 8, padding: '12px 14px',
+              fontSize: 13, fontWeight: 500, color: '#959687', lineHeight: '140%',
+            }}>
+              In the full version, your mobile money number will be verified against your identity to ensure only your number can transact on your account.
+            </div>
+
+            {/* Error */}
+            {error && (
+              <div style={{ background: '#F8E4E4', borderRadius: 8, padding: '12px 14px', fontSize: 14, fontWeight: 500, color: '#CC3939', lineHeight: '140%' }}>
+                {error}
+              </div>
+            )}
+
+            {/* Save button */}
+            <button
+              style={btnPrimary}
+              onClick={handleSave}
+              disabled={loading}
+              onMouseEnter={e => e.currentTarget.style.opacity = '0.85'}
+              onMouseLeave={e => e.currentTarget.style.opacity = '1'}
+            >
+              {loading
+                ? <><div className="spinner spinner-sm spinner-light" /> Saving…</>
+                : fromProfile ? 'Save changes' : 'Save and continue'
+              }
+            </button>
+
+          </div>
+          {/* end card */}
+
+          {/* Skip */}
+          {!fromProfile && (
+            <>
+              <button
+                style={btnSecondary}
+                onClick={() => navigate('/portal/home', { replace: true })}
+                onMouseEnter={e => e.currentTarget.style.background = '#ECEDE1'}
+                onMouseLeave={e => e.currentTarget.style.background = '#FFFFFF'}
+              >
+                Skip for now
+              </button>
+              <p style={{ textAlign: 'center', fontSize: 12, fontWeight: 500, color: '#898B90', margin: 0 }}>
+                You can add your payment source later from your Profile.
+              </p>
+            </>
+          )}
+
+        </div>
       </div>
 
       {/* ── Footer ── */}
-      <footer style={{
-        padding: 'var(--space-4) var(--space-5)',
-        borderTop: '1.5px solid var(--color-grey-light)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 'var(--space-2)',
-      }}>
-        <img src="/partna-icon.svg" alt="Partna" style={{ width: 18, height: 18, opacity: 0.4 }} />
-        <span style={{
-          fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-bold)',
-          letterSpacing: 'var(--tracking-wider)', textTransform: 'uppercase',
-          color: 'var(--color-grey)',
-        }}>
-          Powered by Partna
-        </span>
+      <footer style={{ padding: '16px 20px', borderTop: '1px solid #D5D9DD', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <span style={{ fontSize: 12, fontWeight: 500, color: '#898B90' }}>Powered by Partna</span>
       </footer>
 
     </div>

@@ -21,9 +21,9 @@ function formatUGX(n) {
 const TIER_COLORS = {
   bronze:   '#CD7F32',
   silver:   '#A8A9AD',
-  gold:     '#FFD700',
-  platinum: '#E5E4E2',
-  none:     'var(--color-grey-mid)',
+  gold:     '#CFA255',
+  platinum: '#85A0C5',
+  none:     '#898B90',
 }
 
 const TIER_LABELS = {
@@ -42,75 +42,76 @@ const TIER_RATES = {
   none:     '0%',
 }
 
+// ── Sellin tokens ──────────────────────────────────────────────────────────
+const C = {
+  bg:        '#F6F7EE',
+  white:     '#FFFFFF',
+  black:     '#111111',
+  accent:    '#ECEDE1',
+  labelBg:   '#E4E5DD',
+  stroke:    '#D7D8CB',
+  grayLine:  '#D5D9DD',
+  secondary: '#959687',
+  grayMid:   '#898B90',
+  grayLight: '#ECECEC',
+  green:     '#59886D',
+  bgGreen:   '#E4F8EC',
+  red:       '#CC3939',
+  bgRed:     '#F8E4E4',
+  orange:    '#EF8354',
+}
+
 export default function CardDetail({ customer }) {
   const brand    = useBrand()
   const navigate = useNavigate()
 
-  const [card, setCard]           = useState(null)
-  const [loading, setLoading]     = useState(true)
-  const [flipped, setFlipped]     = useState(false)
-
-  // Cashback tier state
-  const [enrollment, setEnrollment]   = useState(null)
-  const [tiers, setTiers]             = useState([])
-  const [merchants, setMerchants]     = useState([])
+  const [card, setCard]         = useState(null)
+  const [loading, setLoading]   = useState(true)
+  const [flipped, setFlipped]   = useState(false)
+  const [enrollment, setEnrollment] = useState(null)
+  const [tiers, setTiers]       = useState([])
+  const [merchants, setMerchants] = useState([])
 
   useEffect(() => { if (customer) loadAll() }, [customer])
 
+  // ── Data loading — unchanged ───────────────────────────────────────────
   async function loadAll() {
     setLoading(true)
     try {
-      // Load card
       const { data: cardData } = await supabase
         .from('cards').select('*').eq('customer_id', customer.id)
       if (cardData?.length > 0) setCard(cardData[0])
 
-      // Load first active enrollment (for tier info)
       const { data: enrollData } = await supabase
         .from('customer_campaigns')
         .select('*, campaigns(target_amount, name)')
         .eq('customer_id', customer.id)
         .eq('status', 'active')
         .order('enrolled_at', { ascending: true })
-        .limit(1)
-        .maybeSingle()
+        .limit(1).maybeSingle()
       if (enrollData) setEnrollment(enrollData)
 
-      // Load cashback tiers
       const { data: tierData } = await supabase
-        .from('cashback_tiers')
-        .select('*')
-        .order('min_percentage', { ascending: true })
+        .from('cashback_tiers').select('*').order('min_percentage', { ascending: true })
       setTiers(tierData || [])
 
-      // Load active merchants
       const { data: merchantData } = await supabase
-        .from('merchants')
-        .select('*')
-        .eq('is_active', true)
-        .order('name')
+        .from('merchants').select('*').eq('is_active', true).order('name')
       setMerchants(merchantData || [])
-
     } catch (e) {
       console.error('CardDetail load error:', e)
     }
     setLoading(false)
   }
 
-  // ── Tier progress calculation ─────────────────────────────────────────
-  const currentTier     = enrollment?.tier || 'none'
-  const tierColor       = TIER_COLORS[currentTier] || TIER_COLORS.none
-  const tierLabel       = TIER_LABELS[currentTier] || 'No tier yet'
-  const tierRate        = TIER_RATES[currentTier]  || '0%'
-
-  // Calculate progress percentage from saved/paid vs target
-  const target          = Number(enrollment?.campaigns?.target_amount || 0)
-  // We use the wallet balance as a proxy for progress until
-  // the batch job calculates the precise figure
-  const currentTierObj  = tiers.find(t => t.name.toLowerCase() === currentTier)
-  const nextTierObj     = tiers.find(t => Number(t.min_percentage) > Number(currentTierObj?.min_percentage || 0))
-
-  // Retention window
+  // ── Tier calculations — unchanged ──────────────────────────────────────
+  const currentTier    = enrollment?.tier || 'none'
+  const tierColor      = TIER_COLORS[currentTier] || TIER_COLORS.none
+  const tierLabel      = TIER_LABELS[currentTier] || 'No tier yet'
+  const tierRate       = TIER_RATES[currentTier]  || '0%'
+  const target         = Number(enrollment?.campaigns?.target_amount || 0)
+  const currentTierObj = tiers.find(t => t.name.toLowerCase() === currentTier)
+  const nextTierObj    = tiers.find(t => Number(t.min_percentage) > Number(currentTierObj?.min_percentage || 0))
   const withinRetention = (
     currentTier === 'platinum' &&
     enrollment?.tier_expires_at &&
@@ -119,98 +120,129 @@ export default function CardDetail({ customer }) {
   const retentionExpiry = enrollment?.tier_expires_at
     ? new Date(enrollment.tier_expires_at).toLocaleDateString('en-UG', { day: 'numeric', month: 'long', year: 'numeric' })
     : null
+  const progressPct    = currentTierObj ? Number(currentTierObj.min_percentage) : 0
+  const nextPct        = nextTierObj    ? Number(nextTierObj.min_percentage)     : 100
+  const cashbackRate   = currentTierObj ? Number(currentTierObj.cashback_rate)   : 0
 
-  // Progress bar — percentage toward current or next tier threshold
-  const progressPct = currentTierObj ? Number(currentTierObj.min_percentage) : 0
-  const nextPct     = nextTierObj    ? Number(nextTierObj.min_percentage)     : 100
-
-  // Cashback rate the customer gets at all merchants
-  const cashbackRate = currentTierObj ? Number(currentTierObj.cashback_rate) : 0
+  // ─────────────────────────────────────────────────────────────────────────
 
   if (loading) return (
-    <div className="loading-screen">
-      <div className="spinner spinner-lg spinner-purple" />
+    <div style={{ minHeight: '100vh', background: C.bg, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div className="spinner spinner-lg" />
     </div>
   )
 
   return (
-    <div style={{ minHeight: '100vh', background: 'var(--color-bg)', display: 'flex', flexDirection: 'column', paddingBottom: 80 }}>
+    <div style={{ minHeight: '100vh', background: C.bg, display: 'flex', flexDirection: 'column', paddingBottom: 80, fontFamily: 'Inter, system-ui, sans-serif' }}>
 
-      {/* ── Header ── */}
-      <header style={{ background: 'var(--color-black)', borderBottom: 'var(--border)', padding: 'var(--space-4) var(--space-5)', display: 'flex', alignItems: 'center', gap: 'var(--space-4)' }}>
-        <button onClick={() => navigate('/portal/home')} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 36, height: 36, border: '2px solid rgba(255,255,255,0.25)', background: 'transparent', color: 'var(--color-white)', cursor: 'pointer', flexShrink: 0 }}
-          onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--color-primary)'}
-          onMouseLeave={e => e.currentTarget.style.borderColor = 'rgba(255,255,255,0.25)'}
+      {/* ── Topbar ── */}
+      <header style={{
+        background: C.white, borderBottom: `1px solid ${C.stroke}`,
+        padding: '12px 20px', position: 'sticky', top: 0, zIndex: 100,
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+      }}>
+        <button
+          onClick={() => navigate('/portal/home')}
+          style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center' }}
         >
-          <span className="icon-outlined icon-sm">arrow_back</span>
+          {brand.logoUrl
+            ? <img src={brand.logoUrl} alt={brand.businessName} style={{ height: 24, width: 'auto' }} />
+            : <span style={{ fontSize: 16, fontWeight: 600, color: C.black, letterSpacing: '-1px' }}>{brand.businessName}</span>
+          }
         </button>
-        <div style={{ color: 'var(--color-white)', fontWeight: 'var(--weight-bold)', fontSize: 'var(--text-sm)' }}>
-          My Card
-        </div>
+        <span style={{ fontSize: 14, fontWeight: 500, color: C.secondary }}>My Card</span>
       </header>
 
       {/* ── Card display panel ── */}
-      <div style={{ background: 'var(--color-black)', borderBottom: '3px solid var(--color-primary)', padding: 'var(--space-8) var(--space-5) var(--space-10)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 'var(--space-4)' }}>
+      <div style={{ background: C.black, padding: '28px 20px 32px', borderBottom: `1px solid ${C.grayLine}`, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16 }}>
 
         {/* Flippable card */}
-        <div onClick={() => setFlipped(f => !f)} style={{ perspective: '1000px', width: '100%', maxWidth: 340, height: 210, cursor: 'pointer' }}>
-          <div style={{ width: '100%', height: 210, position: 'relative', transformStyle: 'preserve-3d', transition: 'transform 0.6s ease', transform: flipped ? 'rotateY(180deg)' : 'rotateY(0deg)' }}>
+        <div
+          onClick={() => setFlipped(f => !f)}
+          style={{ perspective: '1000px', width: '100%', maxWidth: 320, height: 196, cursor: 'pointer' }}
+        >
+          <div style={{
+            width: '100%', height: 196, position: 'relative',
+            transformStyle: 'preserve-3d',
+            transition: 'transform 0.55s ease',
+            transform: flipped ? 'rotateY(180deg)' : 'rotateY(0deg)',
+          }}>
 
             {/* Front */}
-            <div style={{ position: 'absolute', inset: 0, backfaceVisibility: 'hidden', WebkitBackfaceVisibility: 'hidden', background: 'var(--color-white)', border: '3px solid var(--color-black)', boxShadow: 'var(--shadow-xl)', padding: 'var(--space-5)', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', overflow: 'hidden' }}>
-              <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 6, background: 'var(--color-primary)' }} />
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
-                <div style={{ fontWeight: 'var(--weight-black)', fontSize: 'var(--text-xs)', letterSpacing: 'var(--tracking-wider)', textTransform: 'uppercase', color: 'var(--color-black)' }}>{brand.businessName}</div>
-                <div style={{ width: 38, height: 28, background: 'linear-gradient(135deg, #EDE5A6, #CFA255)', border: '1.5px solid var(--color-black)' }} />
+            <div style={{
+              position: 'absolute', inset: 0,
+              backfaceVisibility: 'hidden', WebkitBackfaceVisibility: 'hidden',
+              background: C.white, border: `1px solid ${C.stroke}`,
+              borderRadius: 12, padding: 18,
+              display: 'flex', flexDirection: 'column', justifyContent: 'space-between',
+              boxShadow: '0 12px 32px rgba(0,0,0,0.32)',
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: 13, fontWeight: 600, color: C.black, letterSpacing: '-0.4px' }}>{brand.businessName}</span>
+                <div style={{ width: 32, height: 22, borderRadius: 4, background: 'linear-gradient(135deg, #EDE5A6, #CFA255)' }} />
               </div>
-              <div style={{ fontFamily: 'monospace', fontSize: 'var(--text-lg)', fontWeight: 'var(--weight-bold)', letterSpacing: '0.15em', color: 'var(--color-black)' }}>{formatCardNumber(card?.card_number)}</div>
+              <span style={{ fontFamily: 'monospace', fontSize: 15, fontWeight: 600, color: C.black, letterSpacing: '0.14em' }}>
+                {formatCardNumber(card?.card_number)}
+              </span>
               <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between' }}>
                 <div>
-                  <div style={{ fontSize: 9, fontWeight: 'var(--weight-bold)', letterSpacing: 'var(--tracking-widest)', textTransform: 'uppercase', color: 'var(--color-grey)', marginBottom: 3 }}>Cardholder</div>
-                  <div style={{ fontWeight: 'var(--weight-black)', fontSize: 'var(--text-sm)', textTransform: 'uppercase', letterSpacing: 'var(--tracking-wide)', color: 'var(--color-black)' }}>{customer?.first_name} {customer?.last_name}</div>
+                  <p style={{ fontSize: 9, fontWeight: 500, color: C.secondary, margin: '0 0 2px', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Cardholder</p>
+                  <p style={{ fontSize: 12, fontWeight: 600, color: C.black, margin: 0 }}>{customer?.first_name} {customer?.last_name}</p>
                 </div>
                 <div style={{ textAlign: 'right' }}>
-                  <div style={{ fontSize: 9, fontWeight: 'var(--weight-bold)', letterSpacing: 'var(--tracking-widest)', textTransform: 'uppercase', color: 'var(--color-grey)', marginBottom: 3 }}>Expires</div>
-                  <div style={{ fontFamily: 'monospace', fontWeight: 'var(--weight-bold)', fontSize: 'var(--text-sm)', color: 'var(--color-black)' }}>{formatExpiry(card?.expiry_date)}</div>
+                  <p style={{ fontSize: 9, fontWeight: 500, color: C.secondary, margin: '0 0 2px', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Expires</p>
+                  <p style={{ fontFamily: 'monospace', fontSize: 12, fontWeight: 600, color: C.black, margin: 0 }}>{formatExpiry(card?.expiry_date)}</p>
                 </div>
                 <div style={{ display: 'flex' }}>
-                  <div style={{ width: 28, height: 28, borderRadius: '50%', background: '#EB001B', border: '2px solid var(--color-black)' }} />
-                  <div style={{ width: 28, height: 28, borderRadius: '50%', background: '#F79E1B', border: '2px solid var(--color-black)', marginLeft: -10 }} />
+                  <div style={{ width: 24, height: 24, borderRadius: '50%', background: '#EB001B', opacity: 0.9 }} />
+                  <div style={{ width: 24, height: 24, borderRadius: '50%', background: '#F79E1B', opacity: 0.9, marginLeft: -9 }} />
                 </div>
               </div>
-              <div style={{ position: 'absolute', bottom: 5, left: 0, right: 0, textAlign: 'center', fontSize: 8, fontWeight: 'var(--weight-bold)', letterSpacing: 'var(--tracking-widest)', textTransform: 'uppercase', color: 'var(--color-grey-mid)' }}>tap to flip</div>
+              <p style={{ position: 'absolute', bottom: 5, left: 0, right: 0, textAlign: 'center', fontSize: 9, fontWeight: 500, color: C.grayMid, margin: 0 }}>tap to flip</p>
             </div>
 
             {/* Back */}
-            <div style={{ position: 'absolute', inset: 0, backfaceVisibility: 'hidden', WebkitBackfaceVisibility: 'hidden', transform: 'rotateY(180deg)', background: 'var(--color-black)', border: '3px solid var(--color-black)', boxShadow: 'var(--shadow-xl)', overflow: 'hidden' }}>
-              <div style={{ position: 'absolute', top: 32, left: 0, right: 0, height: 44, background: '#1a1a1a' }} />
-              <div style={{ position: 'absolute', top: 92, left: 20, right: 20, display: 'flex', alignItems: 'center' }}>
-                <div style={{ flex: 1, height: 36, background: 'repeating-linear-gradient(90deg, #e8e8e8 0, #e8e8e8 4px, #ccc 4px, #ccc 8px)' }} />
-                <div style={{ width: 56, height: 36, background: 'var(--color-white)', border: '2px solid var(--color-black)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'monospace', fontWeight: 'var(--weight-black)', fontSize: 'var(--text-lg)', color: 'var(--color-black)' }}>{card?.cvv || '•••'}</div>
+            <div style={{
+              position: 'absolute', inset: 0,
+              backfaceVisibility: 'hidden', WebkitBackfaceVisibility: 'hidden',
+              transform: 'rotateY(180deg)',
+              background: '#1a1a1a', borderRadius: 12, overflow: 'hidden',
+              boxShadow: '0 12px 32px rgba(0,0,0,0.32)',
+            }}>
+              <div style={{ position: 'absolute', top: 30, left: 0, right: 0, height: 40, background: '#2a2a2a' }} />
+              <div style={{ position: 'absolute', top: 84, left: 18, right: 18, display: 'flex', alignItems: 'center' }}>
+                <div style={{ flex: 1, height: 32, background: 'repeating-linear-gradient(90deg, #e8e8e8 0, #e8e8e8 4px, #ccc 4px, #ccc 8px)' }} />
+                <div style={{ width: 50, height: 32, background: C.white, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'monospace', fontWeight: 600, fontSize: 14, color: C.black, borderRadius: 4 }}>
+                  {card?.cvv || '•••'}
+                </div>
               </div>
-              <div style={{ position: 'absolute', top: 134, right: 20, fontSize: 9, fontWeight: 'var(--weight-bold)', letterSpacing: 'var(--tracking-widest)', textTransform: 'uppercase', color: 'rgba(255,255,255,0.3)' }}>CVV</div>
-              <div style={{ position: 'absolute', bottom: 42, left: 20, fontFamily: 'monospace', fontSize: 'var(--text-sm)', color: 'rgba(255,255,255,0.35)', letterSpacing: '0.1em' }}>{formatCardNumber(card?.card_number)}</div>
-              <div style={{ position: 'absolute', bottom: 20, left: 20, fontSize: 'var(--text-xs)', color: 'rgba(255,255,255,0.3)', fontWeight: 'var(--weight-bold)' }}>Valid thru {formatExpiry(card?.expiry_date)}</div>
-              <div style={{ position: 'absolute', bottom: 18, right: 20, display: 'flex' }}>
-                <div style={{ width: 28, height: 28, borderRadius: '50%', background: '#EB001B', border: '2px solid rgba(255,255,255,0.1)', opacity: 0.8 }} />
-                <div style={{ width: 28, height: 28, borderRadius: '50%', background: '#F79E1B', border: '2px solid rgba(255,255,255,0.1)', marginLeft: -10, opacity: 0.8 }} />
+              <p style={{ position: 'absolute', top: 122, right: 18, fontSize: 9, fontWeight: 500, color: 'rgba(255,255,255,0.3)', margin: 0, textTransform: 'uppercase', letterSpacing: '0.06em' }}>CVV</p>
+              <p style={{ position: 'absolute', bottom: 40, left: 18, fontFamily: 'monospace', fontSize: 11, color: 'rgba(255,255,255,0.3)', letterSpacing: '0.1em', margin: 0 }}>
+                {formatCardNumber(card?.card_number)}
+              </p>
+              <p style={{ position: 'absolute', bottom: 18, left: 18, fontSize: 11, color: 'rgba(255,255,255,0.3)', fontWeight: 500, margin: 0 }}>
+                Valid thru {formatExpiry(card?.expiry_date)}
+              </p>
+              <div style={{ position: 'absolute', bottom: 14, right: 18, display: 'flex' }}>
+                <div style={{ width: 22, height: 22, borderRadius: '50%', background: '#EB001B', opacity: 0.7 }} />
+                <div style={{ width: 22, height: 22, borderRadius: '50%', background: '#F79E1B', opacity: 0.7, marginLeft: -8 }} />
               </div>
             </div>
           </div>
         </div>
 
-        <div style={{ fontSize: 9, fontWeight: 'var(--weight-bold)', letterSpacing: 'var(--tracking-widest)', textTransform: 'uppercase', color: 'rgba(255,255,255,0.25)' }}>Tap card to flip</div>
+        <p style={{ fontSize: 11, fontWeight: 500, color: 'rgba(255,255,255,0.3)', margin: 0 }}>Tap card to flip</p>
 
         {/* Card details strip */}
         {card && (
-          <div style={{ width: '100%', maxWidth: 340, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-2)' }}>
+          <div style={{ width: '100%', maxWidth: 320, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
             {[
               { label: 'Card number', value: formatCardNumber(card.card_number), mono: true },
               { label: 'Expiry',      value: formatExpiry(card.expiry_date),     mono: true },
             ].map((item, i) => (
-              <div key={i} style={{ background: 'rgba(255,255,255,0.06)', border: '1.5px solid rgba(255,255,255,0.1)', padding: 'var(--space-3) var(--space-4)' }}>
-                <div style={{ fontSize: 9, fontWeight: 'var(--weight-bold)', letterSpacing: 'var(--tracking-widest)', textTransform: 'uppercase', color: 'rgba(255,255,255,0.35)', marginBottom: 4 }}>{item.label}</div>
-                <div style={{ fontFamily: item.mono ? 'monospace' : 'inherit', fontWeight: 'var(--weight-bold)', fontSize: 'var(--text-sm)', color: 'var(--color-white)', letterSpacing: item.mono ? '0.08em' : 0 }}>{item.value}</div>
+              <div key={i} style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, padding: '10px 14px' }}>
+                <p style={{ fontSize: 10, fontWeight: 500, color: 'rgba(255,255,255,0.35)', margin: '0 0 4px', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{item.label}</p>
+                <p style={{ fontFamily: item.mono ? 'monospace' : 'inherit', fontWeight: 600, fontSize: 13, color: C.white, margin: 0, letterSpacing: item.mono ? '0.06em' : 0 }}>{item.value}</p>
               </div>
             ))}
           </div>
@@ -218,202 +250,216 @@ export default function CardDetail({ customer }) {
       </div>
 
       {/* ── Body ── */}
-      <div style={{ flex: 1, padding: 'var(--space-5)', display: 'flex', flexDirection: 'column', gap: 'var(--space-5)' }}>
+      <div style={{ flex: 1, padding: '20px', display: 'flex', flexDirection: 'column', gap: 20 }}>
 
-        {/* ── No card state ── */}
+        {/* No card state */}
         {!card && (
-          <div style={{ background: 'var(--color-white)', border: 'var(--border)', boxShadow: 'var(--shadow-sm)', padding: 'var(--space-6)', textAlign: 'center' }}>
-            <span className="icon-outlined" style={{ fontSize: 40, color: 'var(--color-grey-mid)', display: 'block', marginBottom: 'var(--space-3)' }}>credit_card_off</span>
-            <div style={{ fontWeight: 'var(--weight-bold)', fontSize: 'var(--text-base)', marginBottom: 'var(--space-2)' }}>No card issued yet</div>
-            <div style={{ fontSize: 'var(--text-sm)', color: 'var(--color-grey)' }}>Your savings card will be issued once your account is verified and you make your first deposit.</div>
+          <div style={{ background: C.white, border: `1px solid ${C.stroke}`, borderRadius: 12, padding: '32px 20px', textAlign: 'center' }}>
+            <div style={{ width: 48, height: 48, borderRadius: 12, background: C.labelBg, display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 12px' }}>
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={C.grayMid} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="1" y="4" width="22" height="16" rx="2" /><line x1="1" y1="10" x2="23" y2="10" /><line x1="4" y1="16" x2="7" y2="16" />
+              </svg>
+            </div>
+            <p style={{ fontSize: 15, fontWeight: 600, color: C.black, margin: '0 0 6px' }}>No card issued yet</p>
+            <p style={{ fontSize: 13, fontWeight: 500, color: C.secondary, margin: 0, lineHeight: '140%' }}>
+              Your savings card will be issued once your account is verified and you make your first deposit.
+            </p>
           </div>
         )}
 
-        {/* ── Card settings ── */}
+        {/* Card settings */}
         <div>
-          <div style={{ fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-black)', letterSpacing: 'var(--tracking-widest)', textTransform: 'uppercase', color: 'var(--color-grey)', marginBottom: 'var(--space-2)', paddingLeft: 'var(--space-1)' }}>Card settings</div>
-          <div style={{ background: 'var(--color-white)', border: 'var(--border)', boxShadow: 'var(--shadow-sm)', overflow: 'hidden' }}>
+          <p style={{ fontSize: 12, fontWeight: 600, color: C.secondary, margin: '0 0 10px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Card settings</p>
+          <div style={{ background: C.white, border: `1px solid ${C.stroke}`, borderRadius: 12, overflow: 'hidden' }}>
             {[
-              { label: 'Freeze card',    sublabel: 'Temporarily block all card transactions', icon: 'ac_unit'        },
-              { label: 'Unfreeze card',  sublabel: 'Re-enable your card for transactions',    icon: 'local_fire_department' },
-              { label: 'Order new card', sublabel: 'Request a replacement card',              icon: 'add_card'       },
+              { label: 'Freeze card',    sub: 'Temporarily block all card transactions'  },
+              { label: 'Unfreeze card',  sub: 'Re-enable your card for transactions'      },
+              { label: 'Order new card', sub: 'Request a replacement card'                },
             ].map((item, i, arr) => (
-              <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: 'var(--space-4)', borderBottom: i < arr.length - 1 ? '1.5px solid var(--color-grey-light)' : 'none' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
-                  <div style={{ width: 36, height: 36, background: 'var(--color-grey-light)', border: 'var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                    <span className="icon-outlined" style={{ fontSize: 18, color: 'var(--color-grey)' }}>{item.icon}</span>
-                  </div>
-                  <div>
-                    <div style={{ fontWeight: 'var(--weight-bold)', fontSize: 'var(--text-sm)', color: 'var(--color-black)' }}>{item.label}</div>
-                    <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-grey)', marginTop: 2 }}>{item.sublabel}</div>
-                  </div>
+              <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px', borderBottom: i < arr.length - 1 ? `1px solid ${C.grayLine}` : 'none' }}>
+                <div>
+                  <p style={{ fontSize: 14, fontWeight: 600, color: C.black, margin: '0 0 2px' }}>{item.label}</p>
+                  <p style={{ fontSize: 12, fontWeight: 500, color: C.secondary, margin: 0 }}>{item.sub}</p>
                 </div>
-                <span className="badge badge-default no-dot" style={{ flexShrink: 0 }}>Coming soon</span>
+                <span style={{ fontSize: 11, fontWeight: 600, color: C.grayMid, background: C.grayLight, borderRadius: 6, padding: '3px 10px', flexShrink: 0 }}>
+                  Coming soon
+                </span>
               </div>
             ))}
           </div>
         </div>
 
-        {/* ── Cashback tier progress ── */}
+        {/* Cashback tier progress */}
         <div>
-          <div style={{ fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-black)', letterSpacing: 'var(--tracking-widest)', textTransform: 'uppercase', color: 'var(--color-grey)', marginBottom: 'var(--space-2)', paddingLeft: 'var(--space-1)' }}>Cashback rewards</div>
-          <div style={{ background: 'var(--color-white)', border: 'var(--border)', boxShadow: 'var(--shadow-sm)', overflow: 'hidden' }}>
+          <p style={{ fontSize: 12, fontWeight: 600, color: C.secondary, margin: '0 0 10px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Cashback rewards</p>
+          <div style={{ background: C.white, border: `1px solid ${C.stroke}`, borderRadius: 12, overflow: 'hidden' }}>
 
             {/* Current tier header */}
-            <div style={{ background: 'var(--color-black)', padding: 'var(--space-4) var(--space-5)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
-                <div style={{ width: 12, height: 12, borderRadius: '50%', background: tierColor, boxShadow: `0 0 8px ${tierColor}`, flexShrink: 0 }} />
+            <div style={{ background: C.black, padding: '16px 18px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <div style={{ width: 10, height: 10, borderRadius: '50%', background: tierColor, flexShrink: 0 }} />
                 <div>
-                  <div style={{ color: tierColor, fontWeight: 'var(--weight-black)', fontSize: 'var(--text-base)', letterSpacing: 'var(--tracking-tight)' }}>{tierLabel}</div>
-                  <div style={{ color: 'rgba(255,255,255,0.45)', fontSize: 'var(--text-xs)', marginTop: 2 }}>
+                  <p style={{ color: tierColor, fontWeight: 600, fontSize: 16, letterSpacing: '-0.5px', margin: '0 0 2px' }}>{tierLabel}</p>
+                  <p style={{ color: 'rgba(255,255,255,0.40)', fontSize: 12, fontWeight: 500, margin: 0 }}>
                     {currentTier === 'none' ? 'Save more to unlock cashback' : `${tierRate} cashback at all Partna merchants`}
-                  </div>
+                  </p>
                 </div>
               </div>
               {currentTier !== 'none' && (
                 <div style={{ textAlign: 'right' }}>
-                  <div style={{ fontSize: 'var(--text-2xl)', fontWeight: 'var(--weight-black)', color: '#2D8B45', letterSpacing: 'var(--tracking-tight)' }}>{tierRate}</div>
-                  <div style={{ fontSize: 'var(--text-xs)', color: 'rgba(255,255,255,0.35)' }}>cashback</div>
+                  <p style={{ fontSize: 26, fontWeight: 600, color: C.green, letterSpacing: '-1px', margin: '0 0 2px' }}>{tierRate}</p>
+                  <p style={{ fontSize: 11, fontWeight: 500, color: 'rgba(255,255,255,0.35)', margin: 0 }}>cashback</p>
                 </div>
               )}
             </div>
 
             {/* Retention notice */}
             {withinRetention && retentionExpiry && (
-              <div style={{ padding: 'var(--space-3) var(--space-5)', background: '#EAF3DE', borderBottom: '1.5px solid var(--color-grey-light)', display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-                <span className="icon-outlined" style={{ fontSize: 16, color: '#2D8B45', flexShrink: 0 }}>verified</span>
-                <span style={{ fontSize: 'var(--text-xs)', color: '#2D8B45', fontWeight: 'var(--weight-bold)' }}>
+              <div style={{ padding: '12px 16px', background: C.bgGreen, borderBottom: `1px solid ${C.grayLine}`, display: 'flex', alignItems: 'center', gap: 8 }}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={C.green} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+                  <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" /><polyline points="22 4 12 14.01 9 11.01" />
+                </svg>
+                <span style={{ fontSize: 12, fontWeight: 600, color: C.green }}>
                   Platinum retained until {retentionExpiry} — reward for completing your campaign early.
                 </span>
               </div>
             )}
 
             {/* Progress bar */}
-            <div style={{ padding: 'var(--space-4) var(--space-5)' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 'var(--space-2)' }}>
-                <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-grey)', fontWeight: 'var(--weight-bold)' }}>
+            <div style={{ padding: '16px 18px', borderBottom: `1px solid ${C.grayLine}` }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+                <span style={{ fontSize: 12, fontWeight: 500, color: C.secondary }}>
                   {currentTier === 'none' ? '0% saved' : `${progressPct}% — ${tierLabel}`}
                 </span>
                 {nextTierObj && (
-                  <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-grey)', fontWeight: 'var(--weight-bold)' }}>
+                  <span style={{ fontSize: 12, fontWeight: 500, color: C.secondary }}>
                     {nextPct}% — {TIER_LABELS[nextTierObj.name.toLowerCase()]}
                   </span>
                 )}
               </div>
-              <div className="progress-bar-track">
-                <div className="progress-bar-fill" style={{
-                  width: `${progressPct}%`,
-                  background: tierColor,
-                  transition: 'width 0.4s ease',
-                }} />
+              <div style={{ height: 6, borderRadius: 999, background: C.grayLight, overflow: 'hidden' }}>
+                <div style={{ height: '100%', borderRadius: 999, background: tierColor, width: `${progressPct}%`, transition: 'width 0.4s ease' }} />
               </div>
-              {nextTierObj ? (
-                <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-grey)', marginTop: 'var(--space-2)' }}>
-                  Reach <strong style={{ color: 'var(--color-black)' }}>{nextPct}%</strong> of your savings target to unlock{' '}
-                  <strong style={{ color: TIER_COLORS[nextTierObj.name.toLowerCase()] }}>{TIER_LABELS[nextTierObj.name.toLowerCase()]}</strong>{' '}
-                  ({(Number(nextTierObj.cashback_rate) * 100).toFixed(1)}% cashback)
-                </div>
-              ) : (
-                <div style={{ fontSize: 'var(--text-xs)', color: '#2D8B45', marginTop: 'var(--space-2)', fontWeight: 'var(--weight-bold)' }}>
-                  You are at the highest tier — enjoy 3% cashback at all merchants.
-                </div>
-              )}
+              <p style={{ fontSize: 12, fontWeight: 500, color: nextTierObj ? C.secondary : C.green, margin: '8px 0 0', lineHeight: '140%' }}>
+                {nextTierObj
+                  ? <>Reach <strong style={{ color: C.black }}>{nextPct}%</strong> of your savings target to unlock <strong style={{ color: TIER_COLORS[nextTierObj.name.toLowerCase()] }}>{TIER_LABELS[nextTierObj.name.toLowerCase()]}</strong> ({(Number(nextTierObj.cashback_rate) * 100).toFixed(1)}% cashback)</>
+                  : 'You are at the highest tier — enjoy 3% cashback at all merchants.'
+                }
+              </p>
             </div>
 
             {/* Tier ladder */}
-            <div style={{ borderTop: '1.5px solid var(--color-grey-light)' }}>
-              {tiers.map((tier, i) => {
-                const tKey    = tier.name.toLowerCase()
-                const color   = TIER_COLORS[tKey] || 'var(--color-grey)'
-                const isCurrent = tKey === currentTier
-                return (
-                  <div key={tier.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: 'var(--space-3) var(--space-5)', borderBottom: i < tiers.length - 1 ? '1.5px solid var(--color-grey-light)' : 'none', background: isCurrent ? 'var(--color-bg)' : 'var(--color-white)' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
-                      <div style={{ width: 8, height: 8, borderRadius: '50%', background: color, flexShrink: 0 }} />
-                      <span style={{ fontSize: 'var(--text-sm)', fontWeight: isCurrent ? 'var(--weight-black)' : 'var(--weight-regular)', color: isCurrent ? 'var(--color-black)' : 'var(--color-grey)' }}>
-                        {TIER_LABELS[tKey]}
-                      </span>
-                      {isCurrent && <span className="badge badge-success no-dot" style={{ fontSize: 9 }}>Current</span>}
-                    </div>
-                    <div style={{ display: 'flex', gap: 'var(--space-4)', alignItems: 'center' }}>
-                      <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-grey)' }}>At {tier.min_percentage}%</span>
-                      <span style={{ fontWeight: 'var(--weight-black)', fontSize: 'var(--text-sm)', color: '#2D8B45' }}>
-                        {(Number(tier.cashback_rate) * 100).toFixed(1)}%
-                      </span>
-                    </div>
+            {tiers.map((tier, i) => {
+              const tKey      = tier.name.toLowerCase()
+              const color     = TIER_COLORS[tKey] || C.grayMid
+              const isCurrent = tKey === currentTier
+              return (
+                <div key={tier.id} style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  padding: '12px 18px',
+                  borderBottom: i < tiers.length - 1 ? `1px solid ${C.grayLine}` : 'none',
+                  background: isCurrent ? C.bg : C.white,
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <div style={{ width: 8, height: 8, borderRadius: '50%', background: color, flexShrink: 0 }} />
+                    <span style={{ fontSize: 14, fontWeight: isCurrent ? 600 : 500, color: isCurrent ? C.black : C.secondary }}>
+                      {TIER_LABELS[tKey]}
+                    </span>
+                    {isCurrent && (
+                      <span style={{ fontSize: 11, fontWeight: 600, color: C.green, background: C.bgGreen, borderRadius: 6, padding: '2px 8px' }}>Current</span>
+                    )}
                   </div>
-                )
-              })}
-            </div>
+                  <div style={{ display: 'flex', gap: 20, alignItems: 'center' }}>
+                    <span style={{ fontSize: 12, fontWeight: 500, color: C.secondary }}>At {tier.min_percentage}%</span>
+                    <span style={{ fontSize: 14, fontWeight: 600, color: C.green }}>{(Number(tier.cashback_rate) * 100).toFixed(1)}%</span>
+                  </div>
+                </div>
+              )
+            })}
           </div>
         </div>
 
-        {/* ── Merchant browse ── */}
+        {/* Merchant browse */}
         <div>
-          <div style={{ fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-black)', letterSpacing: 'var(--tracking-widest)', textTransform: 'uppercase', color: 'var(--color-grey)', marginBottom: 'var(--space-2)', paddingLeft: 'var(--space-1)' }}>Partna merchants</div>
+          <p style={{ fontSize: 12, fontWeight: 600, color: C.secondary, margin: '0 0 10px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Partna merchants</p>
 
           {merchants.length === 0 ? (
-            <div style={{ background: 'var(--color-white)', border: 'var(--border)', boxShadow: 'var(--shadow-sm)', padding: 'var(--space-8)', textAlign: 'center' }}>
-              <span className="icon-outlined" style={{ fontSize: 40, color: 'var(--color-grey-mid)', display: 'block', marginBottom: 'var(--space-3)' }}>storefront</span>
-              <div style={{ fontWeight: 'var(--weight-bold)', fontSize: 'var(--text-sm)', marginBottom: 'var(--space-1)' }}>Merchants coming soon</div>
-              <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-grey)' }}>Partner merchants will appear here. Use your card at these merchants to earn cashback on every purchase.</div>
+            <div style={{ background: C.white, border: `1px solid ${C.stroke}`, borderRadius: 12, padding: '32px 20px', textAlign: 'center' }}>
+              <div style={{ width: 48, height: 48, borderRadius: 12, background: C.labelBg, display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 12px' }}>
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={C.grayMid} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /><polyline points="9 22 9 12 15 12 15 22" />
+                </svg>
+              </div>
+              <p style={{ fontSize: 14, fontWeight: 600, color: C.black, margin: '0 0 6px' }}>Merchants coming soon</p>
+              <p style={{ fontSize: 13, fontWeight: 500, color: C.secondary, margin: 0, lineHeight: '140%' }}>
+                Partner merchants will appear here. Use your card at these merchants to earn cashback on every purchase.
+              </p>
             </div>
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               {merchants.map(m => (
-                <div key={m.id} style={{ background: 'var(--color-white)', border: 'var(--border)', boxShadow: 'var(--shadow-sm)', padding: 'var(--space-4)', display: 'flex', alignItems: 'center', gap: 'var(--space-4)' }}>
-                  {/* Logo */}
-                  <div style={{ width: 48, height: 48, background: 'var(--color-bg)', border: 'var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, overflow: 'hidden' }}>
-                    {m.logo_url ? (
-                      <img src={m.logo_url} alt={m.name} style={{ width: 40, height: 40, objectFit: 'contain' }} onError={e => { e.target.style.display = 'none' }} />
-                    ) : (
-                      <span className="icon-outlined" style={{ fontSize: 24, color: 'var(--color-grey-mid)' }}>storefront</span>
-                    )}
+                <div key={m.id} style={{ background: C.white, border: `1px solid ${C.stroke}`, borderRadius: 12, padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 14 }}>
+                  <div style={{ width: 44, height: 44, borderRadius: 10, background: C.bg, border: `1px solid ${C.stroke}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, overflow: 'hidden' }}>
+                    {m.logo_url
+                      ? <img src={m.logo_url} alt={m.name} style={{ width: 36, height: 36, objectFit: 'contain' }} onError={e => { e.target.style.display = 'none' }} />
+                      : <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={C.grayMid} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /><polyline points="9 22 9 12 15 12 15 22" /></svg>
+                    }
                   </div>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontWeight: 'var(--weight-bold)', fontSize: 'var(--text-sm)', marginBottom: 2 }}>{m.name}</div>
-                    <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-grey)' }}>
-                      {m.category || 'Merchant'}
-                      {m.description ? ` · ${m.description}` : ''}
-                    </div>
+                    <p style={{ fontSize: 14, fontWeight: 600, color: C.black, margin: '0 0 2px' }}>{m.name}</p>
+                    <p style={{ fontSize: 12, fontWeight: 500, color: C.secondary, margin: 0 }}>
+                      {m.category || 'Merchant'}{m.description ? ` · ${m.description}` : ''}
+                    </p>
                   </div>
-                  {/* Cashback rate for current tier */}
                   <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                    <div style={{ fontSize: 'var(--text-lg)', fontWeight: 'var(--weight-black)', color: currentTier !== 'none' ? '#2D8B45' : 'var(--color-grey-mid)' }}>
+                    <p style={{ fontSize: 18, fontWeight: 600, color: currentTier !== 'none' ? C.green : C.grayMid, margin: '0 0 2px', letterSpacing: '-0.5px' }}>
                       {currentTier !== 'none' ? `${(cashbackRate * 100).toFixed(1)}%` : '—'}
-                    </div>
-                    <div style={{ fontSize: 9, color: 'var(--color-grey)', textTransform: 'uppercase', letterSpacing: 'var(--tracking-wide)', fontWeight: 'var(--weight-bold)' }}>cashback</div>
+                    </p>
+                    <p style={{ fontSize: 10, fontWeight: 500, color: C.grayMid, margin: 0, textTransform: 'uppercase', letterSpacing: '0.04em' }}>cashback</p>
                   </div>
                 </div>
               ))}
-              <div style={{ textAlign: 'center', fontSize: 'var(--text-xs)', color: 'var(--color-grey)', paddingTop: 'var(--space-2)' }}>
+              <p style={{ textAlign: 'center', fontSize: 12, fontWeight: 500, color: C.grayMid, margin: '4px 0 0' }}>
                 More merchants coming soon
-              </div>
+              </p>
             </div>
           )}
         </div>
+
       </div>
 
       {/* ── Bottom nav ── */}
-      <nav style={{ position: 'fixed', bottom: 0, left: 0, right: 0, background: 'var(--color-white)', borderTop: 'var(--border-thick)', display: 'flex', alignItems: 'center', justifyContent: 'space-around', padding: 'var(--space-2) var(--space-4)', zIndex: 'var(--z-sticky)' }}>
+      <nav style={{
+        position: 'fixed', bottom: 0, left: 0, right: 0,
+        background: C.white, borderTop: `1px solid ${C.stroke}`,
+        display: 'flex', alignItems: 'center', justifyContent: 'space-around',
+        padding: '10px 0', paddingBottom: `calc(10px + env(safe-area-inset-bottom, 0px))`,
+        zIndex: 100,
+      }}>
         {[
-          { label: 'Home',    icon: 'home',         path: '/portal/home'         },
-          { label: 'Card',    icon: 'credit_card',  path: '/portal/card'         },
-          { label: 'History', icon: 'receipt_long', path: '/portal/transactions' },
-          { label: 'Profile', icon: 'person',       path: '/portal/profile'      },
-        ].map(({ label, icon, path }) => {
+          { label: 'Home',    path: '/portal/home'         },
+          { label: 'Card',    path: '/portal/card'         },
+          { label: 'History', path: '/portal/transactions' },
+          { label: 'Profile', path: '/portal/profile'      },
+        ].map(({ label, path }) => {
           const active = path === '/portal/card'
           return (
-            <button key={path} onClick={() => navigate(path)} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, background: 'none', border: 'none', cursor: 'pointer', padding: 'var(--space-1) var(--space-3)', position: 'relative' }}>
-              {active && (
-                <div style={{ position: 'absolute', top: -8, left: '50%', transform: 'translateX(-50%)', width: 24, height: 3, background: 'var(--color-primary)' }} />
-              )}
-              <span className="icon-outlined" style={{ fontSize: 22, color: active ? 'var(--color-black)' : 'var(--color-grey)' }}>{icon}</span>
-              <span style={{ fontWeight: active ? 'var(--weight-black)' : 'var(--weight-medium)', letterSpacing: 'var(--tracking-wide)', textTransform: 'uppercase', fontSize: 9, color: active ? 'var(--color-black)' : 'var(--color-grey)' }}>{label}</span>
+            <button
+              key={path} onClick={() => navigate(path)}
+              style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, padding: '4px 0', background: 'none', border: 'none', cursor: 'pointer', color: active ? C.black : C.grayMid }}
+            >
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={active ? C.black : C.grayMid} strokeWidth={active ? 2 : 1.5} strokeLinecap="round" strokeLinejoin="round">
+                {label === 'Home'    && <><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /><polyline points="9 22 9 12 15 12 15 22" /></>}
+                {label === 'Card'    && <><rect x="1" y="4" width="22" height="16" rx="2" /><line x1="1" y1="10" x2="23" y2="10" /></>}
+                {label === 'History' && <><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /><line x1="16" y1="13" x2="8" y2="13" /><line x1="16" y1="17" x2="8" y2="17" /></>}
+                {label === 'Profile' && <><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></>}
+              </svg>
+              <span style={{ fontSize: 10, fontWeight: active ? 600 : 500 }}>{label}</span>
             </button>
           )
         })}
       </nav>
+
     </div>
   )
 }

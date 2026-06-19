@@ -16,7 +16,6 @@ function getSubdomainSlug() {
   return null
 }
 
-// ── Smooth scroll helper ──────────────────────────────────────────────────
 function scrollTo(ref) {
   ref?.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
 }
@@ -29,13 +28,8 @@ export default function Landing() {
   const [menuOpen, setMenuOpen]     = useState(false)
   const [activeStep, setActiveStep] = useState(0)
 
-  // Section refs for anchor scrolling
   const howItWorksRef = useRef(null)
   const benefitsRef   = useRef(null)
-
-  // Primary and secondary colours from brand context
-  const primary   = brand.primaryColor   || '#1B4F72'
-  const secondary = brand.secondaryColor || '#D4AF37'
 
   useEffect(() => {
     async function fetchHero() {
@@ -51,7 +45,6 @@ export default function Landing() {
     fetchHero()
   }, [])
 
-  // ── How it works steps ───────────────────────────────────────────────
   const steps = [
     {
       num: 1,
@@ -70,35 +63,30 @@ export default function Landing() {
     },
   ]
 
-  // ── Value propositions ───────────────────────────────────────────────
   const vps = [
     {
-      icon: 'savings',
       heading: 'Save smarter',
       body: "Deposit money toward school fees whenever you're ready, at your own pace.",
     },
     {
-      icon: 'north',
       heading: 'Pay direct',
-      body: 'Use your savings balance to pay fees straight to us with one tap.',
+      body: 'Use your savings balance to pay fees straight to the school with one tap.',
     },
     {
-      icon: 'redeem',
-      heading: 'Earn rewards on purchases',
+      heading: 'Earn rewards',
       body: 'Earn cashback every time you use your card at our select partner merchants.',
     },
   ]
 
-  // ── Benefits ─────────────────────────────────────────────────────────
   const benefits = [
     {
       heading: 'Track your progress',
-      body: 'Stay on top of your savings with a clear progress tracker. See how close you are to your fee target, track every deposit and payment, and unlock cashback tiers as you hit each milestone along the way.',
+      body: 'Stay on top of your savings with a clear progress tracker. See how close you are to your fee target, track every deposit and payment, and unlock cashback tiers as you hit each milestone.',
       link: 'View your progress',
     },
     {
       heading: 'Flexible, partial payments',
-      body: 'You do not have to pay all your fees at once. Make deposits and partial payments at any time, at your own pace. Withdraw your balance whenever you need to. Each payment moves you closer to your goal, and using your card at select merchants earns you cashback rewards.',
+      body: 'You do not have to pay all your fees at once. Make deposits and partial payments at any time, at your own pace. Withdraw your balance whenever you need to.',
       link: 'How payments work',
     },
     {
@@ -110,305 +98,398 @@ export default function Landing() {
 
   const year = new Date().getFullYear()
 
-  return (
-    <div style={{ minHeight: '100vh', background: '#fff', fontFamily: "'Inter', system-ui, sans-serif", color: '#111' }}>
+  // ── Shared tokens — strict Sellin kit ────────────────────────────────
+  const C = {
+    bg:        '#F6F7EE',
+    white:     '#FFFFFF',
+    black:     '#111111',
+    secondary: '#959687',
+    stroke:    '#D7D8CB',
+    grayLine:  '#D5D9DD',
+    grayMid:   '#898B90',
+    grayLight: '#ECECEC',
+    accent:    '#ECEDE1',
+    labelBg:   '#E4E5DD',
+  }
 
-      {/* ══════════════════════════════════════════════
-          HEADER — desktop nav + mobile menu
-      ══════════════════════════════════════════════ */}
+  const btn = (variant = 'primary') => ({
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    padding: '10px 20px',
+    fontSize: 14,
+    fontWeight: 600,
+    fontFamily: 'Inter, system-ui, sans-serif',
+    borderRadius: 10,
+    cursor: 'pointer',
+    border: variant === 'primary' ? `1px solid ${C.black}` : `1px solid ${C.grayLine}`,
+    background: variant === 'primary' ? C.black : C.white,
+    color: variant === 'primary' ? C.white : C.black,
+    transition: 'opacity 0.15s',
+  })
+
+  return (
+    <div style={{ minHeight: '100vh', background: C.bg, fontFamily: 'Inter, system-ui, sans-serif', color: C.black }}>
+
+      {/* ── Topbar ── */}
       <header style={{
-        background: '#fff',
-        borderBottom: '1px solid #e5e7eb',
+        background: C.white,
+        borderBottom: `1px solid ${C.stroke}`,
         position: 'sticky', top: 0, zIndex: 100,
       }}>
         <div style={{
           maxWidth: 1200, margin: '0 auto',
-          padding: '0 24px',
-          height: 64,
+          padding: '0 24px', height: 60,
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         }}>
 
           {/* Logo */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            {brand.logoUrl && (
-              <img src={brand.logoUrl} alt={brand.businessName}
-                style={{ height: 32, width: 'auto', objectFit: 'contain' }} />
-            )}
-            {!brand.logoUrl && (
-              <span style={{ fontWeight: 800, fontSize: 18, letterSpacing: '-0.03em', color: '#111' }}>
-                {brand.businessName}
-              </span>
-            )}
+          <div style={{ display: 'flex', alignItems: 'center' }}>
+            {brand.logoUrl
+              ? <img src={brand.logoUrl} alt={brand.businessName} style={{ height: 26, width: 'auto' }} />
+              : <span style={{ fontSize: 18, fontWeight: 600, color: C.black, letterSpacing: '-1px' }}>{brand.businessName}</span>
+            }
           </div>
 
-          {/* Desktop nav buttons */}
+          {/* Desktop nav */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }} className="desktop-nav">
             <button
               onClick={() => navigate('/portal/login')}
-              style={{ padding: '9px 20px', borderRadius: 999, border: '1px solid #d1d5db', background: 'transparent', fontWeight: 600, fontSize: 13, cursor: 'pointer', color: '#111', transition: 'background 0.15s' }}
-              onMouseEnter={e => e.currentTarget.style.background = '#f9fafb'}
-              onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+              style={btn('secondary')}
+              onMouseEnter={e => e.currentTarget.style.background = C.accent}
+              onMouseLeave={e => e.currentTarget.style.background = C.white}
             >
-              Log In
+              Log in
             </button>
             <button
               onClick={() => navigate('/portal/register')}
-              style={{ padding: '9px 20px', borderRadius: 999, border: 'none', background: primary, color: '#fff', fontWeight: 600, fontSize: 13, cursor: 'pointer', transition: 'opacity 0.15s' }}
-              onMouseEnter={e => e.currentTarget.style.opacity = '0.88'}
+              style={btn('primary')}
+              onMouseEnter={e => e.currentTarget.style.opacity = '0.85'}
               onMouseLeave={e => e.currentTarget.style.opacity = '1'}
             >
-              Sign Up
+              Sign up
             </button>
           </div>
 
-          {/* Mobile menu button */}
+          {/* Mobile menu toggle */}
           <button
             className="mobile-menu-btn"
             onClick={() => setMenuOpen(o => !o)}
             style={{ display: 'none', background: 'none', border: 'none', cursor: 'pointer', padding: 4 }}
             aria-label="Menu"
           >
-            <div style={{ width: 22, height: 2, background: '#111', marginBottom: 5, borderRadius: 2 }} />
-            <div style={{ width: 22, height: 2, background: '#111', marginBottom: 5, borderRadius: 2 }} />
-            <div style={{ width: 22, height: 2, background: '#111', borderRadius: 2 }} />
+            <div style={{ width: 20, height: 2, background: C.black, marginBottom: 4, borderRadius: 2 }} />
+            <div style={{ width: 20, height: 2, background: C.black, marginBottom: 4, borderRadius: 2 }} />
+            <div style={{ width: 20, height: 2, background: C.black, borderRadius: 2 }} />
           </button>
         </div>
 
-        {/* Mobile dropdown menu */}
+        {/* Mobile dropdown */}
         {menuOpen && (
-          <div style={{ borderTop: '1px solid #e5e7eb', padding: '16px 24px', display: 'flex', flexDirection: 'column', gap: 10, background: '#fff' }}>
-            <button onClick={() => { navigate('/portal/login'); setMenuOpen(false) }}
-              style={{ padding: '12px 0', border: 'none', background: 'none', fontWeight: 600, fontSize: 15, textAlign: 'left', cursor: 'pointer', color: '#111' }}>
-              Log In
+          <div style={{
+            borderTop: `1px solid ${C.stroke}`,
+            padding: '16px 24px',
+            display: 'flex', flexDirection: 'column', gap: 10,
+            background: C.white,
+          }}>
+            <button
+              onClick={() => { navigate('/portal/login'); setMenuOpen(false) }}
+              style={{ ...btn('secondary'), width: '100%' }}
+            >
+              Log in
             </button>
-            <button onClick={() => { navigate('/portal/register'); setMenuOpen(false) }}
-              style={{ padding: '13px 20px', borderRadius: 999, border: 'none', background: primary, color: '#fff', fontWeight: 600, fontSize: 15, cursor: 'pointer', textAlign: 'center' }}>
-              Sign Up For Free
+            <button
+              onClick={() => { navigate('/portal/register'); setMenuOpen(false) }}
+              style={{ ...btn('primary'), width: '100%' }}
+            >
+              Sign up
             </button>
           </div>
         )}
       </header>
 
-      {/* ══════════════════════════════════════════════
-          SECTION 1 — HERO
-      ══════════════════════════════════════════════ */}
-      <section style={{ position: 'relative', overflow: 'hidden' }}>
-
-        {/* Hero image */}
+      {/* ── HERO ── */}
+      <section style={{
+        background: heroImage
+          ? `url(${heroImage}) center/cover no-repeat`
+          : C.accent,
+        borderBottom: `1px solid ${C.stroke}`,
+        position: 'relative',
+      }}>
+        {heroImage && (
+          <div style={{ position: 'absolute', inset: 0, background: 'rgba(17,17,17,0.48)' }} />
+        )}
         <div style={{
-          width: '100%',
-          height: 'clamp(280px, 45vw, 560px)',
-          background: heroImage ? `url(${heroImage}) center/cover no-repeat` : `linear-gradient(135deg, ${primary}dd, ${primary}88)`,
           position: 'relative',
+          maxWidth: 1200, margin: '0 auto',
+          padding: 'clamp(64px, 10vw, 120px) 24px',
+          display: 'flex', flexDirection: 'column',
+          alignItems: 'center', textAlign: 'center', gap: 24,
         }}>
-          {/* Dark overlay for text legibility */}
-          <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.45)' }} />
-
-          {/* Hero content */}
-          <div style={{
-            position: 'absolute', inset: 0,
-            display: 'flex', flexDirection: 'column',
-            alignItems: 'center', justifyContent: 'center',
-            padding: '32px 24px', textAlign: 'center',
+          <h1 style={{
+            fontSize: 'clamp(32px, 5vw, 48px)',
+            fontWeight: 600,
+            letterSpacing: '-1px',
+            lineHeight: '130%',
+            color: heroImage ? C.white : C.black,
+            maxWidth: 600, margin: 0,
           }}>
-            <h1 style={{
-              color: '#fff',
-              fontSize: 'clamp(26px, 5vw, 52px)',
-              fontWeight: 800,
-              letterSpacing: '-0.03em',
-              lineHeight: 1.08,
-              marginBottom: 24,
-              maxWidth: 640,
-            }}>
-              The easier way to save up<br />and pay school fees.
-            </h1>
+            The easier way to save and pay school fees.
+          </h1>
+          <p style={{
+            fontSize: 16,
+            fontWeight: 500,
+            color: heroImage ? 'rgba(255,255,255,0.80)' : C.secondary,
+            lineHeight: '140%',
+            maxWidth: 460, margin: 0,
+          }}>
+            Save toward fees at your own pace, pay direct, and earn cashback rewards on every purchase.
+          </p>
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', justifyContent: 'center' }}>
             <button
               onClick={() => navigate('/portal/register')}
               style={{
-                padding: '14px 36px', borderRadius: 999,
-                border: 'none', background: primary, color: '#fff',
-                fontWeight: 700, fontSize: 16, cursor: 'pointer',
-                boxShadow: '0 4px 20px rgba(0,0,0,0.25)',
-                transition: 'transform 0.15s, opacity 0.15s',
+                ...btn('primary'),
+                padding: '12px 28px', fontSize: 15,
+                background: heroImage ? C.white : C.black,
+                color: heroImage ? C.black : C.white,
+                border: heroImage ? `1px solid ${C.white}` : `1px solid ${C.black}`,
               }}
-              onMouseEnter={e => e.currentTarget.style.transform = 'translateY(-1px)'}
-              onMouseLeave={e => e.currentTarget.style.transform = 'translateY(0)'}
+              onMouseEnter={e => e.currentTarget.style.opacity = '0.88'}
+              onMouseLeave={e => e.currentTarget.style.opacity = '1'}
             >
-              Sign Up For Free
+              Get started
+            </button>
+            <button
+              onClick={() => scrollTo(howItWorksRef)}
+              style={{
+                ...btn('secondary'),
+                padding: '12px 28px', fontSize: 15,
+                background: 'transparent',
+                color: heroImage ? C.white : C.black,
+                border: heroImage ? '1px solid rgba(255,255,255,0.4)' : `1px solid ${C.grayLine}`,
+              }}
+              onMouseEnter={e => e.currentTarget.style.opacity = '0.75'}
+              onMouseLeave={e => e.currentTarget.style.opacity = '1'}
+            >
+              How it works
             </button>
           </div>
         </div>
       </section>
 
-      {/* ══════════════════════════════════════════════
-          SECTION 2 — VALUE PROPOSITIONS
-      ══════════════════════════════════════════════ */}
-      <section style={{ padding: 'clamp(48px, 8vw, 96px) 24px', background: '#fff' }}>
+      {/* ── VALUE PROPOSITIONS ── */}
+      <section style={{ padding: 'clamp(48px, 8vw, 80px) 24px', background: C.white, borderBottom: `1px solid ${C.stroke}` }}>
         <div style={{ maxWidth: 1200, margin: '0 auto' }}>
 
-          <h2 style={{
-            textAlign: 'center',
-            fontSize: 'clamp(22px, 3.5vw, 36px)',
-            fontWeight: 700,
-            letterSpacing: '-0.03em',
-            marginBottom: 'clamp(32px, 5vw, 64px)',
-            color: '#111',
-          }}>
-            Three ways we make paying school fees work for you.
-          </h2>
+          <div style={{ textAlign: 'center', marginBottom: 40 }}>
+            <h2 style={{ fontSize: 'clamp(20px, 3vw, 32px)', fontWeight: 600, color: C.black, letterSpacing: '-1px', lineHeight: '130%', margin: '0 0 10px' }}>
+              Three ways we make paying school fees work for you.
+            </h2>
+            <p style={{ fontSize: 14, fontWeight: 500, color: C.secondary, margin: 0 }}>
+              Simple, transparent, rewarding.
+            </p>
+          </div>
 
           <div style={{
             display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
-            gap: 32,
+            gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
+            gap: 16,
           }}>
-            {vps.map(vp => (
-              <div key={vp.heading} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', gap: 16 }}>
-                {/* Icon circle */}
+            {vps.map((vp, i) => (
+              <div key={i} style={{
+                background: C.white,
+                border: `1px solid ${C.stroke}`,
+                borderRadius: 12,
+                padding: '24px 20px',
+                display: 'flex', flexDirection: 'column', gap: 10,
+              }}>
+                {/* Icon */}
                 <div style={{
-                  width: 64, height: 64, borderRadius: '50%',
-                  border: `2px solid ${primary}33`,
+                  width: 40, height: 40, borderRadius: 10,
+                  background: C.labelBg,
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  background: `${primary}0d`,
+                  flexShrink: 0,
                 }}>
-                  <span className="icon-outlined" style={{ fontSize: 28, color: primary }}>{vp.icon}</span>
+                  {i === 0 && (
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#111111" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                      <ellipse cx="12" cy="13" rx="8" ry="6" />
+                      <path d="M16 9.5C16 7 14.2 5 12 5s-4 2-4 4.5" />
+                      <path d="M20 13h1.5a.5.5 0 0 0 0-1H20" />
+                      <path d="M12 5V3" />
+                      <path d="M10 19l-1 2m5-2 1 2" />
+                      <circle cx="9.5" cy="12" r="1" fill="#111111" stroke="none" />
+                    </svg>
+                  )}
+                  {i === 1 && (
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#111111" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M22 2L11 13" />
+                      <path d="M22 2L15 22l-4-9-9-4 20-7z" />
+                    </svg>
+                  )}
+                  {i === 2 && (
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#111111" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M20 12v10H4V12" />
+                      <path d="M22 7H2v5h20V7z" />
+                      <path d="M12 22V7" />
+                      <path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z" />
+                      <path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z" />
+                    </svg>
+                  )}
                 </div>
-                <h3 style={{ fontSize: 16, fontWeight: 700, color: '#111', margin: 0, letterSpacing: '-0.01em' }}>{vp.heading}</h3>
-                <p style={{ fontSize: 14, color: '#6b7280', lineHeight: 1.6, margin: 0, maxWidth: 280 }}>{vp.body}</p>
-                <button
-                  onClick={() => scrollTo(benefitsRef)}
-                  style={{ background: 'none', border: 'none', color: primary, fontSize: 14, fontWeight: 600, cursor: 'pointer', padding: 0, textDecoration: 'underline', textUnderlineOffset: 3 }}
-                >
-                  Learn More
-                </button>
+                <h3 style={{ fontSize: 16, fontWeight: 600, color: C.black, margin: 0, letterSpacing: '-0.5px' }}>
+                  {vp.heading}
+                </h3>
+                <p style={{ fontSize: 14, fontWeight: 500, color: C.secondary, lineHeight: '140%', margin: 0 }}>
+                  {vp.body}
+                </p>
               </div>
             ))}
           </div>
         </div>
       </section>
 
-      {/* ══════════════════════════════════════════════
-          SECTION 3 — HOW IT WORKS
-      ══════════════════════════════════════════════ */}
-      <section ref={howItWorksRef} style={{ padding: 'clamp(48px, 8vw, 96px) 24px', background: '#f9fafb', borderTop: '1px solid #e5e7eb', borderBottom: '1px solid #e5e7eb' }}>
+      {/* ── HOW IT WORKS ── */}
+      <section ref={howItWorksRef} style={{ padding: 'clamp(48px, 8vw, 80px) 24px', background: C.bg, borderBottom: `1px solid ${C.stroke}` }}>
         <div style={{ maxWidth: 1200, margin: '0 auto' }}>
 
-          <h2 style={{
-            textAlign: 'center',
-            fontSize: 'clamp(22px, 3.5vw, 36px)',
-            fontWeight: 700,
-            letterSpacing: '-0.03em',
-            marginBottom: 32,
-            color: '#111',
-          }}>
-            Getting started is quick and simple.
-          </h2>
+          <div style={{ textAlign: 'center', marginBottom: 40 }}>
+            <h2 style={{ fontSize: 'clamp(20px, 3vw, 32px)', fontWeight: 600, color: C.black, letterSpacing: '-1px', lineHeight: '130%', margin: '0 0 10px' }}>
+              Getting started is quick and simple.
+            </h2>
+            <p style={{ fontSize: 14, fontWeight: 500, color: C.secondary, margin: 0 }}>
+              Three steps and you're saving.
+            </p>
+          </div>
 
-
-
-          {/* Active step content */}
           <div style={{
             display: 'grid',
             gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
-            gap: 48, alignItems: 'center',
+            gap: 40, alignItems: 'start',
           }}>
-            {/* Step info */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+            {/* Steps list */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
               {steps.map((s, i) => (
                 <div
                   key={i}
                   onClick={() => setActiveStep(i)}
                   style={{
-                    display: 'flex', gap: 16, alignItems: 'flex-start',
-                    cursor: 'pointer', opacity: activeStep === i ? 1 : 0.4,
-                    transition: 'opacity 0.2s',
+                    display: 'flex', gap: 14, alignItems: 'flex-start',
+                    padding: '16px',
+                    borderRadius: 12,
+                    cursor: 'pointer',
+                    background: activeStep === i ? C.white : 'transparent',
+                    border: activeStep === i ? `1px solid ${C.stroke}` : '1px solid transparent',
+                    transition: 'all 0.2s',
                   }}
                 >
                   <div style={{
-                    width: 32, height: 32, borderRadius: '50%', flexShrink: 0,
-                    background: activeStep === i ? primary : '#e5e7eb',
-                    color: activeStep === i ? '#fff' : '#6b7280',
+                    width: 28, height: 28, borderRadius: '50%', flexShrink: 0,
+                    background: activeStep === i ? C.black : C.labelBg,
+                    color: activeStep === i ? C.white : C.grayMid,
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    fontWeight: 700, fontSize: 14,
+                    fontSize: 12, fontWeight: 600,
+                    transition: 'all 0.2s',
                   }}>
                     {s.num}
                   </div>
-                  <div>
-                    <p style={{ margin: 0, fontSize: 14, fontWeight: 600, color: '#111', lineHeight: 1.5 }}>{s.title}</p>
+                  <div style={{ flex: 1 }}>
+                    <p style={{
+                      margin: 0, fontSize: 14, fontWeight: 600, color: C.black,
+                      lineHeight: '130%',
+                      opacity: activeStep === i ? 1 : 0.45,
+                    }}>
+                      {s.title}
+                    </p>
                     {activeStep === i && (
-                      <p style={{ margin: '8px 0 0', fontSize: 13, color: '#6b7280', lineHeight: 1.6 }}>{s.desc}</p>
+                      <p style={{ margin: '8px 0 0', fontSize: 13, fontWeight: 500, color: C.secondary, lineHeight: '140%' }}>
+                        {s.desc}
+                      </p>
                     )}
                   </div>
                 </div>
               ))}
-              <button
-                onClick={() => navigate('/portal/register')}
-                style={{
-                  display: 'inline-flex', alignItems: 'center', gap: 8,
-                  padding: '12px 24px', borderRadius: 999,
-                  border: 'none', background: primary, color: '#fff',
-                  fontWeight: 600, fontSize: 14, cursor: 'pointer',
-                  alignSelf: 'flex-start', marginTop: 8,
-                  transition: 'opacity 0.15s',
-                }}
-                onMouseEnter={e => e.currentTarget.style.opacity = '0.88'}
-                onMouseLeave={e => e.currentTarget.style.opacity = '1'}
-              >
-                Learn More
-              </button>
+
+              <div style={{ padding: '4px 16px 0' }}>
+                <button
+                  onClick={() => navigate('/portal/register')}
+                  style={{ ...btn('primary'), marginTop: 8 }}
+                  onMouseEnter={e => e.currentTarget.style.opacity = '0.85'}
+                  onMouseLeave={e => e.currentTarget.style.opacity = '1'}
+                >
+                  Get started
+                </button>
+              </div>
             </div>
 
-            {/* Screenshot placeholder — 390×760 portrait */}
-            <div style={{
-              display: 'flex', justifyContent: 'center',
-            }}>
+            {/* Phone mockup placeholder */}
+            <div style={{ display: 'flex', justifyContent: 'center', padding: '8px 0' }}>
               <div style={{
-                width: 195, height: 380,
-                background: `linear-gradient(160deg, ${primary}22, ${primary}08)`,
-                border: `1px solid ${primary}33`,
-                borderRadius: 16,
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                flexDirection: 'column', gap: 12, color: '#9ca3af',
+                width: 200, height: 400,
+                background: C.accent,
+                border: `1px solid ${C.stroke}`,
+                borderRadius: 20,
+                display: 'flex', flexDirection: 'column',
+                alignItems: 'center', justifyContent: 'center',
+                gap: 12,
               }}>
-                <span className="icon-outlined" style={{ fontSize: 36 }}>phone_iphone</span>
-                <span style={{ fontSize: 12, textAlign: 'center', padding: '0 24px', lineHeight: 1.5 }}>
-                  Replace with 390 × 760px screenshot
-                </span>
+                <div style={{ width: 40, height: 40, borderRadius: '50%', background: C.labelBg, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="#898B90" strokeWidth="1.5">
+                    <rect x="5" y="2" width="14" height="20" rx="2" />
+                    <circle cx="12" cy="18" r="1" fill="#898B90" stroke="none" />
+                  </svg>
+                </div>
+                <p style={{ fontSize: 11, fontWeight: 500, color: C.grayMid, textAlign: 'center', padding: '0 24px', lineHeight: '140%', margin: 0 }}>
+                  App screenshot
+                </p>
               </div>
             </div>
           </div>
         </div>
       </section>
 
-      {/* ══════════════════════════════════════════════
-          SECTION 4 — BENEFITS
-      ══════════════════════════════════════════════ */}
-      <section ref={benefitsRef} style={{ padding: 'clamp(48px, 8vw, 96px) 24px', background: primary }}>
+      {/* ── BENEFITS ── */}
+      <section ref={benefitsRef} style={{ padding: 'clamp(48px, 8vw, 80px) 24px', background: C.white, borderBottom: `1px solid ${C.stroke}` }}>
         <div style={{ maxWidth: 1200, margin: '0 auto' }}>
 
-          <h2 style={{
-            textAlign: 'center',
-            fontSize: 'clamp(22px, 3.5vw, 36px)',
-            fontWeight: 700,
-            letterSpacing: '-0.03em',
-            color: '#fff',
-            marginBottom: 'clamp(32px, 5vw, 64px)',
-          }}>
-            Join families saving smarter across Uganda.
-          </h2>
+          <div style={{ textAlign: 'center', marginBottom: 40 }}>
+            <h2 style={{ fontSize: 'clamp(20px, 3vw, 32px)', fontWeight: 600, color: C.black, letterSpacing: '-1px', lineHeight: '130%', margin: '0 0 10px' }}>
+              Join families saving smarter across Uganda.
+            </h2>
+            <p style={{ fontSize: 14, fontWeight: 500, color: C.secondary, margin: 0 }}>
+              Everything you need to manage school fees in one place.
+            </p>
+          </div>
 
           <div style={{
             display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
-            gap: 32,
+            gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
+            gap: 16,
           }}>
-            {benefits.map(b => (
-              <div key={b.heading} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-                <h3 style={{ fontSize: 16, fontWeight: 700, color: '#fff', margin: 0, letterSpacing: '-0.01em' }}>{b.heading}</h3>
-                <p style={{ fontSize: 14, color: 'rgba(255,255,255,0.75)', lineHeight: 1.65, margin: 0 }}>{b.body}</p>
+            {benefits.map((b, i) => (
+              <div key={i} style={{
+                background: C.bg,
+                border: `1px solid ${C.stroke}`,
+                borderRadius: 12,
+                padding: '24px 20px',
+                display: 'flex', flexDirection: 'column', gap: 10,
+              }}>
+                <h3 style={{ fontSize: 16, fontWeight: 600, color: C.black, margin: 0, letterSpacing: '-0.5px' }}>
+                  {b.heading}
+                </h3>
+                <p style={{ fontSize: 14, fontWeight: 500, color: C.secondary, lineHeight: '140%', margin: 0, flex: 1 }}>
+                  {b.body}
+                </p>
                 <button
                   onClick={() => scrollTo(howItWorksRef)}
-                  style={{ background: 'none', border: 'none', color: secondary || '#fff', fontSize: 14, fontWeight: 600, cursor: 'pointer', padding: 0, textAlign: 'left', textDecoration: 'underline', textUnderlineOffset: 3 }}
+                  style={{
+                    background: 'none', border: 'none', cursor: 'pointer',
+                    fontSize: 13, fontWeight: 600, color: C.black,
+                    padding: 0, textAlign: 'left',
+                    textDecoration: 'underline', textUnderlineOffset: 3,
+                    fontFamily: 'Inter, system-ui, sans-serif',
+                  }}
                 >
                   {b.link}
                 </button>
@@ -418,94 +499,85 @@ export default function Landing() {
         </div>
       </section>
 
-      {/* ══════════════════════════════════════════════
-          SECTION 5 — SIGN UP CTA
-      ══════════════════════════════════════════════ */}
-      <section style={{ padding: 'clamp(64px, 10vw, 120px) 24px', background: '#fff', textAlign: 'center' }}>
-        <h2 style={{
-          fontSize: 'clamp(24px, 4vw, 42px)',
-          fontWeight: 700, letterSpacing: '-0.03em',
-          color: '#111', marginBottom: 32,
-        }}>
-          Sign up and get started.
-        </h2>
-        <button
-          onClick={() => navigate('/portal/register')}
-          style={{
-            padding: '16px 48px', borderRadius: 999,
-            border: 'none', background: primary, color: '#fff',
-            fontWeight: 700, fontSize: 17, cursor: 'pointer',
-            boxShadow: '0 4px 20px rgba(0,0,0,0.12)',
-            transition: 'transform 0.15s, opacity 0.15s',
-          }}
-          onMouseEnter={e => e.currentTarget.style.transform = 'translateY(-1px)'}
-          onMouseLeave={e => e.currentTarget.style.transform = 'translateY(0)'}
-        >
-          Get Started
-        </button>
+      {/* ── CTA ── */}
+      <section style={{
+        padding: 'clamp(64px, 10vw, 100px) 24px',
+        background: C.bg,
+        textAlign: 'center',
+        borderBottom: `1px solid ${C.stroke}`,
+      }}>
+        <div style={{ maxWidth: 560, margin: '0 auto', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 24 }}>
+          <h2 style={{
+            fontSize: 'clamp(22px, 4vw, 40px)',
+            fontWeight: 600, letterSpacing: '-1px', lineHeight: '130%',
+            color: C.black, margin: 0,
+          }}>
+            Sign up and get started today.
+          </h2>
+          <p style={{ fontSize: 14, fontWeight: 500, color: C.secondary, margin: 0, lineHeight: '140%' }}>
+            Free to sign up. No hidden fees. Cancel anytime.
+          </p>
+          <button
+            onClick={() => navigate('/portal/register')}
+            style={{ ...btn('primary'), padding: '13px 32px', fontSize: 15 }}
+            onMouseEnter={e => e.currentTarget.style.opacity = '0.85'}
+            onMouseLeave={e => e.currentTarget.style.opacity = '1'}
+          >
+            Create your account
+          </button>
+        </div>
       </section>
 
-      {/* ══════════════════════════════════════════════
-          FOOTER
-      ══════════════════════════════════════════════ */}
-      <footer style={{ background: '#f9fafb', borderTop: '1px solid #e5e7eb', padding: '40px 24px 28px' }}>
+      {/* ── FOOTER ── */}
+      <footer style={{ background: C.white, borderTop: `1px solid ${C.stroke}`, padding: '36px 24px 28px' }}>
         <div style={{ maxWidth: 1200, margin: '0 auto' }}>
 
-          {/* Footer links */}
           <div style={{
             display: 'flex', flexWrap: 'wrap',
             justifyContent: 'space-between', alignItems: 'flex-start',
-            gap: 24, marginBottom: 32,
+            gap: 24, marginBottom: 28,
           }}>
-            {/* Left links */}
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px 24px' }}>
-              {['Help and Contact', 'Fees', 'Security', 'Privacy', 'Legal'].map(link => (
-                <a key={link} href="#" style={{ fontSize: 13, color: '#6b7280', textDecoration: 'none' }}
-                  onMouseEnter={e => e.currentTarget.style.color = '#111'}
-                  onMouseLeave={e => e.currentTarget.style.color = '#6b7280'}
+            {/* Logo */}
+            <div>
+              {brand.logoUrl
+                ? <img src={brand.logoUrl} alt={brand.businessName} style={{ height: 22, width: 'auto', marginBottom: 12 }} />
+                : <span style={{ fontSize: 16, fontWeight: 600, color: C.black, letterSpacing: '-1px', display: 'block', marginBottom: 12 }}>{brand.businessName}</span>
+              }
+              <p style={{ fontSize: 12, fontWeight: 500, color: C.grayMid, margin: 0 }}>
+                The easier way to save and pay school fees.
+              </p>
+            </div>
+
+            {/* Links */}
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px 24px' }}>
+              {['Help and Contact', 'Fees', 'Security', 'Privacy', 'Legal', 'About Partna'].map(link => (
+                <a key={link} href="#"
+                  style={{ fontSize: 13, fontWeight: 500, color: C.grayMid, textDecoration: 'none' }}
+                  onMouseEnter={e => e.currentTarget.style.color = C.black}
+                  onMouseLeave={e => e.currentTarget.style.color = C.grayMid}
                 >
                   {link}
                 </a>
               ))}
             </div>
-            {/* Right links */}
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px 24px' }}>
-              <a href="https://www.partna.io" target="_blank" rel="noopener noreferrer"
-                style={{ fontSize: 13, color: '#6b7280', textDecoration: 'none' }}
-                onMouseEnter={e => e.currentTarget.style.color = '#111'}
-                onMouseLeave={e => e.currentTarget.style.color = '#6b7280'}
-              >
-                About Partna
-              </a>
-            </div>
           </div>
 
-          {/* Legal text */}
-          <p style={{ fontSize: 12, color: '#9ca3af', lineHeight: 1.7, marginBottom: 16, maxWidth: 860 }}>
+          {/* Divider */}
+          <div style={{ borderTop: `1px solid ${C.grayLine}`, marginBottom: 20 }} />
+
+          {/* Legal */}
+          <p style={{ fontSize: 12, fontWeight: 500, color: C.grayMid, lineHeight: '170%', marginBottom: 12, maxWidth: 860 }}>
             Partna is a product of Wamoo Innovations - SMC Limited. An application for a Payment Service Provider licence has been submitted to the Bank of Uganda. While this application is being processed, Partna continues to operate in a sandbox environment and to provide savings and fee payment services to users.
           </p>
 
-          {/* Copyright */}
-          <p style={{ fontSize: 12, color: '#9ca3af', marginBottom: 20 }}>
-            © {year} {brand.businessName}.
+          <p style={{ fontSize: 12, fontWeight: 500, color: C.grayMid, margin: 0 }}>
+            © {year} {brand.businessName}. Powered by Partna.
           </p>
 
-          {/* Powered by Partna */}
-          <a
-            href="https://www.partna.io"
-            target="_blank"
-            rel="noopener noreferrer"
-            style={{ display: 'inline-flex', alignItems: 'center', gap: 8, textDecoration: 'none', opacity: 0.55, transition: 'opacity 0.15s' }}
-            onMouseEnter={e => e.currentTarget.style.opacity = '1'}
-            onMouseLeave={e => e.currentTarget.style.opacity = '0.55'}
-          >
-            <span style={{ fontSize: 11, color: '#6b7280', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase' }}>Powered by</span>
-            <img src="/partna-logo@2x.png" alt="Partna" style={{ height: 18, width: 'auto', objectFit: 'contain' }} />
-          </a>
         </div>
       </footer>
 
-      {/* ── Responsive styles ── */}
+      {/* ── Responsive ── */}
       <style>{`
         @media (max-width: 768px) {
           .desktop-nav { display: none !important; }

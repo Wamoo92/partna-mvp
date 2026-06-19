@@ -12,110 +12,94 @@ function generateReference() {
   for (let i = 0; i < 6; i++) ref += chars[Math.floor(Math.random() * chars.length)]
   return ref
 }
-
 function toOpenFloatNetwork(network) {
   if (network === 'mtn') return 'MTN'
   if (network === 'airtel') return 'AirtelMoney'
   return network
 }
-
 function formatUGX(n) {
   return 'UGX ' + Number(n).toLocaleString('en-UG', { maximumFractionDigits: 0 })
 }
-
 function formatAmountInput(val) {
   const digits = val.replace(/\D/g, '')
   return digits.replace(/\B(?=(\d{3})+(?!\d))/g, ',')
 }
-
 function nowDisplay() {
-  return new Date().toLocaleString('en-UG', {
-    day: 'numeric', month: 'long', year: 'numeric',
-    hour: '2-digit', minute: '2-digit', hour12: true,
-  })
+  return new Date().toLocaleString('en-UG', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true })
 }
 
-// ── Scenario C fee structure ───────────────────────────────────────────────
-// Deposits: free to customer
-// Withdrawals: UGX 1,800 flat (OpenFloat pass-through) + 2% Partna fee
-// No tax line until formal tax advice is obtained
-const CARRIER_FEE = 1800 // OpenFloat mobile money disbursement cost
-
+const CARRIER_FEE = 1800
 function getFees(amt) {
   if (!amt || isNaN(amt)) return { partnaFee: 0, carrierFee: 0, totalFees: 0, netAmount: 0 }
-  const partnaFee  = Math.round(amt * 0.02)   // 2% Partna service fee
-  const carrierFee = CARRIER_FEE               // UGX 1,800 flat OpenFloat cost
+  const partnaFee  = Math.round(amt * 0.02)
+  const carrierFee = CARRIER_FEE
   const totalFees  = partnaFee + carrierFee
   const netAmount  = Math.max(0, amt - totalFees)
   return { partnaFee, carrierFee, totalFees, netAmount }
 }
 
+async function sendSMS(customerId, phone, event, vars = {}) {
+  try {
+    await fetch(`${SUPABASE_URL}/functions/v1/send-sms`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${SUPABASE_ANON_KEY}` },
+      body: JSON.stringify({ event, phone, customerId, vars }),
+    })
+  } catch (e) { console.error('SMS send error:', e) }
+}
+
+// ── Sellin tokens ──────────────────────────────────────────────────────────
+const C = {
+  bg:        '#F6F7EE',
+  white:     '#FFFFFF',
+  black:     '#111111',
+  labelBg:   '#E4E5DD',
+  stroke:    '#D7D8CB',
+  grayLine:  '#D5D9DD',
+  secondary: '#959687',
+  grayMid:   '#898B90',
+  grayLight: '#ECECEC',
+  green:     '#59886D',
+  bgGreen:   '#E4F8EC',
+  red:       '#CC3939',
+  bgRed:     '#F8E4E4',
+  orange:    '#EF8354',
+  bgOrange:  '#F8F0E4',
+}
+
+// ── Shared summary table ───────────────────────────────────────────────────
 function SummaryTable({ rows }) {
   return (
-    <div style={{ border: 'var(--border)', overflow: 'hidden' }}>
+    <div style={{ background: C.white, border: `1px solid ${C.stroke}`, borderRadius: 12, overflow: 'hidden' }}>
       {rows.map((row, i) => (
         <div key={i} style={{
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          padding: 'var(--space-3) var(--space-4)',
-          borderBottom: i < rows.length - 1 ? '1.5px solid var(--color-grey-light)' : 'none',
-          background: i % 2 === 0 ? 'var(--color-white)' : 'var(--color-bg)',
+          padding: '11px 16px',
+          borderBottom: i < rows.length - 1 ? `1px solid ${C.grayLine}` : 'none',
+          background: i % 2 === 0 ? C.white : C.bg,
         }}>
-          <span style={{ fontSize: 'var(--text-sm)', color: 'var(--color-grey)' }}>{row.label}</span>
-          <span style={{
-            fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-bold)',
-            color: row.color || 'var(--color-black)',
-            fontFamily: row.mono ? 'monospace' : 'inherit',
-          }}>
-            {row.value}
-          </span>
+          <span style={{ fontSize: 13, fontWeight: 500, color: C.secondary }}>{row.label}</span>
+          <span style={{ fontSize: 13, fontWeight: 600, color: row.color || C.black, fontFamily: row.mono ? 'monospace' : 'inherit' }}>{row.value}</span>
         </div>
       ))}
     </div>
   )
 }
 
+// ── "You receive" row ─────────────────────────────────────────────────────
 function ReceiveRow({ netAmount }) {
   return (
-    <div style={{
-      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-      padding: 'var(--space-4)',
-      background: 'var(--color-black)', border: 'var(--border)',
-      marginTop: 'var(--space-1)',
-    }}>
-      <span style={{ fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-bold)', color: 'var(--color-white)' }}>
-        You receive
-      </span>
-      <span style={{
-        fontSize: 'var(--text-lg)', fontWeight: 'var(--weight-black)',
-        color: 'var(--color-green)', fontVariationSettings: "'wdth' 100, 'opsz' 20",
-      }}>
-        {formatUGX(netAmount)}
-      </span>
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px', background: C.black, borderRadius: '0 0 12px 12px', marginTop: -1 }}>
+      <span style={{ fontSize: 14, fontWeight: 600, color: C.white }}>You receive</span>
+      <span style={{ fontSize: 20, fontWeight: 600, color: C.green, letterSpacing: '-0.5px' }}>{formatUGX(netAmount)}</span>
     </div>
   )
-}
-
-// ── Send SMS via Edge Function (non-blocking) ──────────────────────────────
-async function sendSMS(customerId, phone, event, vars = {}) {
-  try {
-    await fetch(`${SUPABASE_URL}/functions/v1/send-sms`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
-      },
-      body: JSON.stringify({ event, phone, customerId, vars }),
-    })
-  } catch (e) {
-    console.error('SMS send error:', e)
-  }
 }
 
 export default function Withdraw({ customer }) {
   const brand    = useBrand()
   const navigate = useNavigate()
   const location = useLocation()
-
   const enrollmentId = location.state?.enrollmentId || null
 
   const [step, setStep]                           = useState(1)
@@ -126,10 +110,9 @@ export default function Withdraw({ customer }) {
   const [loadingEnrollment, setLoadingEnrollment] = useState(true)
   const [error, setError]                         = useState('')
   const [txnReference, setTxnReference]           = useState('')
-
-  const [enrollment, setEnrollment] = useState(null)
-  const [wallet, setWallet]         = useState(null)
-  const [campaign, setCampaign]     = useState(null)
+  const [enrollment, setEnrollment]               = useState(null)
+  const [wallet, setWallet]                       = useState(null)
+  const [campaign, setCampaign]                   = useState(null)
 
   const parsedAmount = parseInt(amount.replace(/,/g, ''), 10)
   const balance      = wallet ? Number(wallet.balance) : 0
@@ -139,438 +122,319 @@ export default function Withdraw({ customer }) {
 
   useEffect(() => { if (customer) loadEnrollment() }, [customer, enrollmentId])
 
+  // ── Business logic — unchanged ────────────────────────────────────────
+
   async function loadEnrollment() {
     setLoadingEnrollment(true)
     try {
-      let q = supabase
-        .from('customer_campaigns')
-        .select('*, campaigns(*), wallets(*)')
-        .eq('customer_id', customer.id)
-        .eq('status', 'active')
-
-      if (enrollmentId) {
-        q = q.eq('id', enrollmentId)
-      } else {
-        q = q.order('enrolled_at', { ascending: true }).limit(1)
-      }
-
+      let q = supabase.from('customer_campaigns').select('*, campaigns(*), wallets(*)').eq('customer_id', customer.id).eq('status', 'active')
+      if (enrollmentId) { q = q.eq('id', enrollmentId) } else { q = q.order('enrolled_at', { ascending: true }).limit(1) }
       const { data } = await q.maybeSingle()
       if (data) { setEnrollment(data); setCampaign(data.campaigns); setWallet(data.wallets) }
-    } catch (e) {
-      console.error('Load enrollment error:', e)
-    }
+    } catch (e) { console.error('Load enrollment error:', e) }
     setLoadingEnrollment(false)
   }
 
   async function handleWithdraw() {
     setError('')
-    if (momoPhone.replace(/\s/g, '').length < 10) {
-      setError('Please enter a valid phone number.')
-      return
-    }
-    if (!wallet) {
-      setError('Could not find wallet. Please go back and try again.')
-      return
-    }
-
+    if (momoPhone.replace(/\s/g, '').length < 10) { setError('Please enter a valid phone number.'); return }
+    if (!wallet) { setError('Could not find wallet. Please go back and try again.'); return }
     setLoading(true)
     try {
-      const newBalance       = Number(wallet.balance) - parsedAmount
+      const newBalance = Number(wallet.balance) - parsedAmount
       if (newBalance < 0) { setError('Insufficient balance.'); setLoading(false); return }
-
-      const reference        = generateReference()
-      setTxnReference(reference)
+      const reference = generateReference(); setTxnReference(reference)
       const openFloatNetwork = toOpenFloatNetwork(network)
-      const cleanPhone       = momoPhone.replace(/\s/g, '')
-
-      const { data: txnData, error: txnError } = await supabase
-        .from('transactions')
-        .insert({
-          customer_id:        customer.id,
-          wallet_id:          wallet.id,
-          campaign_id:        enrollment?.campaign_id || null,
-          type:               'withdrawal',
-          amount:             parsedAmount,
-          status:             'pending',
-          network:            openFloatNetwork,
-          withdrawal_network: openFloatNetwork,
-          withdrawal_phone:   cleanPhone,
-          reference,
-          notes: `${networkLabel}: ${momoPhone}`,
-        })
-        .select()
-
-      if (txnError) {
-        setError('Could not record transaction. Please try again.')
-        setLoading(false)
-        return
-      }
-
+      const cleanPhone = momoPhone.replace(/\s/g, '')
+      const { data: txnData, error: txnError } = await supabase.from('transactions').insert({ customer_id: customer.id, wallet_id: wallet.id, campaign_id: enrollment?.campaign_id || null, type: 'withdrawal', amount: parsedAmount, status: 'pending', network: openFloatNetwork, withdrawal_network: openFloatNetwork, withdrawal_phone: cleanPhone, reference, notes: `${networkLabel}: ${momoPhone}` }).select()
+      if (txnError) { setError('Could not record transaction. Please try again.'); setLoading(false); return }
       const txnId = txnData?.[0]?.id
-      if (txnId) {
-        await supabase.from('transaction_fees').insert({
-          transaction_id: txnId,
-          customer_id:    customer.id,
-          network:        openFloatNetwork,
-          fee_type:       'withdrawal',
-          charged_to:     'user',
-          partna_fee:     fees.partnaFee,
-          carrier_fee:    fees.carrierFee,
-          tax:            0,
-          total_fees:     fees.totalFees,
-          net_amount:     fees.netAmount,
-        })
-      }
-
-      const { error: balanceError } = await supabase
-        .from('wallets')
-        .update({ balance: newBalance })
-        .eq('id', wallet.id)
-
-      if (balanceError) {
-        setError('Could not update balance. Please try again.')
-        setLoading(false)
-        return
-      }
-
-      // ── Send withdrawal requested SMS (non-blocking) ──
+      if (txnId) { await supabase.from('transaction_fees').insert({ transaction_id: txnId, customer_id: customer.id, network: openFloatNetwork, fee_type: 'withdrawal', charged_to: 'user', partna_fee: fees.partnaFee, carrier_fee: fees.carrierFee, tax: 0, total_fees: fees.totalFees, net_amount: fees.netAmount }) }
+      const { error: balanceError } = await supabase.from('wallets').update({ balance: newBalance }).eq('id', wallet.id)
+      if (balanceError) { setError('Could not update balance. Please try again.'); setLoading(false); return }
       const smsPhone = customer?.phone || momoPhone
-      sendSMS(customer.id, smsPhone, 'withdrawal_requested', {
-        amount:    formatUGX(parsedAmount),
-        reference,
-      })
-
+      sendSMS(customer.id, smsPhone, 'withdrawal_requested', { amount: formatUGX(parsedAmount), reference })
       setStep(3)
-    } catch (e) {
-      console.error('Unexpected error:', e)
-      setError('Something went wrong. Please try again.')
-    }
+    } catch (e) { console.error('Unexpected error:', e); setError('Something went wrong. Please try again.') }
     setLoading(false)
   }
 
+  // ─────────────────────────────────────────────────────────────────────────
+
   if (loadingEnrollment) return (
-    <div className="loading-screen">
-      <div className="spinner spinner-lg spinner-purple" />
+    <div style={{ minHeight: '100vh', background: C.bg, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div className="spinner spinner-lg" />
     </div>
   )
 
-  return (
-    <div style={{ minHeight: '100vh', background: 'var(--color-bg)', display: 'flex', flexDirection: 'column' }}>
+  const btnPrimary   = { width: '100%', padding: '11px 18px', fontSize: 14, fontWeight: 600, color: C.white, background: C.black, border: `1px solid ${C.black}`, borderRadius: 10, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, fontFamily: 'Inter, system-ui, sans-serif' }
+  const btnSecondary = { width: '100%', padding: '11px 18px', fontSize: 14, fontWeight: 600, color: C.black, background: C.white, border: `1px solid ${C.grayLine}`, borderRadius: 10, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, fontFamily: 'Inter, system-ui, sans-serif' }
+  const inputStyle   = { display: 'block', width: '100%', padding: '10px 14px', fontSize: 14, fontWeight: 500, color: C.black, background: C.white, border: `1px solid ${C.grayLine}`, borderRadius: 10, outline: 'none', fontFamily: 'Inter, system-ui, sans-serif', transition: 'border-color 0.15s' }
 
-      {/* ── Header ── */}
-      <header style={{
-        background: 'var(--color-black)', borderBottom: 'var(--border)',
-        padding: 'var(--space-4) var(--space-5)',
-        display: 'flex', alignItems: 'center', gap: 'var(--space-4)',
-      }}>
+  const isSuccess = step === 3
+
+  return (
+    <div style={{ minHeight: '100vh', background: C.bg, display: 'flex', flexDirection: 'column', fontFamily: 'Inter, system-ui, sans-serif' }}>
+
+      {/* ── Topbar ── */}
+      <header style={{ background: C.white, borderBottom: `1px solid ${C.stroke}`, padding: '14px 20px', position: 'sticky', top: 0, zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <button
-          onClick={() => step === 1 || step === 3 ? navigate('/portal/home') : setStep(step - 1)}
-          style={{
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            width: 36, height: 36, border: '2px solid rgba(255,255,255,0.25)',
-            background: 'transparent', color: 'var(--color-white)',
-            cursor: 'pointer', flexShrink: 0,
-          }}
-          onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--color-primary)'}
-          onMouseLeave={e => e.currentTarget.style.borderColor = 'rgba(255,255,255,0.25)'}
+          onClick={() => step === 1 || isSuccess ? navigate('/portal/home') : setStep(step - 1)}
+          style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center' }}
         >
-          <span className="icon-outlined icon-sm">
-            {step === 3 ? 'home' : 'arrow_back'}
-          </span>
+          {brand.logoUrl
+            ? <img src={brand.logoUrl} alt={brand.businessName} style={{ height: 26, width: 'auto' }} />
+            : <span style={{ fontSize: 18, fontWeight: 600, color: C.black, letterSpacing: '-1px' }}>{brand.businessName}</span>
+          }
         </button>
-        <div>
-          <div style={{ color: 'var(--color-white)', fontWeight: 'var(--weight-bold)', fontSize: 'var(--text-sm)' }}>
-            Withdraw
-          </div>
-          {campaign && (
-            <div style={{ color: 'var(--color-primary)', fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-bold)', letterSpacing: 'var(--tracking-wide)' }}>
-              {campaign.name}
-            </div>
-          )}
-        </div>
+        <span style={{ fontSize: 14, fontWeight: 500, color: C.secondary }}>Withdraw</span>
       </header>
 
-      {/* ── Step / success banner ── */}
-      {step < 3 ? (
-        <div style={{
-          background: 'var(--color-black)',
-          borderBottom: '3px solid var(--color-yellow)',
-          padding: 'var(--space-6) var(--space-5) var(--space-8)',
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 0, marginBottom: 'var(--space-5)' }}>
-            {[1, 2].map((s) => (
-              <div key={s} style={{ display: 'flex', alignItems: 'center', flex: s < 2 ? 1 : 0 }}>
-                <div style={{
-                  width: 28, height: 28,
-                  border: s <= step ? '2px solid var(--color-yellow)' : '2px solid rgba(255,255,255,0.2)',
-                  background: s < step ? 'var(--color-yellow)' : 'transparent',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  flexShrink: 0, transition: 'all var(--transition-base)',
-                }}>
-                  {s < step
-                    ? <span className="icon-outlined" style={{ fontSize: 14, color: 'var(--color-black)' }}>check</span>
-                    : <span style={{ fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-black)', color: s === step ? 'var(--color-yellow)' : 'rgba(255,255,255,0.3)' }}>{s}</span>
-                  }
-                </div>
-                {s < 2 && (
-                  <div style={{ flex: 1, height: 2, background: s < step ? 'var(--color-yellow)' : 'rgba(255,255,255,0.15)', transition: 'background var(--transition-slow)' }} />
-                )}
-              </div>
-            ))}
-          </div>
-          <div style={{
-            display: 'inline-block', background: 'var(--color-yellow)', border: 'var(--border)',
-            padding: '3px var(--space-3)', fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-black)',
-            letterSpacing: 'var(--tracking-widest)', textTransform: 'uppercase',
-            color: 'var(--color-black)', marginBottom: 'var(--space-3)',
-          }}>
-            {step === 1 ? 'Step 1 of 2 — Amount' : 'Step 2 of 2 — Payment'}
-          </div>
-          <h1 style={{
-            color: 'var(--color-white)', fontSize: 'var(--text-2xl)',
-            fontWeight: 'var(--weight-black)', letterSpacing: 'var(--tracking-tight)',
-            fontVariationSettings: "'wdth' 110, 'opsz' 30",
-          }}>
-            {step === 1 ? 'How much to withdraw?' : 'Withdrawal details'}
-          </h1>
-        </div>
-      ) : (
-        <div style={{
-          background: 'var(--color-black)', borderBottom: '3px solid var(--color-yellow)',
-          padding: 'var(--space-8) var(--space-5)', textAlign: 'center',
-        }}>
-          <div style={{
-            width: 64, height: 64, background: 'var(--color-yellow)',
-            border: '3px solid var(--color-white)', boxShadow: 'var(--shadow-md)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            margin: '0 auto var(--space-4)',
-          }}>
-            <span className="icon-outlined" style={{ fontSize: 32, color: 'var(--color-black)' }}>schedule</span>
-          </div>
-          <h1 style={{
-            color: 'var(--color-white)', fontSize: 'var(--text-2xl)',
-            fontWeight: 'var(--weight-black)', letterSpacing: 'var(--tracking-tight)',
-            marginBottom: 'var(--space-2)',
-          }}>
-            Withdrawal requested
-          </h1>
-          <p style={{ color: 'rgba(255,255,255,0.55)', fontSize: 'var(--text-sm)' }}>
-            Your request is being processed
-          </p>
-          {txnReference && (
-            <div style={{
-              display: 'inline-block', marginTop: 'var(--space-3)',
-              background: 'var(--color-primary)', border: 'var(--border)',
-              padding: '4px var(--space-4)', fontFamily: 'monospace',
-              fontWeight: 'var(--weight-black)', fontSize: 'var(--text-sm)',
-              letterSpacing: '0.1em', color: 'var(--color-black)',
-            }}>
-              {txnReference}
+      {/* ── Body ── */}
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '32px 20px 48px' }}>
+        <div style={{ width: '100%', maxWidth: 420, display: 'flex', flexDirection: 'column', gap: 20 }}>
+
+          {/* ── Stepper (steps 1 & 2 only) ── */}
+          {!isSuccess && (
+            <div style={{ display: 'flex', alignItems: 'center' }}>
+              {[1, 2].map((s) => {
+                const done = s < step; const active = s === step
+                return (
+                  <div key={s} style={{ display: 'flex', alignItems: 'center', flex: s < 2 ? 1 : 0 }}>
+                    <div style={{ width: 28, height: 28, borderRadius: '50%', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 600, background: done || active ? C.black : C.white, border: `1px solid ${done || active ? C.black : C.grayLine}`, color: done || active ? C.white : C.grayMid, transition: 'all 0.2s' }}>
+                      {done ? '✓' : s}
+                    </div>
+                    {s < 2 && <div style={{ flex: 1, height: 1, background: done ? C.black : C.grayLine, transition: 'background 0.3s' }} />}
+                  </div>
+                )
+              })}
             </div>
           )}
-        </div>
-      )}
 
-      {/* ── Body ── */}
-      <div style={{ flex: 1, padding: 'var(--space-5)', display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
-
-        {/* ── STEP 1: Amount ── */}
-        {step === 1 && (
-          <>
-            <div>
-              <div style={{ fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-black)', letterSpacing: 'var(--tracking-widest)', textTransform: 'uppercase', marginBottom: 'var(--space-3)', color: 'var(--color-grey)' }}>
-                Withdrawing from
-              </div>
-              <SummaryTable rows={[
-                { label: 'Campaign',          value: campaign?.name || '—' },
-                { label: 'Available balance', value: formatUGX(balance) },
-              ]} />
-              <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 'var(--space-2)' }}>
-                <button onClick={() => setAmount(formatAmountInput(String(balance)))} className="btn btn-sm btn-warning">
-                  Withdraw all
-                </button>
-              </div>
-            </div>
-
-            <div className="input-group">
-              <label className="input-label">Amount (UGX)</label>
-              <div className="input-wrapper">
-                <span style={{ position: 'absolute', left: 'var(--space-4)', fontWeight: 'var(--weight-bold)', fontSize: 'var(--text-sm)', color: 'var(--color-grey)', pointerEvents: 'none', zIndex: 1 }}>UGX</span>
-                <input
-                  type="text" inputMode="numeric" placeholder="0"
-                  value={amount} onChange={e => setAmount(formatAmountInput(e.target.value))}
-                  className="input input-lg"
-                  style={{ paddingLeft: 56, fontSize: 'var(--text-2xl)', fontWeight: 'var(--weight-black)', letterSpacing: 'var(--tracking-tight)', fontVariationSettings: "'wdth' 100, 'opsz' 30" }}
-                />
-              </div>
-              <span className="input-hint">Minimum withdrawal: UGX 5,000</span>
-            </div>
-
-            {validAmount && (
-              <div>
-                <div style={{ fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-black)', letterSpacing: 'var(--tracking-widest)', textTransform: 'uppercase', marginBottom: 'var(--space-3)', color: 'var(--color-grey)' }}>
-                  Fee preview
+          {/* ── Heading ── */}
+          <div>
+            {!isSuccess ? (
+              <>
+                <p style={{ fontSize: 12, fontWeight: 500, color: C.secondary, margin: '0 0 8px' }}>
+                  {step === 1 ? 'Step 1 of 2 — Amount' : 'Step 2 of 2 — Payment details'}
+                </p>
+                <h1 style={{ fontSize: 24, fontWeight: 600, color: C.black, letterSpacing: '-1px', lineHeight: '130%', margin: '0 0 6px' }}>
+                  {step === 1 ? 'How much to withdraw?' : 'Withdrawal details'}
+                </h1>
+                {campaign && <p style={{ fontSize: 14, fontWeight: 500, color: C.secondary, margin: 0 }}>{campaign.name}</p>}
+              </>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', gap: 12, paddingBottom: 4 }}>
+                <div style={{ width: 56, height: 56, borderRadius: '50%', background: C.orange, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" />
+                  </svg>
                 </div>
-                <SummaryTable rows={[
-                  { label: 'Withdrawal amount',          value: formatUGX(parsedAmount) },
-                  { label: 'Partna service fee (2%)',    value: '− ' + formatUGX(fees.partnaFee),  color: '#C0392B' },
-                  { label: 'Mobile money fee (flat)',    value: '− ' + formatUGX(fees.carrierFee), color: '#C0392B' },
-                ]} />
-                <ReceiveRow netAmount={fees.netAmount} />
+                <h1 style={{ fontSize: 24, fontWeight: 600, color: C.black, letterSpacing: '-1px', margin: 0 }}>Withdrawal requested</h1>
+                <p style={{ fontSize: 14, fontWeight: 500, color: C.secondary, margin: 0 }}>Your request is being processed</p>
+                {txnReference && (
+                  <div style={{ background: C.labelBg, borderRadius: 8, padding: '6px 16px', fontFamily: 'monospace', fontWeight: 600, fontSize: 13, color: C.black, letterSpacing: '0.08em' }}>
+                    {txnReference}
+                  </div>
+                )}
               </div>
             )}
+          </div>
 
-            {error && (
-              <div className="alert alert-danger">
-                <span className="icon-outlined alert-icon">error_outline</span>
-                <div className="alert-content">{error}</div>
-              </div>
-            )}
-
-            <button
-              onClick={() => {
-                if (!validAmount) {
-                  if (isNaN(parsedAmount) || parsedAmount < 5000) setError('Minimum withdrawal is UGX 5,000.')
-                  else if (parsedAmount > balance) setError('Amount exceeds your available balance of ' + formatUGX(balance) + '.')
-                  return
-                }
-                setError(''); setStep(2)
-              }}
-              className="btn btn-primary btn-full btn-lg"
-              style={{ marginTop: 'var(--space-2)' }}
-            >
-              <span className="icon-outlined icon-sm">arrow_forward</span>
-              Continue
-            </button>
-          </>
-        )}
-
-        {/* ── STEP 2: Mobile money ── */}
-        {step === 2 && (
-          <>
-            <div>
-              <label className="input-label" style={{ display: 'block', marginBottom: 'var(--space-3)' }}>Select network</label>
-              <div style={{ display: 'flex', gap: 'var(--space-3)' }}>
+          {/* ── STEP 1: Amount ── */}
+          {step === 1 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              {/* Balance summary */}
+              <div style={{ background: C.white, border: `1px solid ${C.stroke}`, borderRadius: 12, overflow: 'hidden' }}>
                 {[
-                  { id: 'mtn',    logo: '/mtn-logo.svg',    label: 'MTN MoMo'     },
-                  { id: 'airtel', logo: '/airtel-logo.svg', label: 'Airtel Money' },
-                ].map(net => (
-                  <button key={net.id} onClick={() => setNetwork(net.id)} style={{
-                    flex: 1, padding: 'var(--space-4)',
-                    display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 'var(--space-2)',
-                    background: network === net.id ? 'var(--color-black)' : 'var(--color-white)',
-                    border: network === net.id ? '3px solid var(--color-black)' : 'var(--border)',
-                    boxShadow: network === net.id ? 'var(--shadow-sm)' : 'none',
-                    cursor: 'pointer', transition: 'all var(--transition-base)',
-                  }}>
-                    <img src={net.logo} alt={net.label} style={{ width: 48, height: 48, objectFit: 'contain' }} />
-                    <span style={{ fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-black)', letterSpacing: 'var(--tracking-wide)', textTransform: 'uppercase', color: network === net.id ? 'var(--color-white)' : 'var(--color-black)' }}>
-                      {net.label}
-                    </span>
-                  </button>
+                  { label: 'Campaign',          value: campaign?.name || '—' },
+                  { label: 'Available balance', value: formatUGX(balance) },
+                ].map((row, i, arr) => (
+                  <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '11px 16px', borderBottom: i < arr.length - 1 ? `1px solid ${C.grayLine}` : 'none', background: i % 2 === 0 ? C.white : C.bg }}>
+                    <span style={{ fontSize: 13, fontWeight: 500, color: C.secondary }}>{row.label}</span>
+                    <span style={{ fontSize: 13, fontWeight: 600, color: C.black }}>{row.value}</span>
+                  </div>
                 ))}
               </div>
-            </div>
 
-            <div className="input-group">
-              <label className="input-label">Mobile money number</label>
-              <div className="input-wrapper">
-                <span className="icon-outlined input-icon-left">phone</span>
-                <input type="tel" className="input" placeholder="+256 7XX XXX XXX" value={momoPhone} onChange={e => setMomoPhone(e.target.value)} />
+              {/* Amount input card */}
+              <div style={{ background: C.white, border: `1px solid ${C.stroke}`, borderRadius: 12, padding: 20, display: 'flex', flexDirection: 'column', gap: 12 }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <label style={{ fontSize: 14, fontWeight: 600, color: C.black, letterSpacing: '-0.4px' }}>Amount (UGX)</label>
+                  <button onClick={() => setAmount(formatAmountInput(String(balance)))} style={{ padding: '5px 12px', fontSize: 12, fontWeight: 600, color: C.white, background: C.orange, border: `1px solid ${C.orange}`, borderRadius: 8, cursor: 'pointer', fontFamily: 'Inter, system-ui, sans-serif' }}>
+                    Withdraw all
+                  </button>
+                </div>
+                <div style={{ position: 'relative' }}>
+                  <span style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', fontSize: 13, fontWeight: 600, color: C.secondary, pointerEvents: 'none' }}>UGX</span>
+                  <input
+                    type="text" inputMode="numeric" placeholder="0"
+                    value={amount} onChange={e => setAmount(formatAmountInput(e.target.value))}
+                    style={{ ...inputStyle, paddingLeft: 52, fontSize: 28, fontWeight: 600, letterSpacing: '-0.5px' }}
+                    onFocus={e => e.target.style.borderColor = C.black}
+                    onBlur={e => e.target.style.borderColor = C.grayLine}
+                  />
+                </div>
+                <p style={{ fontSize: 12, fontWeight: 500, color: C.grayMid, margin: 0 }}>Minimum withdrawal: UGX 5,000</p>
               </div>
+
+              {/* Fee preview */}
+              {validAmount && (
+                <div>
+                  <p style={{ fontSize: 12, fontWeight: 600, color: C.secondary, margin: '0 0 8px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Fee preview</p>
+                  <div style={{ borderRadius: 12, overflow: 'hidden' }}>
+                    <SummaryTable rows={[
+                      { label: 'Withdrawal amount',       value: formatUGX(parsedAmount) },
+                      { label: 'Partna service fee (2%)', value: '− ' + formatUGX(fees.partnaFee),  color: C.red },
+                      { label: 'Mobile money fee (flat)', value: '− ' + formatUGX(fees.carrierFee), color: C.red },
+                    ]} />
+                    <ReceiveRow netAmount={fees.netAmount} />
+                  </div>
+                </div>
+              )}
+
+              {error && <div style={{ background: C.bgRed, borderRadius: 8, padding: '12px 14px', fontSize: 14, fontWeight: 500, color: C.red, lineHeight: '140%' }}>{error}</div>}
+
+              <button
+                style={btnPrimary}
+                onClick={() => {
+                  if (!validAmount) {
+                    if (isNaN(parsedAmount) || parsedAmount < 5000) setError('Minimum withdrawal is UGX 5,000.')
+                    else if (parsedAmount > balance) setError('Amount exceeds your available balance of ' + formatUGX(balance) + '.')
+                    return
+                  }
+                  setError(''); setStep(2)
+                }}
+                onMouseEnter={e => e.currentTarget.style.opacity = '0.85'}
+                onMouseLeave={e => e.currentTarget.style.opacity = '1'}
+              >
+                Continue
+              </button>
             </div>
+          )}
 
-            <div>
-              <div style={{ fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-black)', letterSpacing: 'var(--tracking-widest)', textTransform: 'uppercase', marginBottom: 'var(--space-3)', color: 'var(--color-grey)' }}>
-                Withdrawal summary
-              </div>
-              <SummaryTable rows={[
-                { label: 'Campaign',                   value: campaign?.name || '—' },
-                { label: 'Withdrawal amount',          value: formatUGX(parsedAmount) },
-                { label: 'Partna service fee (2%)',    value: '− ' + formatUGX(fees.partnaFee),  color: '#C0392B' },
-                { label: 'Mobile money fee (flat)',    value: '− ' + formatUGX(fees.carrierFee), color: '#C0392B' },
-                { label: 'Network',                    value: networkLabel },
-                { label: 'Number',                     value: momoPhone || '—' },
-                { label: 'Date & time',                value: nowDisplay() },
-              ]} />
-              <ReceiveRow netAmount={fees.netAmount} />
-            </div>
+          {/* ── STEP 2: Mobile money ── */}
+          {step === 2 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
 
-            {error && (
-              <div className="alert alert-danger">
-                <span className="icon-outlined alert-icon">error_outline</span>
-                <div className="alert-content">{error}</div>
-              </div>
-            )}
+              {/* Network selector */}
+              <div style={{ background: C.white, border: `1px solid ${C.stroke}`, borderRadius: 12, padding: 20, display: 'flex', flexDirection: 'column', gap: 14 }}>
+                <label style={{ fontSize: 14, fontWeight: 600, color: C.black, letterSpacing: '-0.4px' }}>Select network</label>
+                <div style={{ display: 'flex', gap: 12 }}>
+                  {[
+                    { id: 'mtn',    logo: '/mtn-logo.svg',    label: 'MTN MoMo'     },
+                    { id: 'airtel', logo: '/airtel-logo.svg', label: 'Airtel Money' },
+                  ].map(net => (
+                    <button key={net.id} onClick={() => setNetwork(net.id)} style={{ flex: 1, padding: '14px 10px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, background: network === net.id ? C.black : C.white, border: `1px solid ${network === net.id ? C.black : C.grayLine}`, borderRadius: 10, cursor: 'pointer', transition: 'all 0.15s' }}>
+                      <img src={net.logo} alt={net.label} style={{ width: 38, height: 38, objectFit: 'contain' }} />
+                      <span style={{ fontSize: 12, fontWeight: 600, color: network === net.id ? C.white : C.black, letterSpacing: '-0.2px' }}>{net.label}</span>
+                    </button>
+                  ))}
+                </div>
 
-            <button onClick={handleWithdraw} disabled={loading} className="btn btn-primary btn-full btn-lg">
-              {loading
-                ? <><div className="spinner spinner-sm" style={{ borderTopColor: 'var(--color-black)' }} /> Processing…</>
-                : <><span className="icon-outlined icon-sm">south</span> Withdraw {formatUGX(parsedAmount)}</>
-              }
-            </button>
-          </>
-        )}
-
-        {/* ── STEP 3: Pending ── */}
-        {step === 3 && (
-          <>
-            <div style={{
-              display: 'flex', alignItems: 'flex-start', gap: 'var(--space-3)',
-              padding: 'var(--space-4)', background: 'var(--color-yellow)',
-              border: 'var(--border)', boxShadow: 'var(--shadow-sm)',
-            }}>
-              <span className="icon-outlined" style={{ fontSize: 20, color: 'var(--color-black)', flexShrink: 0, marginTop: 1 }}>schedule</span>
-              <div>
-                <div style={{ fontWeight: 'var(--weight-bold)', fontSize: 'var(--text-sm)', marginBottom: 'var(--space-1)' }}>Processing time</div>
-                <div style={{ fontSize: 'var(--text-sm)', color: 'rgba(0,0,0,0.65)', lineHeight: 'var(--leading-normal)' }}>
-                  Withdrawals typically take <strong>1–2 business days</strong> to process.
-                  You'll receive an SMS notification once your withdrawal has been processed.
+                {/* Phone number */}
+                <div>
+                  <label style={{ display: 'block', fontSize: 14, fontWeight: 600, color: C.black, letterSpacing: '-0.4px', marginBottom: 6 }}>Mobile money number</label>
+                  <input
+                    style={inputStyle} type="tel" placeholder="+256 7XX XXX XXX"
+                    value={momoPhone} onChange={e => setMomoPhone(e.target.value)}
+                    onFocus={e => e.target.style.borderColor = C.black}
+                    onBlur={e => e.target.style.borderColor = C.grayLine}
+                  />
                 </div>
               </div>
-            </div>
 
-            <div>
-              <div style={{ fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-black)', letterSpacing: 'var(--tracking-widest)', textTransform: 'uppercase', marginBottom: 'var(--space-3)', color: 'var(--color-grey)' }}>
-                Transaction details
+              {/* Summary */}
+              <div>
+                <p style={{ fontSize: 12, fontWeight: 600, color: C.secondary, margin: '0 0 8px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Withdrawal summary</p>
+                <div style={{ borderRadius: 12, overflow: 'hidden' }}>
+                  <SummaryTable rows={[
+                    { label: 'Campaign',                   value: campaign?.name || '—' },
+                    { label: 'Withdrawal amount',          value: formatUGX(parsedAmount) },
+                    { label: 'Partna service fee (2%)',    value: '− ' + formatUGX(fees.partnaFee),  color: C.red },
+                    { label: 'Mobile money fee (flat)',    value: '− ' + formatUGX(fees.carrierFee), color: C.red },
+                    { label: 'Network',                    value: networkLabel },
+                    { label: 'Number',                     value: momoPhone || '—' },
+                    { label: 'Date & time',                value: nowDisplay() },
+                  ]} />
+                  <ReceiveRow netAmount={fees.netAmount} />
+                </div>
               </div>
-              <SummaryTable rows={[
-                { label: 'Reference',               value: txnReference,                      mono: true, color: 'var(--color-primary)' },
-                { label: 'Campaign',                value: campaign?.name || '—' },
-                { label: 'Amount withdrawn',        value: formatUGX(parsedAmount) },
-                { label: 'Partna service fee (2%)', value: '− ' + formatUGX(fees.partnaFee),  color: '#C0392B' },
-                { label: 'Mobile money fee (flat)', value: '− ' + formatUGX(fees.carrierFee), color: '#C0392B' },
-                { label: 'Network',                 value: networkLabel },
-                { label: 'Number',                  value: momoPhone },
-                { label: 'Status',                  value: 'Pending',                          color: '#8A6700' },
-                { label: 'Date & time',             value: nowDisplay() },
-              ]} />
-              <ReceiveRow netAmount={fees.netAmount} />
+
+              {error && <div style={{ background: C.bgRed, borderRadius: 8, padding: '12px 14px', fontSize: 14, fontWeight: 500, color: C.red, lineHeight: '140%' }}>{error}</div>}
+
+              <button
+                style={{ ...btnPrimary, background: C.orange, borderColor: C.orange, opacity: loading ? 0.75 : 1, cursor: loading ? 'not-allowed' : 'pointer' }}
+                onClick={handleWithdraw} disabled={loading}
+                onMouseEnter={e => { if (!loading) e.currentTarget.style.opacity = '0.85' }}
+                onMouseLeave={e => { if (!loading) e.currentTarget.style.opacity = '1' }}
+              >
+                {loading
+                  ? <><div className="spinner spinner-sm spinner-light" /> Processing…</>
+                  : `Withdraw ${formatUGX(parsedAmount)}`
+                }
+              </button>
             </div>
+          )}
 
-            <div style={{
-              display: 'flex', alignItems: 'center', gap: 'var(--space-3)',
-              padding: 'var(--space-3) var(--space-4)',
-              background: 'var(--color-white)', border: 'var(--border)',
-            }}>
-              <span className="icon-outlined" style={{ fontSize: 18, color: 'var(--color-grey)', flexShrink: 0 }}>sms</span>
-              <span style={{ fontSize: 'var(--text-sm)', color: 'var(--color-grey)' }}>
-                An SMS confirmation has been sent to <strong style={{ color: 'var(--color-black)' }}>{customer?.phone}</strong>
-              </span>
+          {/* ── STEP 3: Pending ── */}
+          {step === 3 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+
+              {/* Processing notice */}
+              <div style={{ background: C.bgOrange, border: `1px solid ${C.orange}`, borderRadius: 8, padding: '14px 16px', display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={C.orange} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, marginTop: 1 }}>
+                  <circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" />
+                </svg>
+                <div>
+                  <p style={{ fontSize: 14, fontWeight: 600, color: C.orange, margin: '0 0 4px' }}>Processing time</p>
+                  <p style={{ fontSize: 13, fontWeight: 500, color: C.orange, margin: 0, lineHeight: '140%' }}>
+                    Withdrawals typically take <strong>1–2 business days</strong> to process. You'll receive an SMS once done.
+                  </p>
+                </div>
+              </div>
+
+              {/* Transaction details */}
+              <div>
+                <p style={{ fontSize: 12, fontWeight: 600, color: C.secondary, margin: '0 0 8px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Transaction details</p>
+                <div style={{ borderRadius: 12, overflow: 'hidden' }}>
+                  <SummaryTable rows={[
+                    { label: 'Reference',               value: txnReference,                     mono: true, color: C.green },
+                    { label: 'Campaign',                value: campaign?.name || '—' },
+                    { label: 'Amount withdrawn',        value: formatUGX(parsedAmount) },
+                    { label: 'Partna service fee (2%)', value: '− ' + formatUGX(fees.partnaFee),  color: C.red },
+                    { label: 'Mobile money fee (flat)', value: '− ' + formatUGX(fees.carrierFee), color: C.red },
+                    { label: 'Network',                 value: networkLabel },
+                    { label: 'Number',                  value: momoPhone },
+                    { label: 'Status',                  value: 'Pending',                         color: C.orange },
+                    { label: 'Date & time',             value: nowDisplay() },
+                  ]} />
+                  <ReceiveRow netAmount={fees.netAmount} />
+                </div>
+              </div>
+
+              {/* SMS confirmation */}
+              <div style={{ background: C.white, border: `1px solid ${C.stroke}`, borderRadius: 12, padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 10 }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={C.secondary} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+                  <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                </svg>
+                <span style={{ fontSize: 13, fontWeight: 500, color: C.secondary }}>
+                  An SMS confirmation has been sent to <strong style={{ color: C.black }}>{customer?.phone}</strong>
+                </span>
+              </div>
+
+              <button style={btnPrimary} onClick={() => navigate('/portal/home')} onMouseEnter={e => e.currentTarget.style.opacity = '0.85'} onMouseLeave={e => e.currentTarget.style.opacity = '1'}>
+                Back to home
+              </button>
+              <button style={btnSecondary} onClick={() => navigate('/portal/transactions', { state: { enrollmentId } })} onMouseEnter={e => e.currentTarget.style.background = '#ECEDE1'} onMouseLeave={e => e.currentTarget.style.background = C.white}>
+                View transactions
+              </button>
             </div>
+          )}
 
-            <button onClick={() => navigate('/portal/home')} className="btn btn-black btn-full btn-lg">
-              <span className="icon-outlined icon-sm">home</span>
-              Back to home
-            </button>
-
-            <button onClick={() => navigate('/portal/transactions', { state: { enrollmentId } })} className="btn btn-secondary btn-full">
-              <span className="icon-outlined icon-sm">receipt_long</span>
-              View transactions
-            </button>
-          </>
-        )}
+        </div>
       </div>
+
     </div>
   )
 }
