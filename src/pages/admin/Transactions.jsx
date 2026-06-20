@@ -348,11 +348,33 @@ export default function Transactions() {
   function toggleAllBiz() { setSelectedBiz(selectedBiz.size === filteredBiz.length ? new Set() : new Set(filteredBiz.map(t => t.id))) }
 
   function exportCustOpenFloat() {
-    const rows = filteredCustomer.filter(t => t.type === 'withdrawal' && selectedCust.has(t.id)).map(t => { const fullName = [t.customers?.first_name, t.customers?.other_names, t.customers?.last_name].filter(Boolean).join(' '); return [t.withdrawal_network || t.network || '', fullName, t.withdrawal_phone || '', '', '', '', t.amount, t.reference || t.id.slice(0, 8)] })
+    const rows = filteredCustomer
+      .filter(t => t.type === 'withdrawal' && selectedCust.has(t.id))
+      .map(t => {
+        const fullName = [t.customers?.first_name, t.customers?.other_names, t.customers?.last_name].filter(Boolean).join(' ')
+        const network = t.withdrawal_network || t.network || ''
+        const accountType = network.toLowerCase().includes('mtn') ? 'MTN' : network.toLowerCase().includes('airtel') ? 'AirtelMoney' : network
+        const phone = (t.withdrawal_phone || '').replace(/^\+/, '').replace(/^0/, '256')
+        return [accountType, fullName, phone, '', '', phone, Number(t.amount), t.reference || t.id.slice(0, 8)]
+      })
     downloadOpenFloatFile(rows, `partna-customer-withdrawals-${new Date().toISOString().slice(0, 10)}.xlsx`)
   }
   function exportBizOpenFloat() {
-    const rows = filteredBiz.filter(t => selectedBiz.has(t.id)).map(t => [t.withdrawal_method || '', t.withdrawal_account_name || '', t.withdrawal_account_number || '', '', '', t.withdrawal_notify_phone || '', t.amount, t.businesses?.name || ''])
+    const rows = filteredBiz
+      .filter(t => selectedBiz.has(t.id))
+      .map(t => {
+        const phone = (t.withdrawal_notify_phone || '').replace(/^\+/, '').replace(/^0/, '256')
+        return [
+          t.withdrawal_method || '',
+          t.withdrawal_account_name || '',
+          t.withdrawal_account_number || '',
+          '',
+          '',
+          phone,
+          Number(t.amount),
+          t.reference || t.id.slice(0, 8),
+        ]
+      })
     downloadOpenFloatFile(rows, `partna-business-withdrawals-${new Date().toISOString().slice(0, 10)}.xlsx`)
   }
   function exportCustomerCSV() {
