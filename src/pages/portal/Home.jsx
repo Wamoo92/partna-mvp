@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../supabase'
 import { useBrand } from '../../lib/BrandContext'
@@ -50,21 +50,37 @@ const C = {
 
 // ── Component ──────────────────────────────────────────────────────────────
 
-export default function Home({ customer, signOut }) {
+export default function Home({ customer, business, signOut }) {
   const brand    = useBrand()
   const navigate = useNavigate()
 
-  const [enrollments, setEnrollments]   = useState([])
-  const [cards, setCards]               = useState({})
-  const [activeIdx, setActiveIdx]       = useState(0)
-  const [loading, setLoading]           = useState(true)
-  const [cardFlipped, setCardFlipped]   = useState(false)
-  const [transactions, setTransactions] = useState([])
+  const [enrollments, setEnrollments]         = useState([])
+  const [cards, setCards]                     = useState({})
+  const [activeIdx, setActiveIdx]             = useState(0)
+  const [loading, setLoading]                 = useState(true)
+  const [cardFlipped, setCardFlipped]         = useState(false)
+  const [transactions, setTransactions]       = useState([])
+  const [cardSubscription, setCardSubscription] = useState(null)
+  const [showPricingTip, setShowPricingTip]   = useState(false)
+  const tipRef = useRef(null)
+
+  // Plan gating — card feature only for growth/enterprise
+  const plan          = business?.subscription_package || 'starter'
+  const cardEnabled   = plan === 'growth' || plan === 'enterprise'
+  const cardActive    = cardSubscription && (cardSubscription.status === 'active' || cardSubscription.status === 'grace_period')
 
   useEffect(() => { if (customer) fetchData() }, [customer])
   useEffect(() => { setCardFlipped(false) }, [activeIdx])
 
-  // ── Data fetching — unchanged ──────────────────────────────────────────
+  // Close pricing tooltip on outside click
+  useEffect(() => {
+    function handleClick(e) {
+      if (tipRef.current && !tipRef.current.contains(e.target)) setShowPricingTip(false)
+    }
+    if (showPricingTip) document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [showPricingTip])
+
   async function fetchData() {
     setLoading(true)
     try {
@@ -75,6 +91,7 @@ export default function Home({ customer, signOut }) {
         .eq('status', 'active')
         .order('enrolled_at', { ascending: true })
       setEnrollments(enrollData || [])
+
       if (enrollData?.length > 0) {
         const enrollIds = enrollData.map(e => e.id)
         const { data: cardData } = await supabase.from('cards').select('*').in('customer_campaign_id', enrollIds)
@@ -82,10 +99,25 @@ export default function Home({ customer, signOut }) {
         ;(cardData || []).forEach(c => { cardMap[c.customer_campaign_id] = c })
         setCards(cardMap)
       }
+
       const { data: txnData } = await supabase
         .from('transactions').select('*').eq('customer_id', customer.id)
         .order('created_at', { ascending: false }).limit(20)
       setTransactions(txnData || [])
+
+      // Fetch card subscription if card feature is enabled for this business
+      if (cardEnabled) {
+        const { data: subData } = await supabase
+          .from('card_subscriptions')
+          .select('*')
+          .eq('customer_id', customer.id)
+          .not('status', 'eq', 'cancelled')
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle()
+        setCardSubscription(subData || null)
+      }
+
     } catch (err) {
       console.error('Error fetching home data:', err)
     } finally {
@@ -115,7 +147,7 @@ export default function Home({ customer, signOut }) {
     .filter(t => t.campaign_id === activeCampaign?.id)
     .slice(0, 5)
 
-  // ── Cashback tier — unchanged ──────────────────────────────────────────
+  // ── Cashback tier ──────────────────────────────────────────────────────
   function getCashbackStrip() {
     if (!activeWallet || !activeCampaign || target === 0 || campaignLocked) return null
     const pct = (balance / target) * 100
@@ -126,6 +158,19 @@ export default function Home({ customer, signOut }) {
     return { title: 'Earn cashback rewards', body: `Save ${formatUGX(Math.max(target * 0.25 - balance, 0))} more to unlock Bronze tier and start earning 1% cashback.` }
   }
   const cashbackStrip = getCashbackStrip()
+
+  // ── Card visual state ──────────────────────────────────────────────────
+  // greyed = card enabled but no active subscription
+  const cardGreyed  = cardEnabled && !cardActive
+  const cardCanFlip = cardEnabled && cardActive && !campaignLocked
+
+  // ── Bottom nav items — Card hidden for starter plan ────────────────────
+  const navItems = [
+    { label: 'Home',    path: '/portal/home'         },
+    ...(cardEnabled ? [{ label: 'Card', path: '/portal/card' }] : []),
+    { label: 'History', path: '/portal/transactions' },
+    { label: 'Profile', path: '/portal/profile'      },
+  ]
 
   // ── Loading ────────────────────────────────────────────────────────────
   if (loading) return (
@@ -157,13 +202,10 @@ export default function Home({ customer, signOut }) {
     </div>
   )
 
-  // ── Progress bar colour ────────────────────────────────────────────────
   const progressColor = campaignLocked ? C.grayLine
     : progress >= 75 ? C.green
     : progress >= 50 ? C.orange
     : C.blue
-
-  // ─────────────────────────────────────────────────────────────────────────
 
   return (
     <div style={{ minHeight: '100vh', background: C.bg, display: 'flex', flexDirection: 'column', fontFamily: 'Inter, system-ui, sans-serif' }}>
@@ -251,22 +293,21 @@ export default function Home({ customer, signOut }) {
               onClick={() => setActiveIdx(i => Math.max(0, i - 1))}
               disabled={activeIdx === 0}
               style={{ width: 32, height: 32, borderRadius: '50%', border: `1px solid rgba(255,255,255,0.2)`, background: 'transparent', color: C.white, cursor: activeIdx === 0 ? 'not-allowed' : 'pointer', opacity: activeIdx === 0 ? 0.3 : 1, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: 16 }}
-            >
-              ‹
-            </button>
+            >‹</button>
           )}
 
-          {/* Card */}
+          {/* Card visual */}
           <div
-            onClick={() => !campaignLocked && setCardFlipped(f => !f)}
-            style={{ perspective: '800px', width: 288, height: 178, cursor: campaignLocked ? 'default' : 'pointer', flexShrink: 0 }}
+            onClick={() => cardCanFlip && setCardFlipped(f => !f)}
+            style={{ perspective: '800px', width: 288, height: 178, cursor: cardCanFlip ? 'pointer' : 'default', flexShrink: 0 }}
           >
             <div style={{
               width: 288, height: 178, position: 'relative',
               transformStyle: 'preserve-3d',
               transition: 'transform 0.5s ease',
-              transform: !campaignLocked && cardFlipped ? 'rotateY(180deg)' : 'rotateY(0deg)',
-              filter: campaignLocked ? 'grayscale(0.7) opacity(0.6)' : 'none',
+              transform: cardCanFlip && cardFlipped ? 'rotateY(180deg)' : 'rotateY(0deg)',
+              // Greyed out if card enabled but not activated, or if campaign locked
+              filter: (cardGreyed || campaignLocked) ? 'grayscale(0.8) opacity(0.5)' : 'none',
             }}>
               {/* Card front */}
               <div style={{
@@ -283,7 +324,7 @@ export default function Home({ customer, signOut }) {
                 </div>
                 <span style={{ fontSize: 11, fontWeight: 500, color: C.secondary }}>{activeCampaign?.name}</span>
                 <span style={{ fontFamily: 'monospace', fontSize: 14, fontWeight: 600, color: C.black, letterSpacing: '0.14em' }}>
-                  {formatCardNumber(activeCard?.card_number)}
+                  {formatCardNumber(cardActive ? activeCard?.card_number : null)}
                 </span>
                 <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between' }}>
                   <div>
@@ -291,9 +332,11 @@ export default function Home({ customer, signOut }) {
                     <p style={{ fontSize: 12, fontWeight: 600, color: C.black, margin: 0 }}>{customer?.first_name} {customer?.last_name}</p>
                   </div>
                   <div style={{ textAlign: 'right' }}>
-                    <p style={{ fontSize: 9, fontWeight: 500, color: C.secondary, margin: '0 0 2px', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{campaignLocked ? 'Status' : 'Expires'}</p>
+                    <p style={{ fontSize: 9, fontWeight: 500, color: C.secondary, margin: '0 0 2px', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                      {campaignLocked ? 'Status' : 'Expires'}
+                    </p>
                     <p style={{ fontFamily: 'monospace', fontSize: 12, fontWeight: 600, color: campaignLocked ? C.red : C.black, margin: 0 }}>
-                      {campaignLocked ? 'LOCKED' : formatExpiry(activeCard?.expiry_date)}
+                      {campaignLocked ? 'LOCKED' : cardActive ? formatExpiry(activeCard?.expiry_date) : 'MM/YY'}
                     </p>
                   </div>
                   <div style={{ display: 'flex' }}>
@@ -301,13 +344,13 @@ export default function Home({ customer, signOut }) {
                     <div style={{ width: 22, height: 22, borderRadius: '50%', background: '#F79E1B', opacity: 0.9, marginLeft: -8 }} />
                   </div>
                 </div>
-                {!campaignLocked && (
+                {cardCanFlip && (
                   <p style={{ position: 'absolute', bottom: 5, left: 0, right: 0, textAlign: 'center', fontSize: 9, fontWeight: 500, color: C.grayMid, margin: 0 }}>tap to flip</p>
                 )}
               </div>
 
-              {/* Card back */}
-              {!campaignLocked && (
+              {/* Card back — only shown when active and flippable */}
+              {cardCanFlip && (
                 <div style={{
                   position: 'absolute', inset: 0,
                   backfaceVisibility: 'hidden', WebkitBackfaceVisibility: 'hidden',
@@ -345,9 +388,7 @@ export default function Home({ customer, signOut }) {
               onClick={() => setActiveIdx(i => Math.min(enrollments.length - 1, i + 1))}
               disabled={activeIdx === enrollments.length - 1}
               style={{ width: 32, height: 32, borderRadius: '50%', border: `1px solid rgba(255,255,255,0.2)`, background: 'transparent', color: C.white, cursor: activeIdx === enrollments.length - 1 ? 'not-allowed' : 'pointer', opacity: activeIdx === enrollments.length - 1 ? 0.3 : 1, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: 16 }}
-            >
-              ›
-            </button>
+            >›</button>
           )}
         </div>
 
@@ -360,6 +401,45 @@ export default function Home({ customer, signOut }) {
                 style={{ width: i === activeIdx ? 18 : 6, height: 6, borderRadius: 999, background: i === activeIdx ? C.white : 'rgba(255,255,255,0.25)', border: 'none', cursor: 'pointer', padding: 0, transition: 'all 0.2s' }}
               />
             ))}
+          </div>
+        )}
+
+        {/* Activate card CTA — shown for growth/enterprise with no active subscription */}
+        {cardEnabled && !cardActive && !campaignLocked && (
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 16 }}>
+            <button
+              onClick={() => navigate('/portal/card')}
+              style={{ padding: '8px 20px', fontSize: 13, fontWeight: 600, color: C.black, background: C.white, border: `1px solid ${C.stroke}`, borderRadius: 999, cursor: 'pointer', transition: 'opacity 0.15s' }}
+              onMouseEnter={e => e.currentTarget.style.opacity = '0.85'}
+              onMouseLeave={e => e.currentTarget.style.opacity = '1'}
+            >
+              Activate your card
+            </button>
+
+            {/* Pricing info tooltip */}
+            <div ref={tipRef} style={{ position: 'relative' }}>
+              <button
+                onClick={() => setShowPricingTip(v => !v)}
+                style={{ width: 22, height: 22, borderRadius: '50%', background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.25)', color: C.white, fontSize: 12, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1 }}
+                aria-label="Card pricing info"
+              >
+                i
+              </button>
+              {showPricingTip && (
+                <div style={{
+                  position: 'absolute', bottom: 30, left: '50%', transform: 'translateX(-50%)',
+                  background: C.black, border: `1px solid rgba(255,255,255,0.15)`,
+                  borderRadius: 10, padding: '12px 14px', width: 200, zIndex: 200,
+                  boxShadow: '0 4px 20px rgba(0,0,0,0.4)',
+                }}>
+                  <p style={{ fontSize: 12, fontWeight: 600, color: C.white, margin: '0 0 6px' }}>Card subscription</p>
+                  <p style={{ fontSize: 12, fontWeight: 500, color: 'rgba(255,255,255,0.65)', margin: '0 0 4px' }}>Virtual card — UGX 5,000/month</p>
+                  <p style={{ fontSize: 12, fontWeight: 500, color: 'rgba(255,255,255,0.65)', margin: 0 }}>Physical card — UGX 10,000/month</p>
+                  {/* Tooltip arrow */}
+                  <div style={{ position: 'absolute', bottom: -6, left: '50%', transform: 'translateX(-50%)', width: 10, height: 10, background: C.black, border: `1px solid rgba(255,255,255,0.15)`, borderTop: 'none', borderLeft: 'none', rotate: '45deg' }} />
+                </div>
+              )}
+            </div>
           </div>
         )}
 
@@ -424,40 +504,22 @@ export default function Home({ customer, signOut }) {
           ].map(({ label, disabled, onClick }) => (
             <button
               key={label} onClick={onClick} disabled={disabled}
-              style={{
-                display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8,
-                padding: '16px 8px',
-                background: C.white, border: `1px solid ${C.stroke}`, borderRadius: 12,
-                cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.4 : 1,
-                transition: 'background 0.15s',
-              }}
+              style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, padding: '16px 8px', background: C.white, border: `1px solid ${C.stroke}`, borderRadius: 12, cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.4 : 1, transition: 'background 0.15s' }}
               onMouseEnter={e => { if (!disabled) e.currentTarget.style.background = C.accent }}
               onMouseLeave={e => { if (!disabled) e.currentTarget.style.background = C.white }}
             >
               <div style={{ width: 38, height: 38, borderRadius: 10, background: disabled ? C.grayLight : C.labelBg, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                {label === 'Add money' && (
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={disabled ? C.grayMid : C.black} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                    <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
-                  </svg>
-                )}
-                {label === 'Pay' && (
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={disabled ? C.grayMid : C.black} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M22 2L11 13" /><path d="M22 2L15 22l-4-9-9-4 20-7z" />
-                  </svg>
-                )}
-                {label === 'Withdraw' && (
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={disabled ? C.grayMid : C.black} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                    <line x1="12" y1="5" x2="12" y2="19" /><polyline points="19 12 12 19 5 12" />
-                  </svg>
-                )}
+                {label === 'Add money' && <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={disabled ? C.grayMid : C.black} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>}
+                {label === 'Pay'       && <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={disabled ? C.grayMid : C.black} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M22 2L11 13" /><path d="M22 2L15 22l-4-9-9-4 20-7z" /></svg>}
+                {label === 'Withdraw'  && <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={disabled ? C.grayMid : C.black} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19" /><polyline points="19 12 12 19 5 12" /></svg>}
               </div>
               <span style={{ fontSize: 12, fontWeight: 600, color: disabled ? C.grayMid : C.black, letterSpacing: '-0.2px' }}>{label}</span>
             </button>
           ))}
         </div>
 
-        {/* View card shortcut */}
-        {!campaignLocked && (
+        {/* View card shortcut — only for card-enabled users */}
+        {cardEnabled && !campaignLocked && (
           <button
             onClick={() => navigate('/portal/card', { state: { enrollmentId: activeEnrollment?.id } })}
             style={{ width: '100%', background: C.white, border: `1px solid ${C.stroke}`, borderRadius: 12, padding: '14px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer' }}
@@ -466,10 +528,12 @@ export default function Home({ customer, signOut }) {
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
               <div style={{ display: 'flex' }}>
-                <div style={{ width: 20, height: 20, borderRadius: '50%', background: '#EB001B', opacity: 0.85 }} />
-                <div style={{ width: 20, height: 20, borderRadius: '50%', background: '#F79E1B', opacity: 0.85, marginLeft: -7 }} />
+                <div style={{ width: 20, height: 20, borderRadius: '50%', background: cardActive ? '#EB001B' : C.grayMid, opacity: 0.85 }} />
+                <div style={{ width: 20, height: 20, borderRadius: '50%', background: cardActive ? '#F79E1B' : C.grayLight, opacity: 0.85, marginLeft: -7 }} />
               </div>
-              <span style={{ fontSize: 14, fontWeight: 600, color: C.black, letterSpacing: '-0.4px' }}>View your savings card</span>
+              <span style={{ fontSize: 14, fontWeight: 600, color: C.black, letterSpacing: '-0.4px' }}>
+                {cardActive ? 'View your savings card' : 'Activate your savings card'}
+              </span>
             </div>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={C.grayMid} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M5 12h14M12 5l7 7-7 7" />
@@ -498,21 +562,16 @@ export default function Home({ customer, signOut }) {
               const isDeposit  = txn.type === 'deposit'
               const isCashback = txn.type === 'cashback'
               const amountColor = isCashback || isDeposit ? C.green : C.red
-              const iconBg = isCashback ? 'rgba(197,133,179,0.15)'
-                : isDeposit ? C.bgGreen : C.bgRed
-              const iconColor = isCashback ? '#C585B3'
-                : isDeposit ? C.green : C.red
+              const iconBg    = isCashback ? 'rgba(197,133,179,0.15)' : isDeposit ? C.bgGreen : C.bgRed
+              const iconColor = isCashback ? '#C585B3' : isDeposit ? C.green : C.red
               return (
                 <div key={txn.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px', borderTop: i > 0 ? `1px solid ${C.grayLine}` : 'none' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                     <div style={{ width: 36, height: 36, borderRadius: 8, background: iconBg, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={iconColor} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                        {isCashback
-                          ? <><path d="M20 12v10H4V12" /><path d="M22 7H2v5h20V7z" /></>
-                          : isDeposit
-                          ? <><line x1="12" y1="5" x2="12" y2="19" /><polyline points="19 12 12 19 5 12" /></>
-                          : <><path d="M22 2L11 13" /><path d="M22 2L15 22l-4-9-9-4 20-7z" /></>
-                        }
+                        {isCashback ? <><path d="M20 12v10H4V12" /><path d="M22 7H2v5h20V7z" /></>
+                          : isDeposit ? <><line x1="12" y1="5" x2="12" y2="19" /><polyline points="19 12 12 19 5 12" /></>
+                          : <><path d="M22 2L11 13" /><path d="M22 2L15 22l-4-9-9-4 20-7z" /></>}
                       </svg>
                     </div>
                     <div>
@@ -530,7 +589,6 @@ export default function Home({ customer, signOut }) {
             })}
           </div>
         </div>
-
       </div>
 
       {/* ── Bottom nav ── */}
@@ -541,19 +599,13 @@ export default function Home({ customer, signOut }) {
         padding: '10px 0', paddingBottom: `calc(10px + env(safe-area-inset-bottom, 0px))`,
         zIndex: 100,
       }}>
-        {[
-          { label: 'Home',    path: '/portal/home'         },
-          { label: 'Card',    path: '/portal/card'         },
-          { label: 'History', path: '/portal/transactions' },
-          { label: 'Profile', path: '/portal/profile'      },
-        ].map(({ label, path }) => {
+        {navItems.map(({ label, path }) => {
           const active = path === '/portal/home'
           return (
             <button
               key={path} onClick={() => navigate(path)}
               style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, padding: '4px 0', background: 'none', border: 'none', cursor: 'pointer', color: active ? C.black : C.grayMid }}
             >
-              {/* Icon */}
               <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={active ? C.black : C.grayMid} strokeWidth={active ? 2 : 1.5} strokeLinecap="round" strokeLinejoin="round">
                 {label === 'Home'    && <><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /><polyline points="9 22 9 12 15 12 15 22" /></>}
                 {label === 'Card'    && <><rect x="1" y="4" width="22" height="16" rx="2" ry="2" /><line x1="1" y1="10" x2="23" y2="10" /></>}

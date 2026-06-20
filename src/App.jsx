@@ -143,25 +143,25 @@ function PortalAndDashboard() {
         {/* ── Requires login + active enrollment ── */}
         <Route path="/portal/home" element={
           <HomeGuard customer={customer} enrollments={enrollments} loading={loading}>
-            <Home customer={customer} signOut={signOut} />
+            <Home customer={customer} business={business} signOut={signOut} />
           </HomeGuard>
         } />
 
         <Route path="/portal/card" element={
           <HomeGuard customer={customer} enrollments={enrollments} loading={loading}>
-            <CardDetail customer={customer} />
+            <CardDetail customer={customer} business={business} />
           </HomeGuard>
         } />
 
         <Route path="/portal/transactions" element={
           <HomeGuard customer={customer} enrollments={enrollments} loading={loading}>
-            <Transactions customer={customer} />
+            <Transactions customer={customer} business={business} />
           </HomeGuard>
         } />
 
         <Route path="/portal/profile" element={
           <HomeGuard customer={customer} enrollments={enrollments} loading={loading}>
-            <Profile customer={customer} signOut={signOut} />
+            <Profile customer={customer} business={business} signOut={signOut} />
           </HomeGuard>
         } />
 

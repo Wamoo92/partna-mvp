@@ -74,6 +74,18 @@ const TEMPLATES: Record<string, (vars: Record<string, string>) => string> = {
     `Campaign: ${v.campaign}. ` +
     `Ref: ${v.reference}. ` +
     `Log in to your dashboard to view all payments.`,
+
+  card_grace_day1: (v) =>
+    `Partna: Hi ${v.name}, your ${v.business_name} card subscription could not be renewed. ` +
+    `Please deposit UGX ${v.amount} to keep your card active. ` +
+    `You have 7 days before your card is locked. ` +
+    `Visit www.partna.io to top up now.`,
+
+  card_grace_day5: (v) =>
+    `Partna: Hi ${v.name}, your ${v.business_name} card will be locked in 2 days. ` +
+    `Deposit UGX ${v.amount} now to avoid losing access to your card and cashback rewards. ` +
+    `Visit www.partna.io to top up immediately.`,
+
 }
 
 // ── Phone number formatter ─────────────────────────────────────────────────
