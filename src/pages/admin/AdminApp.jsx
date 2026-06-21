@@ -11,6 +11,7 @@ import Transactions   from './Transactions'
 import Revenue        from './Revenue'
 import KYBQueue       from './KYBQueue'
 import Rewards        from './Rewards'
+import Cards          from './Cards'
 import Settings       from './Settings'
 
 function AdminGuard({ admin, loading, children }) {
@@ -41,6 +42,7 @@ export default function AdminApp() {
               <Route path="/revenue"           element={<Revenue />} />
               <Route path="/kyb"               element={<KYBQueue />} />
               <Route path="/rewards"           element={<Rewards />} />
+              <Route path="/cards"             element={<Cards />} />
               <Route path="/settings"          element={<Settings />} />
               <Route path="/"                  element={<Navigate to="/admin/dashboard" replace />} />
             </Routes>
