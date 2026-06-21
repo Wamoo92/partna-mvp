@@ -2,15 +2,16 @@ import { useState } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 
 const BASE_NAV_ITEMS = [
-  { path: '/dashboard/overview',  label: 'Overview',          sectors: null },
-  { path: '/dashboard/customers', label: 'Customers',         sectors: null },
-  { path: '/dashboard/students',  label: 'Students',          sectors: ['Education'] },
-  { path: '/dashboard/products',  label: 'Products',          sectors: ['Retail'] },
-  { path: '/dashboard/campaigns', label: 'Campaigns',         sectors: null },
-  { path: '/dashboard/payments',  label: 'Fee Payments',      sectors: ['Education'] },
-  { path: '/dashboard/payments',  label: 'Payments',          sectors: ['Retail', null] },
-  { path: '/dashboard/sales',     label: 'Sales',             sectors: ['Retail'] },
-  { path: '/dashboard/settings',  label: 'Settings',          sectors: null },
+  { path: '/dashboard/overview',  label: 'Overview',     sectors: null },
+  { path: '/dashboard/customers', label: 'Customers',    sectors: null },
+  { path: '/dashboard/students',  label: 'Students',     sectors: ['Education'] },
+  { path: '/dashboard/products',  label: 'Products',     sectors: ['Retail'] },
+  { path: '/dashboard/campaigns', label: 'Campaigns',    sectors: null },
+  { path: '/dashboard/payments',  label: 'Fee Payments', sectors: ['Education'] },
+  { path: '/dashboard/payments',  label: 'Payments',     sectors: ['Retail', null] },
+  { path: '/dashboard/sales',     label: 'Sales',        sectors: ['Retail'] },
+  { path: '/dashboard/cards',     label: 'Cards',        sectors: null },
+  { path: '/dashboard/settings',  label: 'Settings',     sectors: null },
 ]
 
 function initials(name) {
@@ -52,6 +53,7 @@ function NavIcon({ label, active }) {
     'Fee Payments':    <><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /><line x1="16" y1="13" x2="8" y2="13" /></>,
     Payments:          <><rect x="1" y="4" width="22" height="16" rx="2" /><line x1="1" y1="10" x2="23" y2="10" /></>,
     Sales:             <><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></>,
+    Cards:             <><rect x="1" y="4" width="22" height="16" rx="2" ry="2" /><line x1="1" y1="10" x2="23" y2="10" /><line x1="4" y1="16" x2="7" y2="16" /></>,
     Settings:          <><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" /></>,
   }
 
