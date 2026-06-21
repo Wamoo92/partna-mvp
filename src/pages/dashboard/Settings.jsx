@@ -13,9 +13,43 @@ const KYB_DOCS = {
   sole_proprietor: ['Business Registration Certificate', "National ID, Passport or Driver's License", 'URA TIN Certificate', 'Cancelled cheque or bank statement'],
 }
 const PACKAGES = [
-  { id: 'starter',    name: 'Starter',    monthly: 49,  annual: 470,  accentColor: '#EF8354', features: ['1 active campaign', 'Up to 100 customers', '3 vouchers/campaign', 'No prizes'] },
-  { id: 'growth',     name: 'Growth',     monthly: 149, annual: 1430, accentColor: '#85A0C5', features: ['3 active campaigns', 'Up to 500 customers', '8 vouchers/campaign', 'Item & discount prizes'] },
-  { id: 'enterprise', name: 'Enterprise', monthly: 399, annual: 3830, accentColor: '#59886D', features: ['Unlimited campaigns', 'Unlimited customers', 'All vouchers', 'All prize types incl. cash'] },
+  {
+    id: 'starter',
+    name: 'Starter',
+    monthly: 49,
+    annual: 470,
+    accentColor: '#EF8354',
+    features: [
+      'Up to 100 customers',
+      'Unlimited campaigns',
+    ],
+  },
+  {
+    id: 'growth',
+    name: 'Growth',
+    monthly: 149,
+    annual: 1430,
+    accentColor: '#85A0C5',
+    features: [
+      'Up to 500 customers',
+      'Unlimited campaigns',
+      'Cashback rewards for customers',
+      'Virtual and physical savings card',
+    ],
+  },
+  {
+    id: 'enterprise',
+    name: 'Enterprise',
+    monthly: 399,
+    annual: 3830,
+    accentColor: '#59886D',
+    features: [
+      'Unlimited customers',
+      'Unlimited campaigns',
+      'Cashback rewards for customers',
+      'Virtual and physical savings card',
+    ],
+  },
 ]
 const ADDRESS_LABELS = ['Address line 1 (Street)', 'Address line 2 (Area / Village)', 'City / Town', 'Postal code', 'P.O. Box']
 const TABS = [
@@ -472,7 +506,6 @@ export default function Settings({ admin, business }) {
         {/* ══════════════ KYB ══════════════ */}
         {tab === 'kyb' && (
           <>
-            {/* Status banner */}
             {(() => {
               const status = business?.kyb_status
               const cfg = status === 'verified'
@@ -600,7 +633,6 @@ export default function Settings({ admin, business }) {
               )}
             </SectionCard>
 
-            {/* Billing toggle */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
               <span style={{ fontSize: 12, fontWeight: 500, color: C.secondary }}>View pricing:</span>
               <div style={{ display: 'flex', gap: 4, background: C.white, border: `1px solid ${C.stroke}`, borderRadius: 10, padding: 4 }}>
@@ -653,7 +685,6 @@ export default function Settings({ admin, business }) {
         {tab === 'security' && (
           <>
             <SectionCard title="Account">
-              {/* Admin info */}
               <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 18, paddingBottom: 18, borderBottom: `1px solid ${C.grayLine}` }}>
                 <div style={{ width: 40, height: 40, borderRadius: '50%', background: C.labelBg, border: `1px solid ${C.stroke}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 600, fontSize: 14, color: C.black, flexShrink: 0 }}>
                   {admin?.full_name?.[0]}
