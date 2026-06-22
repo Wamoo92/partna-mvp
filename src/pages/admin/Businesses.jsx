@@ -36,14 +36,12 @@ const C = {
 
 function Badge({ value, type }) {
   const cfg = {
-    // KYB
-    verified:    { bg: C.bgGreen,  color: C.green  },
-    pending:     { bg: C.bgOrange, color: C.orange  },
-    rejected:    { bg: C.bgRed,    color: C.red     },
+    verified:    { bg: C.bgGreen,   color: C.green   },
+    pending:     { bg: C.bgOrange,  color: C.orange  },
+    rejected:    { bg: C.bgRed,     color: C.red     },
     skipped:     { bg: C.grayLight, color: C.grayMid },
-    // Status
-    active:      { bg: C.bgGreen,  color: C.green  },
-    suspended:   { bg: C.bgRed,    color: C.red     },
+    active:      { bg: C.bgGreen,   color: C.green   },
+    suspended:   { bg: C.bgRed,     color: C.red     },
     deactivated: { bg: C.grayLight, color: C.grayMid },
   }[value] || { bg: C.grayLight, color: C.grayMid }
 
@@ -74,7 +72,6 @@ export default function Businesses() {
 
   useEffect(() => { loadBusinesses() }, [])
 
-  // ── Business logic — unchanged ─────────────────────────────────────────
   async function loadBusinesses() {
     setLoading(true)
     try {
@@ -119,8 +116,6 @@ export default function Businesses() {
       return 0
     })
 
-  // ─────────────────────────────────────────────────────────────────────────
-
   if (loading) return (
     <div style={{ display: 'flex', justifyContent: 'center', padding: 80 }}>
       <div className="spinner spinner-lg" />
@@ -146,7 +141,7 @@ export default function Businesses() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20, fontFamily: 'Inter, system-ui, sans-serif' }}>
 
-      {/* ── Filter bar ── */}
+      {/* ── Filter bar + onboard button ── */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
 
         {/* Search */}
@@ -187,8 +182,10 @@ export default function Businesses() {
         </select>
 
         {hasFilters && (
-          <button onClick={() => { setSearch(''); setFilterSector(''); setFilterKYB(''); setFilterStatus('') }}
-            style={{ padding: '8px 12px', fontSize: 12, fontWeight: 600, color: C.red, background: C.bgRed, border: `1px solid ${C.red}`, borderRadius: 8, cursor: 'pointer', fontFamily: 'Inter, system-ui, sans-serif' }}>
+          <button
+            onClick={() => { setSearch(''); setFilterSector(''); setFilterKYB(''); setFilterStatus('') }}
+            style={{ padding: '8px 12px', fontSize: 12, fontWeight: 600, color: C.red, background: C.bgRed, border: `1px solid ${C.red}`, borderRadius: 8, cursor: 'pointer', fontFamily: 'Inter, system-ui, sans-serif' }}
+          >
             Clear
           </button>
         )}
@@ -196,6 +193,26 @@ export default function Businesses() {
         <span style={{ fontSize: 12, fontWeight: 500, color: C.secondary, whiteSpace: 'nowrap' }}>
           {filtered.length} of {businesses.length}
         </span>
+
+        {/* ── Onboard button ── */}
+        <button
+          onClick={() => navigate('/admin/onboard')}
+          style={{
+            marginLeft: 'auto',
+            padding: '8px 16px', fontSize: 13, fontWeight: 600,
+            color: C.white, background: C.black,
+            border: `1px solid ${C.black}`, borderRadius: 8,
+            cursor: 'pointer', fontFamily: 'Inter, system-ui, sans-serif',
+            display: 'flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap',
+          }}
+          onMouseEnter={e => e.currentTarget.style.opacity = '0.85'}
+          onMouseLeave={e => e.currentTarget.style.opacity = '1'}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
+          </svg>
+          Onboard new business
+        </button>
       </div>
 
       {/* ── Table ── */}
@@ -222,11 +239,12 @@ export default function Businesses() {
                   </td>
                 </tr>
               ) : filtered.map((biz, i) => (
-                <tr key={biz.id} style={{ borderBottom: i < filtered.length - 1 ? `1px solid ${C.grayLine}` : 'none', background: i % 2 === 0 ? C.white : C.bg, transition: 'background 0.1s' }}
+                <tr
+                  key={biz.id}
+                  style={{ borderBottom: i < filtered.length - 1 ? `1px solid ${C.grayLine}` : 'none', background: i % 2 === 0 ? C.white : C.bg, transition: 'background 0.1s' }}
                   onMouseEnter={e => e.currentTarget.style.background = C.accent}
                   onMouseLeave={e => e.currentTarget.style.background = i % 2 === 0 ? C.white : C.bg}
                 >
-                  {/* Business name + email */}
                   <td style={{ padding: '12px 16px' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                       {biz.logo_url && !biz.logo_url.startsWith('/') ? (
@@ -242,13 +260,7 @@ export default function Businesses() {
                       </div>
                     </div>
                   </td>
-
-                  {/* Sector */}
-                  <td style={{ padding: '12px 16px', fontSize: 13, fontWeight: 500, color: C.secondary, whiteSpace: 'nowrap' }}>
-                    {biz.sector || '—'}
-                  </td>
-
-                  {/* Plan */}
+                  <td style={{ padding: '12px 16px', fontSize: 13, fontWeight: 500, color: C.secondary, whiteSpace: 'nowrap' }}>{biz.sector || '—'}</td>
                   <td style={{ padding: '12px 16px' }}>
                     {biz.subscription_package ? (
                       <span style={{ fontFamily: 'monospace', fontSize: 11, fontWeight: 600, color: C.white, background: C.black, borderRadius: 6, padding: '3px 8px', textTransform: 'capitalize' }}>
@@ -256,29 +268,11 @@ export default function Businesses() {
                       </span>
                     ) : <span style={{ fontSize: 13, color: C.grayMid }}>—</span>}
                   </td>
-
-                  {/* KYB */}
                   <td style={{ padding: '12px 16px' }}><Badge value={biz.kyb_status} /></td>
-
-                  {/* Customers */}
-                  <td style={{ padding: '12px 16px', fontSize: 13, fontWeight: 600, color: C.black }}>
-                    {biz.customerCount}
-                  </td>
-
-                  {/* AUM */}
-                  <td style={{ padding: '12px 16px', fontSize: 13, fontWeight: 600, color: C.green }}>
-                    {formatUGX(biz.aum)}
-                  </td>
-
-                  {/* Status */}
+                  <td style={{ padding: '12px 16px', fontSize: 13, fontWeight: 600, color: C.black }}>{biz.customerCount}</td>
+                  <td style={{ padding: '12px 16px', fontSize: 13, fontWeight: 600, color: C.green }}>{formatUGX(biz.aum)}</td>
                   <td style={{ padding: '12px 16px' }}><Badge value={biz.status} /></td>
-
-                  {/* Registered */}
-                  <td style={{ padding: '12px 16px', fontSize: 12, fontWeight: 500, color: C.secondary, whiteSpace: 'nowrap' }}>
-                    {formatDate(biz.created_at)}
-                  </td>
-
-                  {/* Action */}
+                  <td style={{ padding: '12px 16px', fontSize: 12, fontWeight: 500, color: C.secondary, whiteSpace: 'nowrap' }}>{formatDate(biz.created_at)}</td>
                   <td style={{ padding: '12px 16px' }}>
                     <button
                       onClick={() => navigate(`/admin/businesses/${biz.id}`)}
