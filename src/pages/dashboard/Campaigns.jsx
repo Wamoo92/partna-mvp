@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../supabase'
 import { getEffectiveStatus, getDeletionMsRemaining, formatCountdown } from '../../lib/campaignUtils'
 
@@ -72,7 +73,6 @@ function SummaryRow({ label, value, i, last }) {
   )
 }
 
-// ── Toggle ─────────────────────────────────────────────────────────────────
 function Toggle({ value, onChange }) {
   return (
     <div onClick={() => onChange(!value)} style={{ width: 44, height: 26, borderRadius: 999, background: value ? C.green : C.grayLight, cursor: 'pointer', position: 'relative', transition: 'background 0.2s', flexShrink: 0 }}>
@@ -81,7 +81,6 @@ function Toggle({ value, onChange }) {
   )
 }
 
-// ── Countdown timer ────────────────────────────────────────────────────────
 function CountdownTimer({ campaign }) {
   const [display, setDisplay] = useState('')
   useEffect(() => {
@@ -91,7 +90,6 @@ function CountdownTimer({ campaign }) {
   return <span style={{ fontFamily: 'monospace', fontWeight: 600 }}>{display}</span>
 }
 
-// ── Campaign card ──────────────────────────────────────────────────────────
 function CampaignCard({ campaign, status, onDelete, onRestart }) {
   const isActive  = status === 'active'
   const isPaused  = status === 'paused'
@@ -99,12 +97,10 @@ function CampaignCard({ campaign, status, onDelete, onRestart }) {
   const isEdu     = campaign.campaign_type === 'education_fees'
   const feeTypeLabel = FEE_TYPES.find(f => f.value === campaign.fee_type)?.label || campaign.fee_type || '—'
   const scheduleLabel = !campaign.allow_partial_payments ? 'Disabled' : campaign.payment_discount_percentage > 0 ? `Fixed — ${campaign.payment_discount_percentage}% minimum` : 'Flexible'
-
   const statusCfg = isActive ? { bg: C.bgGreen, color: C.green, label: 'Active' } : isPaused ? { bg: C.bgOrange, color: C.orange, label: 'Paused' } : { bg: C.grayLight, color: C.grayMid, label: 'Deleted' }
 
   return (
     <div style={{ background: C.white, border: `1px solid ${isPaused ? C.orange : C.stroke}`, borderRadius: 12, padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 12, opacity: isDeleted ? 0.55 : isPaused ? 0.9 : 1, fontFamily: 'Inter, system-ui, sans-serif' }}>
-      {/* Header */}
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 }}>
         <div style={{ minWidth: 0, flex: 1 }}>
           <p style={{ fontSize: 14, fontWeight: 600, color: isDeleted ? C.secondary : C.black, margin: '0 0 3px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', letterSpacing: '-0.3px' }}>{campaign.name}</p>
@@ -117,8 +113,6 @@ function CampaignCard({ campaign, status, onDelete, onRestart }) {
         </div>
         <span style={{ fontSize: 11, fontWeight: 600, color: statusCfg.color, background: statusCfg.bg, borderRadius: 6, padding: '3px 8px', flexShrink: 0 }}>{statusCfg.label}</span>
       </div>
-
-      {/* Countdown */}
       {isPaused && (
         <div style={{ background: C.bgOrange, border: `1px solid ${C.orange}`, borderRadius: 8, padding: '10px 14px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 4 }}>
@@ -129,8 +123,6 @@ function CampaignCard({ campaign, status, onDelete, onRestart }) {
           <p style={{ fontSize: 11, fontWeight: 500, color: C.orange, margin: 0, opacity: 0.8 }}>Time remaining to cancel</p>
         </div>
       )}
-
-      {/* Detail rows */}
       <div style={{ background: C.bg, border: `1px solid ${C.grayLine}`, borderRadius: 8, overflow: 'hidden' }}>
         {[
           { label: 'Target',           value: formatUGX(campaign.target_amount) },
@@ -146,8 +138,6 @@ function CampaignCard({ campaign, status, onDelete, onRestart }) {
           </div>
         ))}
       </div>
-
-      {/* Actions */}
       {isActive && onDelete && (
         <button onClick={onDelete} style={{ ...btnDanger, width: '100%', justifyContent: 'center', padding: '8px' }}>Delete campaign</button>
       )}
@@ -164,6 +154,8 @@ function CampaignCard({ campaign, status, onDelete, onRestart }) {
 
 // ── Main ───────────────────────────────────────────────────────────────────
 export default function Campaigns({ admin, business }) {
+  const navigate = useNavigate()
+
   const [campaigns, setCampaigns]   = useState([])
   const [loading, setLoading]       = useState(true)
   const [showWizard, setShowWizard] = useState(false)
@@ -204,6 +196,7 @@ export default function Campaigns({ admin, business }) {
 
   const isRetail = business?.sector === 'Retail'
   const isEdu    = !isRetail && campaignType === 'education_fees'
+  const kybVerified = business?.kyb_status === 'verified'
   const displaySteps = isRetail ? WIZARD_STEPS_RETAIL : isEdu ? WIZARD_STEPS_EDU : WIZARD_STEPS_GENERAL
 
   function displayStep() {
@@ -214,8 +207,6 @@ export default function Campaigns({ admin, business }) {
   useEffect(() => { if (business) loadCampaigns() }, [business])
   useEffect(() => { const i = setInterval(() => { if (business) loadCampaigns() }, 60000); return () => clearInterval(i) }, [business])
   useEffect(() => { campaigns.forEach(c => { if (getEffectiveStatus(c) === 'deleted' && c.status !== 'deleted') processDeletion(c) }) }, [campaigns])
-
-  // ── All business logic — unchanged ────────────────────────────────────
 
   async function loadCampaigns() {
     setLoading(true)
@@ -317,14 +308,37 @@ export default function Campaigns({ admin, business }) {
     setFeeType('tuition'); setAcademicYear(''); setTermOrSemester(''); setMinimumPayment(''); setMinimumRegistrationAmount('')
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
-
   const activeCampaigns  = campaigns.filter(c => getEffectiveStatus(c) === 'active')
   const pausedCampaigns  = campaigns.filter(c => getEffectiveStatus(c) === 'paused')
   const deletedCampaigns = campaigns.filter(c => getEffectiveStatus(c) === 'deleted')
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 24, fontFamily: 'Inter, system-ui, sans-serif' }}>
+
+      {/* ── KYB GATE ── */}
+      {!kybVerified && (
+        <div style={{ background: C.bgOrange, border: `1px solid ${C.orange}`, borderRadius: 12, padding: '16px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div style={{ width: 36, height: 36, borderRadius: 10, background: C.orange, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="3" y="11" width="18" height="11" rx="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" />
+              </svg>
+            </div>
+            <div>
+              <p style={{ fontSize: 14, fontWeight: 600, color: C.orange, margin: '0 0 2px' }}>KYB verification required to create campaigns</p>
+              <p style={{ fontSize: 13, fontWeight: 500, color: C.orange, margin: 0, opacity: 0.85 }}>
+                Complete your business verification before launching campaigns to customers.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => navigate('/dashboard/settings')}
+            style={{ padding: '9px 16px', fontSize: 13, fontWeight: 600, color: C.white, background: C.orange, border: `1px solid ${C.orange}`, borderRadius: 8, cursor: 'pointer', fontFamily: 'Inter, system-ui, sans-serif', whiteSpace: 'nowrap', flexShrink: 0 }}
+          >
+            Complete KYB →
+          </button>
+        </div>
+      )}
 
       {/* ── DELETE MODAL ── */}
       {showDeleteModal && (
@@ -367,7 +381,20 @@ export default function Campaigns({ admin, business }) {
         <p style={{ fontSize: 12, fontWeight: 500, color: C.secondary, margin: 0 }}>
           {activeCampaigns.length} active · {pausedCampaigns.length} paused · {deletedCampaigns.length} deleted
         </p>
-        <button onClick={() => { resetWizard(); setShowWizard(true) }} style={btnPrimary}>+ New campaign</button>
+        {kybVerified ? (
+          <button onClick={() => { resetWizard(); setShowWizard(true) }} style={btnPrimary}>+ New campaign</button>
+        ) : (
+          <button
+            disabled
+            title="Complete KYB verification to create campaigns"
+            style={{ ...btnPrimary, opacity: 0.4, cursor: 'not-allowed', gap: 6 }}
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="3" y="11" width="18" height="11" rx="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" />
+            </svg>
+            New campaign
+          </button>
+        )}
       </div>
 
       {/* ── CAMPAIGN LISTS ── */}
@@ -380,7 +407,9 @@ export default function Campaigns({ admin, business }) {
           </div>
           <p style={{ fontSize: 15, fontWeight: 600, color: C.black, margin: 0 }}>No campaigns yet</p>
           <p style={{ fontSize: 13, fontWeight: 500, color: C.secondary, margin: 0 }}>{isRetail ? 'Add products first, then create a savings campaign for each product.' : 'Create your first campaign to start enrolling customers.'}</p>
-          <button onClick={() => { resetWizard(); setShowWizard(true) }} style={{ ...btnPrimary, padding: '10px 20px', marginTop: 4 }}>+ Create campaign</button>
+          {kybVerified && (
+            <button onClick={() => { resetWizard(); setShowWizard(true) }} style={{ ...btnPrimary, padding: '10px 20px', marginTop: 4 }}>+ Create campaign</button>
+          )}
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
@@ -413,18 +442,16 @@ export default function Campaigns({ admin, business }) {
         </div>
       )}
 
-      {/* ── WIZARD MODAL ── */}
-      {showWizard && (
+      {/* ── WIZARD MODAL — only opens when KYB verified ── */}
+      {showWizard && kybVerified && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(17,17,17,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20, zIndex: 500, backdropFilter: 'blur(4px)' }}>
           <div style={{ background: C.white, border: `1px solid ${C.stroke}`, borderRadius: 16, width: '100%', maxWidth: 600, maxHeight: '90vh', display: 'flex', flexDirection: 'column', boxShadow: '0 8px 40px rgba(17,17,17,0.14)', overflow: 'hidden' }}>
 
-            {/* Wizard header */}
             <div style={{ background: C.black, padding: '18px 22px 20px', flexShrink: 0 }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
                 <p style={{ color: C.white, fontWeight: 600, fontSize: 16, margin: 0, letterSpacing: '-0.4px' }}>New Campaign</p>
                 <button onClick={() => setShowWizard(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,0.4)', fontSize: 20 }}>✕</button>
               </div>
-              {/* Step tracker */}
               <div style={{ display: 'flex', alignItems: 'center' }}>
                 {displaySteps.map((label, i) => (
                   <div key={i} style={{ display: 'flex', alignItems: 'center', flex: i < displaySteps.length - 1 ? 1 : 0 }}>
@@ -437,10 +464,8 @@ export default function Campaigns({ admin, business }) {
               </div>
             </div>
 
-            {/* Wizard body */}
             <div style={{ padding: '20px 22px', display: 'flex', flexDirection: 'column', gap: 16, overflowY: 'auto', flex: 1 }}>
 
-              {/* RETAIL STEP 0: Product code */}
               {isRetail && wizardStep === 0 && (
                 <>
                   <div>
@@ -475,7 +500,6 @@ export default function Campaigns({ admin, business }) {
                 </>
               )}
 
-              {/* NON-RETAIL STEP 0: Campaign type */}
               {!isRetail && wizardStep === 0 && (
                 <>
                   <p style={{ fontSize: 13, fontWeight: 500, color: C.secondary, margin: 0, lineHeight: '140%' }}>
@@ -488,7 +512,7 @@ export default function Campaigns({ admin, business }) {
                     const sel = campaignType === opt.value
                     return (
                       <button key={opt.value} onClick={() => setCampaignType(opt.value)} style={{ width: '100%', textAlign: 'left', display: 'flex', alignItems: 'flex-start', gap: 14, padding: '14px 16px', background: sel ? C.black : C.white, border: `1px solid ${sel ? C.black : C.grayLine}`, borderRadius: 10, cursor: 'pointer', transition: 'all 0.12s', fontFamily: 'Inter, system-ui, sans-serif' }}>
-                        <div style={{ width: 40, height: 40, flexShrink: 0, borderRadius: 10, background: sel ? C.labelBg : C.labelBg, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <div style={{ width: 40, height: 40, flexShrink: 0, borderRadius: 10, background: C.labelBg, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={sel ? C.black : C.grayMid} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                             {opt.value === 'general' ? <><path d="M12 22C6 22 2 18 2 12V4l10-2 10 2v8c0 6-4 10-10 10z" /></> : <><path d="M22 10v6M2 10l10-5 10 5-10 5z" /><path d="M6 12v5c3 3 9 3 12 0v-5" /></>}
                           </svg>
@@ -506,7 +530,6 @@ export default function Campaigns({ admin, business }) {
                 </>
               )}
 
-              {/* NON-RETAIL STEP 1: Basic info */}
               {!isRetail && wizardStep === 1 && (
                 <>
                   <div>
@@ -545,7 +568,6 @@ export default function Campaigns({ admin, business }) {
                 </>
               )}
 
-              {/* NON-RETAIL STEP 2: Target & dates */}
               {!isRetail && wizardStep === 2 && (
                 <>
                   <div>
@@ -588,7 +610,7 @@ export default function Campaigns({ admin, business }) {
                             onFocus={e => e.target.style.borderColor = C.black} onBlur={e => e.target.style.borderColor = C.grayLine} />
                         </div>
                         <div style={{ background: C.bg, border: `1px solid ${C.grayLine}`, borderRadius: 8, padding: '10px 14px', marginTop: 8, fontSize: 12, fontWeight: 500, color: C.secondary, lineHeight: '140%' }}>
-                          This is the amount your school requires paid before a student can be registered (e.g. 50% of fees). Partna displays this to parents as a progress milestone but does <strong style={{ color: C.black }}>not</strong> block payments below it.
+                          This is the amount your school requires paid before a student can be registered. Partna displays this to parents as a milestone but does <strong style={{ color: C.black }}>not</strong> block payments below it.
                         </div>
                       </div>
                     </>
@@ -596,7 +618,6 @@ export default function Campaigns({ admin, business }) {
                 </>
               )}
 
-              {/* STEP 2 (retail) / STEP 3 (non-retail): Payment schedule */}
               {((isRetail && wizardStep === 2) || (!isRetail && wizardStep === 3)) && (
                 <>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px', background: C.bg, border: `1px solid ${C.grayLine}`, borderRadius: 10 }}>
@@ -641,7 +662,6 @@ export default function Campaigns({ admin, business }) {
                 </>
               )}
 
-              {/* STEP 3 (retail) / STEP 4 (non-retail): Vouchers & prizes */}
               {((isRetail && wizardStep === 3) || (!isRetail && wizardStep === 4)) && (
                 <>
                   {[
@@ -659,7 +679,6 @@ export default function Campaigns({ admin, business }) {
                 </>
               )}
 
-              {/* STEP 4 (retail) / STEP 5 (non-retail): Review & launch */}
               {((isRetail && wizardStep === 4) || (!isRetail && wizardStep === 5)) && (
                 <>
                   <div style={{ background: C.white, border: `1px solid ${C.stroke}`, borderRadius: 10, overflow: 'hidden' }}>
@@ -694,7 +713,6 @@ export default function Campaigns({ admin, business }) {
               {error && <div style={{ background: C.bgRed, borderRadius: 8, padding: '10px 14px', fontSize: 13, fontWeight: 500, color: C.red }}>{error}</div>}
             </div>
 
-            {/* Wizard footer */}
             <div style={{ padding: '14px 22px', borderTop: `1px solid ${C.grayLine}`, display: 'flex', gap: 10, flexShrink: 0 }}>
               {wizardStep > 0 && (
                 <button onClick={prevStep} style={{ ...btnSecondary, padding: '9px 16px' }}
