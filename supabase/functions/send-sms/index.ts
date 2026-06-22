@@ -1,4 +1,3 @@
-import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 const AT_USERNAME  = Deno.env.get('AT_USERNAME')!
@@ -86,6 +85,37 @@ const TEMPLATES: Record<string, (vars: Record<string, string>) => string> = {
     `Deposit UGX ${v.amount} now to avoid losing access to your card and cashback rewards. ` +
     `Visit www.partna.io to top up immediately.`,
 
+  // ── Campaign nudges ────────────────────────────────────────────────────
+
+  campaign_milestone_savings: (v) =>
+    `Partna: Hi ${v.name}, you have saved ${v.percentage}% of your ${v.campaign} target ` +
+    `with ${v.business_name}. ` +
+    `${Number(v.percentage) < 100 ? `UGX ${v.amount_remaining} to go — keep it up! ` : ''}` +
+    `Visit www.partna.io to view your progress.`,
+
+  campaign_milestone_fees: (v) =>
+    `Partna: Hi ${v.name}, you have paid ${v.percentage}% of your ${v.campaign} target ` +
+    `with ${v.business_name}. ` +
+    `${Number(v.percentage) < 100 ? `UGX ${v.amount_remaining} remaining — keep going! ` : ''}` +
+    `Visit www.partna.io to view your progress.`,
+
+  campaign_deadline_7d: (v) =>
+    `Partna: Hi ${v.name}, your ${v.campaign} deadline with ${v.business_name} is in 7 days. ` +
+    `You still need UGX ${v.amount_remaining} to reach your target. ` +
+    `Visit www.partna.io to make a payment now.`,
+
+  campaign_deadline_1d: (v) =>
+    `Partna: Hi ${v.name}, your ${v.campaign} deadline with ${v.business_name} is tomorrow. ` +
+    `UGX ${v.amount_remaining} remaining — make your payment today at www.partna.io.`,
+
+  campaign_complete: (v) =>
+    `Partna: Hi ${v.name}, you have completed your ${v.campaign} target with ${v.business_name}. ` +
+    `Well done! Visit www.partna.io to view your account.`,
+
+  campaign_no_deposit: (v) =>
+    `Partna: Hi ${v.name}, you have not made a payment toward ${v.campaign} with ${v.business_name} ` +
+    `in ${v.days} days. You are ${v.percentage}% of the way there — keep going at www.partna.io.`,
+
 }
 
 // ── Phone number formatter ─────────────────────────────────────────────────
@@ -165,7 +195,7 @@ async function logSMS(supabase: any, {
 }
 
 // ── Main handler ───────────────────────────────────────────────────────────
-serve(async (req) => {
+Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
   try {

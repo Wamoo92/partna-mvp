@@ -73,13 +73,127 @@ const C = {
   blue:      '#85A0C5',
 }
 
+// ── Email helpers ──────────────────────────────────────────────────────────
+
+async function sendEmail(to, subject, html) {
+  try {
+    await fetch(`${SUPABASE_URL}/functions/v1/send-admin-email`, {
+      method:  'POST',
+      headers: {
+        'Content-Type':  'application/json',
+        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+      },
+      body: JSON.stringify({ to, subject, html, from: 'support' }),
+    })
+  } catch (e) {
+    console.error('Card email error (non-critical):', e)
+  }
+}
+
+function cardActivationEmail({ customerName, businessName, cardNumber, expiry, nextBillingDate }) {
+  return `
+    <div style="font-family: Inter, system-ui, sans-serif; max-width: 560px; margin: 0 auto; padding: 32px 24px; color: #111;">
+      <img src="https://www.partna.io/partna-logo.png" alt="Partna" style="height: 28px; margin-bottom: 28px;" />
+
+      <h2 style="font-size: 22px; font-weight: 600; color: #111; letter-spacing: -0.5px; margin: 0 0 12px;">
+        Your virtual card is active
+      </h2>
+
+      <p style="font-size: 15px; color: #444; line-height: 1.6; margin: 0 0 20px;">
+        Hi ${customerName}, your ${businessName} Partna virtual card has been activated successfully.
+        You can now use it to earn cashback rewards at Partna partner merchants.
+      </p>
+
+      <div style="background: #F6F7EE; border: 1px solid #D7D8CB; border-radius: 10px; overflow: hidden; margin: 0 0 24px;">
+        ${[
+          ['Card number', cardNumber],
+          ['Expires',     expiry],
+          ['Next renewal', nextBillingDate],
+          ['Monthly fee', 'UGX 5,000'],
+        ].map(([label, value], i, arr) => `
+          <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px 16px; ${i < arr.length - 1 ? 'border-bottom: 1px solid #D5D9DD;' : ''}">
+            <span style="font-size: 13px; font-weight: 500; color: #959687;">${label}</span>
+            <span style="font-size: 13px; font-weight: 600; color: #111; font-family: monospace;">${value}</span>
+          </div>
+        `).join('')}
+      </div>
+
+      <p style="font-size: 15px; color: #444; line-height: 1.6; margin: 0 0 12px;">
+        <strong>How cashback works</strong>
+      </p>
+      <ul style="font-size: 15px; color: #444; line-height: 1.8; margin: 0 0 24px; padding-left: 20px;">
+        <li>Save more to unlock higher cashback tiers — Bronze, Silver, Gold, and Platinum</li>
+        <li>Use your card at Partna partner merchants to earn cashback automatically</li>
+        <li>Your cashback rate increases as you reach more of your savings target</li>
+      </ul>
+
+      <p style="font-size: 14px; color: #444; line-height: 1.6; margin: 0 0 24px;">
+        View your card and track your cashback tier at
+        <a href="https://www.partna.io/portal/card" style="color: #111; font-weight: 600;">www.partna.io/portal/card</a>.
+      </p>
+
+      <div style="border-top: 1px solid #D7D8CB; padding-top: 20px;">
+        <p style="font-size: 12px; color: #959687; margin: 0; line-height: 1.6;">
+          Your subscription renews monthly at UGX 5,000 from your savings wallet.
+          You can cancel at any time from your card page.
+          Questions? Contact <a href="mailto:support@partna.io" style="color: #111; font-weight: 600;">support@partna.io</a>.
+        </p>
+      </div>
+
+      <p style="font-size: 13px; color: #959687; margin: 24px 0 0;">
+        Powered by <a href="https://www.partna.io" style="color: #111; font-weight: 600;">Partna</a>
+      </p>
+    </div>
+  `
+}
+
+function cardCancellationEmail({ customerName, businessName, billingPeriodEnd }) {
+  return `
+    <div style="font-family: Inter, system-ui, sans-serif; max-width: 560px; margin: 0 auto; padding: 32px 24px; color: #111;">
+      <img src="https://www.partna.io/partna-logo.png" alt="Partna" style="height: 28px; margin-bottom: 28px;" />
+
+      <h2 style="font-size: 22px; font-weight: 600; color: #111; letter-spacing: -0.5px; margin: 0 0 12px;">
+        Card subscription cancelled
+      </h2>
+
+      <p style="font-size: 15px; color: #444; line-height: 1.6; margin: 0 0 20px;">
+        Hi ${customerName}, your ${businessName} Partna card subscription has been cancelled.
+      </p>
+
+      <div style="background: #F8F0E4; border: 1px solid #EF8354; border-radius: 10px; padding: 16px 20px; margin: 0 0 24px;">
+        <p style="font-size: 14px; font-weight: 600; color: #EF8354; margin: 0 0 4px;">What happens next</p>
+        <p style="font-size: 14px; color: #EF8354; margin: 0; line-height: 1.6;">
+          Your card will remain active until <strong>${billingPeriodEnd}</strong>.
+          After this date your card will be locked and cashback rewards will no longer apply.
+          No refund will be given for the current billing period.
+        </p>
+      </div>
+
+      <p style="font-size: 15px; color: #444; line-height: 1.6; margin: 0 0 24px;">
+        If you cancelled by mistake or want to reactivate your card, visit your card page at
+        <a href="https://www.partna.io/portal/card" style="color: #111; font-weight: 600;">www.partna.io/portal/card</a>
+        before <strong>${billingPeriodEnd}</strong> to reinstate your subscription.
+      </p>
+
+      <div style="border-top: 1px solid #D7D8CB; padding-top: 20px;">
+        <p style="font-size: 12px; color: #959687; margin: 0; line-height: 1.6;">
+          Questions? Contact <a href="mailto:support@partna.io" style="color: #111; font-weight: 600;">support@partna.io</a>.
+        </p>
+      </div>
+
+      <p style="font-size: 13px; color: #959687; margin: 24px 0 0;">
+        Powered by <a href="https://www.partna.io" style="color: #111; font-weight: 600;">Partna</a>
+      </p>
+    </div>
+  `
+}
+
 // ── Main ──────────────────────────────────────────────────────────────────
 
 export default function CardDetail({ customer, business }) {
   const brand    = useBrand()
   const navigate = useNavigate()
 
-  // Existing state
   const [card, setCard]               = useState(null)
   const [loading, setLoading]         = useState(true)
   const [flipped, setFlipped]         = useState(false)
@@ -87,45 +201,39 @@ export default function CardDetail({ customer, business }) {
   const [tiers, setTiers]             = useState([])
   const [merchants, setMerchants]     = useState([])
 
-  // Card subscription state
   const [subscription, setSubscription]   = useState(null)
   const [walletBalance, setWalletBalance] = useState(0)
 
-  // Activation flow
   const [showActivateModal, setShowActivateModal]     = useState(false)
   const [activating, setActivating]                   = useState(false)
   const [activateError, setActivateError]             = useState('')
   const [activateSuccess, setActivateSuccess]         = useState(false)
 
-  // Physical card order flow
   const [showOrderModal, setShowOrderModal]           = useState(false)
   const [ordering, setOrdering]                       = useState(false)
   const [orderError, setOrderError]                   = useState('')
   const [orderSuccess, setOrderSuccess]               = useState(false)
   const [orderCollectionCode, setOrderCollectionCode] = useState('')
 
-  // Cancel subscription flow
   const [showCancelModal, setShowCancelModal]         = useState(false)
   const [cancelling, setCancelling]                   = useState(false)
   const [cancelError, setCancelError]                 = useState('')
 
-  // Plan gating
   const plan        = business?.subscription_package || 'starter'
   const cardEnabled = plan === 'growth' || plan === 'enterprise'
 
-  const cardActive  = subscription && (subscription.status === 'active' || subscription.status === 'grace_period')
-  const cardLapsed  = subscription && (subscription.status === 'lapsed')
-  const physicalOrdered   = subscription?.physical_status === 'ordered'
+  const cardActive         = subscription && (subscription.status === 'active' || subscription.status === 'grace_period')
+  const cardLapsed         = subscription && (subscription.status === 'lapsed')
+  const physicalOrdered    = subscription?.physical_status === 'ordered'
   const physicalDispatched = subscription?.physical_status === 'dispatched'
   const physicalDelivered  = subscription?.physical_status === 'delivered'
-  const hasPhysical = physicalOrdered || physicalDispatched || physicalDelivered
+  const hasPhysical        = physicalOrdered || physicalDispatched || physicalDelivered
 
   useEffect(() => { if (customer) loadAll() }, [customer])
 
   async function loadAll() {
     setLoading(true)
     try {
-      // Existing queries — unchanged
       const { data: cardData } = await supabase
         .from('cards').select('*').eq('customer_id', customer.id)
       if (cardData?.length > 0) setCard(cardData[0])
@@ -147,7 +255,6 @@ export default function CardDetail({ customer, business }) {
         .from('merchants').select('*').eq('is_active', true).order('name')
       setMerchants(merchantData || [])
 
-      // New: card subscription and wallet balance
       const { data: subData } = await supabase
         .from('card_subscriptions')
         .select('*')
@@ -183,10 +290,29 @@ export default function CardDetail({ customer, business }) {
       })
       const data = await res.json()
       if (!res.ok) { setActivateError(data.error || 'Activation failed. Please try again.'); setActivating(false); return }
+
       setActivateSuccess(true)
       setWalletBalance(data.new_balance)
-      // Reload subscription
       await loadAll()
+
+      // Send activation welcome email — fire and forget
+      if (customer?.email) {
+        const nextBilling = data.next_billing_date
+          ? new Date(data.next_billing_date).toLocaleDateString('en-UG', { day: 'numeric', month: 'long', year: 'numeric' })
+          : '30 days from today'
+        sendEmail(
+          customer.email,
+          `Your ${brand.businessName} Partna card is now active`,
+          cardActivationEmail({
+            customerName:    `${customer.first_name} ${customer.last_name}`,
+            businessName:    brand.businessName,
+            cardNumber:      card?.card_number ? formatCardNumber(card.card_number) : '—',
+            expiry:          card?.expiry_date ? formatExpiry(card.expiry_date) : '—',
+            nextBillingDate: nextBilling,
+          })
+        )
+      }
+
       setTimeout(() => { setShowActivateModal(false); setActivateSuccess(false) }, 1800)
     } catch (e) {
       setActivateError('Something went wrong. Please try again.')
@@ -225,7 +351,25 @@ export default function CardDetail({ customer, business }) {
         .update({ status: 'cancelled', cancelled_at: new Date().toISOString(), cancellation_reason: 'customer_request' })
         .eq('id', subscription.id)
       if (error) throw error
+
       setShowCancelModal(false)
+
+      // Send cancellation confirmation email — fire and forget
+      if (customer?.email) {
+        const billingEnd = subscription?.next_billing_date
+          ? new Date(subscription.next_billing_date).toLocaleDateString('en-UG', { day: 'numeric', month: 'long', year: 'numeric' })
+          : 'end of your current billing period'
+        sendEmail(
+          customer.email,
+          `Your ${brand.businessName} card subscription has been cancelled`,
+          cardCancellationEmail({
+            customerName:    `${customer.first_name} ${customer.last_name}`,
+            businessName:    brand.businessName,
+            billingPeriodEnd: billingEnd,
+          })
+        )
+      }
+
       await loadAll()
     } catch (e) {
       setCancelError('Could not cancel subscription. Please try again.')
@@ -252,7 +396,6 @@ export default function CardDetail({ customer, business }) {
   const nextPct      = nextTierObj    ? Number(nextTierObj.min_percentage)     : 100
   const cashbackRate = currentTierObj ? Number(currentTierObj.cashback_rate)   : 0
 
-  // Bottom nav — Card always shown here (this page is only reachable if cardEnabled)
   const navItems = [
     { label: 'Home',    path: '/portal/home'         },
     { label: 'Card',    path: '/portal/card'         },
@@ -269,22 +412,17 @@ export default function CardDetail({ customer, business }) {
   return (
     <div style={{ minHeight: '100vh', background: C.bg, display: 'flex', flexDirection: 'column', paddingBottom: 80, fontFamily: 'Inter, system-ui, sans-serif' }}>
 
-      {/* ══════════════════════════════════════════════
-          ACTIVATE MODAL
-      ══════════════════════════════════════════════ */}
+      {/* ══ ACTIVATE MODAL ══ */}
       {showActivateModal && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(17,17,17,0.55)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', zIndex: 500, backdropFilter: 'blur(4px)' }}>
           <div style={{ background: C.white, borderRadius: '16px 16px 0 0', width: '100%', maxWidth: 480, padding: '24px 20px 32px', display: 'flex', flexDirection: 'column', gap: 16 }}>
-
             {activateSuccess ? (
               <div style={{ textAlign: 'center', padding: '16px 0' }}>
                 <div style={{ width: 56, height: 56, borderRadius: '50%', background: C.bgGreen, display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 12px' }}>
-                  <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke={C.green} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                    <polyline points="20 6 9 17 4 12" />
-                  </svg>
+                  <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke={C.green} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
                 </div>
                 <p style={{ fontSize: 18, fontWeight: 600, color: C.black, margin: '0 0 6px', letterSpacing: '-0.5px' }}>Card activated!</p>
-                <p style={{ fontSize: 14, fontWeight: 500, color: C.secondary, margin: 0 }}>Your virtual card is now active.</p>
+                <p style={{ fontSize: 14, fontWeight: 500, color: C.secondary, margin: 0 }}>Your virtual card is now active. Check your email for details.</p>
               </div>
             ) : (
               <>
@@ -292,8 +430,6 @@ export default function CardDetail({ customer, business }) {
                   <p style={{ fontSize: 17, fontWeight: 600, color: C.black, margin: 0, letterSpacing: '-0.5px' }}>Activate your card</p>
                   <button onClick={() => { setShowActivateModal(false); setActivateError('') }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: C.grayMid, fontSize: 20, lineHeight: 1, padding: 4 }}>✕</button>
                 </div>
-
-                {/* Fee summary */}
                 <div style={{ background: C.bg, border: `1px solid ${C.stroke}`, borderRadius: 10, overflow: 'hidden' }}>
                   {[
                     { label: 'Virtual card subscription', value: 'UGX 5,000 / month' },
@@ -307,26 +443,21 @@ export default function CardDetail({ customer, business }) {
                     </div>
                   ))}
                 </div>
-
                 {walletBalance < 5000 && (
                   <div style={{ background: C.bgOrange, border: `1px solid ${C.orange}`, borderRadius: 10, padding: '12px 14px', fontSize: 13, fontWeight: 500, color: C.orange, lineHeight: '140%' }}>
                     You need at least UGX 5,000 in your wallet to activate. Please deposit funds first.
                   </div>
                 )}
-
-                {/* Terms */}
                 <div style={{ fontSize: 12, fontWeight: 500, color: C.secondary, lineHeight: '160%' }}>
                   By activating, you agree to a monthly subscription fee of <strong style={{ color: C.black }}>UGX 5,000</strong> deducted from your savings wallet. The subscription renews automatically each month. You can cancel at any time from this page. No refunds are given for partial months. If your balance is insufficient, your card will enter a 7-day grace period before being locked.
                 </div>
-
                 {activateError && (
                   <div style={{ background: C.bgRed, border: `1px solid ${C.red}`, borderRadius: 10, padding: '10px 14px', fontSize: 13, fontWeight: 500, color: C.red }}>{activateError}</div>
                 )}
-
                 <button
                   onClick={handleActivate}
                   disabled={activating || walletBalance < 5000}
-                  style={{ width: '100%', padding: '14px', fontSize: 15, fontWeight: 600, color: C.white, background: walletBalance < 5000 ? C.grayMid : C.black, border: 'none', borderRadius: 12, cursor: walletBalance < 5000 ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, transition: 'opacity 0.15s' }}
+                  style={{ width: '100%', padding: '14px', fontSize: 15, fontWeight: 600, color: C.white, background: walletBalance < 5000 ? C.grayMid : C.black, border: 'none', borderRadius: 12, cursor: walletBalance < 5000 ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}
                 >
                   {activating ? <><div className="spinner spinner-sm spinner-light" /> Activating…</> : 'Activate card — UGX 5,000'}
                 </button>
@@ -336,19 +467,14 @@ export default function CardDetail({ customer, business }) {
         </div>
       )}
 
-      {/* ══════════════════════════════════════════════
-          ORDER PHYSICAL CARD MODAL
-      ══════════════════════════════════════════════ */}
+      {/* ══ ORDER PHYSICAL CARD MODAL ══ */}
       {showOrderModal && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(17,17,17,0.55)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', zIndex: 500, backdropFilter: 'blur(4px)' }}>
           <div style={{ background: C.white, borderRadius: '16px 16px 0 0', width: '100%', maxWidth: 480, padding: '24px 20px 32px', display: 'flex', flexDirection: 'column', gap: 16 }}>
-
             {orderSuccess ? (
               <div style={{ textAlign: 'center', padding: '16px 0', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
                 <div style={{ width: 56, height: 56, borderRadius: '50%', background: C.bgGreen, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke={C.green} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                    <polyline points="20 6 9 17 4 12" />
-                  </svg>
+                  <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke={C.green} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
                 </div>
                 <p style={{ fontSize: 18, fontWeight: 600, color: C.black, margin: 0, letterSpacing: '-0.5px' }}>Physical card ordered!</p>
                 <p style={{ fontSize: 14, fontWeight: 500, color: C.secondary, margin: 0, lineHeight: '150%', maxWidth: 280 }}>
@@ -371,14 +497,12 @@ export default function CardDetail({ customer, business }) {
                   <p style={{ fontSize: 17, fontWeight: 600, color: C.black, margin: 0, letterSpacing: '-0.5px' }}>Order physical card</p>
                   <button onClick={() => { setShowOrderModal(false); setOrderError('') }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: C.grayMid, fontSize: 20, lineHeight: 1, padding: 4 }}>✕</button>
                 </div>
-
-                {/* Fee summary */}
                 <div style={{ background: C.bg, border: `1px solid ${C.stroke}`, borderRadius: 10, overflow: 'hidden' }}>
                   {[
-                    { label: 'One-time issuing fee',          value: 'UGX 20,000', note: 'Charged today' },
-                    { label: 'Monthly subscription (physical)', value: 'UGX 10,000 / month', note: 'Starts from delivery date' },
-                    { label: 'Your wallet balance',           value: formatUGX(walletBalance), color: walletBalance >= 20000 ? C.green : C.red },
-                    { label: 'Balance after order',           value: formatUGX(Math.max(walletBalance - 20000, 0)), color: walletBalance >= 20000 ? C.black : C.red },
+                    { label: 'One-time issuing fee',            value: 'UGX 20,000',           note: 'Charged today' },
+                    { label: 'Monthly subscription (physical)', value: 'UGX 10,000 / month',   note: 'Starts from delivery date' },
+                    { label: 'Your wallet balance',             value: formatUGX(walletBalance), color: walletBalance >= 20000 ? C.green : C.red },
+                    { label: 'Balance after order',             value: formatUGX(Math.max(walletBalance - 20000, 0)), color: walletBalance >= 20000 ? C.black : C.red },
                   ].map((row, i, arr) => (
                     <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 14px', borderBottom: i < arr.length - 1 ? `1px solid ${C.grayLine}` : 'none', gap: 8 }}>
                       <div>
@@ -389,22 +513,17 @@ export default function CardDetail({ customer, business }) {
                     </div>
                   ))}
                 </div>
-
                 {walletBalance < 20000 && (
                   <div style={{ background: C.bgOrange, border: `1px solid ${C.orange}`, borderRadius: 10, padding: '12px 14px', fontSize: 13, fontWeight: 500, color: C.orange, lineHeight: '140%' }}>
                     You need at least UGX 20,000 in your wallet to cover the issuing fee. Please deposit funds first.
                   </div>
                 )}
-
-                {/* Terms */}
                 <div style={{ fontSize: 12, fontWeight: 500, color: C.secondary, lineHeight: '160%' }}>
                   By ordering, you agree to a one-time issuing fee of <strong style={{ color: C.black }}>UGX 20,000</strong> charged immediately. Your monthly subscription will change to <strong style={{ color: C.black }}>UGX 10,000/month</strong> starting from the date your card is delivered. Your card will be ready for collection at <strong style={{ color: C.black }}>{brand.businessName}</strong> within 5–7 working days. You will receive an email with a collection code when it is ready. Bring your National ID and the code to collect. No refunds are given on the issuing fee.
                 </div>
-
                 {orderError && (
                   <div style={{ background: C.bgRed, border: `1px solid ${C.red}`, borderRadius: 10, padding: '10px 14px', fontSize: 13, fontWeight: 500, color: C.red }}>{orderError}</div>
                 )}
-
                 <button
                   onClick={handleOrderPhysical}
                   disabled={ordering || walletBalance < 20000}
@@ -418,9 +537,7 @@ export default function CardDetail({ customer, business }) {
         </div>
       )}
 
-      {/* ══════════════════════════════════════════════
-          CANCEL SUBSCRIPTION MODAL
-      ══════════════════════════════════════════════ */}
+      {/* ══ CANCEL SUBSCRIPTION MODAL ══ */}
       {showCancelModal && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(17,17,17,0.55)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', zIndex: 500, backdropFilter: 'blur(4px)' }}>
           <div style={{ background: C.white, borderRadius: '16px 16px 0 0', width: '100%', maxWidth: 480, padding: '24px 20px 32px', display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -457,14 +574,9 @@ export default function CardDetail({ customer, business }) {
         <span style={{ fontSize: 14, fontWeight: 500, color: C.secondary }}>My Card</span>
       </header>
 
-      {/* ══════════════════════════════════════════════
-          STATE 1 — ACTIVATION GATE
-          Shown when card-enabled but no active subscription
-      ══════════════════════════════════════════════ */}
+      {/* ══ STATE 1 — ACTIVATION GATE ══ */}
       {!cardActive && !cardLapsed && (
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '40px 24px', gap: 24, textAlign: 'center' }}>
-
-          {/* Greyed card illustration */}
           <div style={{ width: 240, height: 148, background: C.white, border: `1px solid ${C.stroke}`, borderRadius: 12, padding: 16, display: 'flex', flexDirection: 'column', justifyContent: 'space-between', filter: 'grayscale(1) opacity(0.45)', boxShadow: '0 8px 24px rgba(0,0,0,0.08)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <span style={{ fontSize: 11, fontWeight: 600, color: C.black }}>{brand.businessName}</span>
@@ -482,19 +594,16 @@ export default function CardDetail({ customer, business }) {
               </div>
             </div>
           </div>
-
           <div>
             <p style={{ fontSize: 20, fontWeight: 600, color: C.black, margin: '0 0 8px', letterSpacing: '-0.5px' }}>Activate your savings card</p>
             <p style={{ fontSize: 14, fontWeight: 500, color: C.secondary, margin: 0, lineHeight: '150%', maxWidth: 280 }}>
               Get access to your virtual card, cashback rewards, and the option to order a physical card.
             </p>
           </div>
-
-          {/* Pricing */}
           <div style={{ background: C.white, border: `1px solid ${C.stroke}`, borderRadius: 12, padding: '16px 20px', width: '100%', maxWidth: 320, display: 'flex', flexDirection: 'column', gap: 10 }}>
             {[
-              { type: 'Virtual card', price: 'UGX 5,000 / month', icon: '💳' },
-              { type: 'Physical card', price: 'UGX 10,000 / month + UGX 20,000 issuing fee', icon: '🪪' },
+              { type: 'Virtual card',  price: 'UGX 5,000 / month',                              icon: '💳' },
+              { type: 'Physical card', price: 'UGX 10,000 / month + UGX 20,000 issuing fee',    icon: '🪪' },
             ].map((item, i) => (
               <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
                 <span style={{ fontSize: 20 }}>{item.icon}</span>
@@ -505,20 +614,13 @@ export default function CardDetail({ customer, business }) {
               </div>
             ))}
           </div>
-
-          <button
-            onClick={() => setShowActivateModal(true)}
-            style={{ padding: '14px 36px', fontSize: 15, fontWeight: 600, color: C.white, background: C.black, border: 'none', borderRadius: 12, cursor: 'pointer', width: '100%', maxWidth: 320 }}
-          >
+          <button onClick={() => setShowActivateModal(true)} style={{ padding: '14px 36px', fontSize: 15, fontWeight: 600, color: C.white, background: C.black, border: 'none', borderRadius: 12, cursor: 'pointer', width: '100%', maxWidth: 320 }}>
             Activate virtual card
           </button>
         </div>
       )}
 
-      {/* ══════════════════════════════════════════════
-          LAPSED STATE
-          Shown when subscription has lapsed
-      ══════════════════════════════════════════════ */}
+      {/* ══ LAPSED STATE ══ */}
       {cardLapsed && (
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '40px 24px', gap: 20, textAlign: 'center' }}>
           <div style={{ width: 56, height: 56, borderRadius: '50%', background: C.bgRed, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -532,22 +634,15 @@ export default function CardDetail({ customer, business }) {
               Your card subscription lapsed due to insufficient balance. Reactivate to restore access to your card and cashback rewards.
             </p>
           </div>
-          <button
-            onClick={() => setShowActivateModal(true)}
-            style={{ padding: '14px 36px', fontSize: 15, fontWeight: 600, color: C.white, background: C.black, border: 'none', borderRadius: 12, cursor: 'pointer', width: '100%', maxWidth: 320 }}
-          >
+          <button onClick={() => setShowActivateModal(true)} style={{ padding: '14px 36px', fontSize: 15, fontWeight: 600, color: C.white, background: C.black, border: 'none', borderRadius: 12, cursor: 'pointer', width: '100%', maxWidth: 320 }}>
             Reactivate card — UGX 5,000
           </button>
         </div>
       )}
 
-      {/* ══════════════════════════════════════════════
-          STATE 2 — ACTIVE CARD VIEW
-          Shown when subscription is active or in grace period
-      ══════════════════════════════════════════════ */}
+      {/* ══ STATE 2 — ACTIVE CARD VIEW ══ */}
       {cardActive && (
         <>
-          {/* Grace period warning */}
           {subscription?.status === 'grace_period' && (
             <div style={{ background: C.bgOrange, borderBottom: `1px solid ${C.orange}`, padding: '12px 20px', display: 'flex', alignItems: 'center', gap: 10 }}>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={C.orange} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
@@ -562,22 +657,17 @@ export default function CardDetail({ customer, business }) {
             </div>
           )}
 
-          {/* ── Card display panel ── */}
+          {/* Card display panel */}
           <div style={{ background: C.black, padding: '28px 20px 32px', borderBottom: `1px solid ${C.grayLine}`, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16 }}>
-
-            {/* Flippable card */}
             <div onClick={() => setFlipped(f => !f)} style={{ perspective: '1000px', width: '100%', maxWidth: 320, height: 196, cursor: 'pointer' }}>
               <div style={{ width: '100%', height: 196, position: 'relative', transformStyle: 'preserve-3d', transition: 'transform 0.55s ease', transform: flipped ? 'rotateY(180deg)' : 'rotateY(0deg)' }}>
-
                 {/* Front */}
                 <div style={{ position: 'absolute', inset: 0, backfaceVisibility: 'hidden', WebkitBackfaceVisibility: 'hidden', background: C.white, border: `1px solid ${C.stroke}`, borderRadius: 12, padding: 18, display: 'flex', flexDirection: 'column', justifyContent: 'space-between', boxShadow: '0 12px 32px rgba(0,0,0,0.32)' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <span style={{ fontSize: 13, fontWeight: 600, color: C.black, letterSpacing: '-0.4px' }}>{brand.businessName}</span>
                     <div style={{ width: 32, height: 22, borderRadius: 4, background: 'linear-gradient(135deg, #EDE5A6, #CFA255)' }} />
                   </div>
-                  <span style={{ fontFamily: 'monospace', fontSize: 15, fontWeight: 600, color: C.black, letterSpacing: '0.14em' }}>
-                    {formatCardNumber(card?.card_number)}
-                  </span>
+                  <span style={{ fontFamily: 'monospace', fontSize: 15, fontWeight: 600, color: C.black, letterSpacing: '0.14em' }}>{formatCardNumber(card?.card_number)}</span>
                   <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between' }}>
                     <div>
                       <p style={{ fontSize: 9, fontWeight: 500, color: C.secondary, margin: '0 0 2px', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Cardholder</p>
@@ -594,15 +684,12 @@ export default function CardDetail({ customer, business }) {
                   </div>
                   <p style={{ position: 'absolute', bottom: 5, left: 0, right: 0, textAlign: 'center', fontSize: 9, fontWeight: 500, color: C.grayMid, margin: 0 }}>tap to flip</p>
                 </div>
-
                 {/* Back */}
                 <div style={{ position: 'absolute', inset: 0, backfaceVisibility: 'hidden', WebkitBackfaceVisibility: 'hidden', transform: 'rotateY(180deg)', background: '#1a1a1a', borderRadius: 12, overflow: 'hidden', boxShadow: '0 12px 32px rgba(0,0,0,0.32)' }}>
                   <div style={{ position: 'absolute', top: 30, left: 0, right: 0, height: 40, background: '#2a2a2a' }} />
                   <div style={{ position: 'absolute', top: 84, left: 18, right: 18, display: 'flex', alignItems: 'center' }}>
                     <div style={{ flex: 1, height: 32, background: 'repeating-linear-gradient(90deg, #e8e8e8 0, #e8e8e8 4px, #ccc 4px, #ccc 8px)' }} />
-                    <div style={{ width: 50, height: 32, background: C.white, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'monospace', fontWeight: 600, fontSize: 14, color: C.black, borderRadius: 4 }}>
-                      {card?.cvv || '•••'}
-                    </div>
+                    <div style={{ width: 50, height: 32, background: C.white, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'monospace', fontWeight: 600, fontSize: 14, color: C.black, borderRadius: 4 }}>{card?.cvv || '•••'}</div>
                   </div>
                   <p style={{ position: 'absolute', top: 122, right: 18, fontSize: 9, fontWeight: 500, color: 'rgba(255,255,255,0.3)', margin: 0, textTransform: 'uppercase', letterSpacing: '0.06em' }}>CVV</p>
                   <p style={{ position: 'absolute', bottom: 40, left: 18, fontFamily: 'monospace', fontSize: 11, color: 'rgba(255,255,255,0.3)', letterSpacing: '0.1em', margin: 0 }}>{formatCardNumber(card?.card_number)}</p>
@@ -617,7 +704,6 @@ export default function CardDetail({ customer, business }) {
 
             <p style={{ fontSize: 11, fontWeight: 500, color: 'rgba(255,255,255,0.3)', margin: 0 }}>Tap card to flip</p>
 
-            {/* Subscription badge */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <span style={{ fontSize: 12, fontWeight: 600, color: subscription?.card_type === 'physical' ? C.blue : C.green, background: subscription?.card_type === 'physical' ? 'rgba(133,160,197,0.15)' : C.bgGreen, borderRadius: 6, padding: '3px 10px' }}>
                 {subscription?.card_type === 'physical' ? 'Physical card' : 'Virtual card'} · Active
@@ -627,7 +713,6 @@ export default function CardDetail({ customer, business }) {
               </span>
             </div>
 
-            {/* Card details strip */}
             {card && (
               <div style={{ width: '100%', maxWidth: 320, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
                 {[
@@ -643,16 +728,13 @@ export default function CardDetail({ customer, business }) {
             )}
           </div>
 
-          {/* ── Body ── */}
+          {/* Body */}
           <div style={{ flex: 1, padding: '20px', display: 'flex', flexDirection: 'column', gap: 20 }}>
 
-            {/* Physical card status / collection code */}
             {hasPhysical && (
               <div>
                 <p style={{ fontSize: 12, fontWeight: 600, color: C.secondary, margin: '0 0 10px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Physical card</p>
                 <div style={{ background: C.white, border: `1px solid ${C.stroke}`, borderRadius: 12, overflow: 'hidden' }}>
-
-                  {/* Status row */}
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px', borderBottom: subscription?.collection_code && !physicalDelivered ? `1px solid ${C.grayLine}` : 'none' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                       <div style={{ width: 8, height: 8, borderRadius: '50%', background: physicalDelivered ? C.green : physicalDispatched ? C.blue : C.orange, flexShrink: 0 }} />
@@ -668,15 +750,11 @@ export default function CardDetail({ customer, business }) {
                       </div>
                     </div>
                   </div>
-
-                  {/* Collection code — shown until delivered */}
                   {subscription?.collection_code && !physicalDelivered && (
                     <div style={{ padding: '16px', background: C.bg, borderTop: `1px solid ${C.grayLine}` }}>
                       <p style={{ fontSize: 11, fontWeight: 600, color: C.secondary, margin: '0 0 8px', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Your collection code</p>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                        <p style={{ fontFamily: 'monospace', fontSize: 26, fontWeight: 700, color: C.black, margin: 0, letterSpacing: '0.2em' }}>
-                          {subscription.collection_code}
-                        </p>
+                        <p style={{ fontFamily: 'monospace', fontSize: 26, fontWeight: 700, color: C.black, margin: 0, letterSpacing: '0.2em' }}>{subscription.collection_code}</p>
                       </div>
                       <p style={{ fontSize: 12, fontWeight: 500, color: C.secondary, margin: '8px 0 0', lineHeight: '140%' }}>
                         Show this code and your National ID when you collect your card from {brand.businessName}.
@@ -687,7 +765,6 @@ export default function CardDetail({ customer, business }) {
               </div>
             )}
 
-            {/* Order physical card — shown for virtual-only subscribers */}
             {subscription?.card_type === 'virtual' && !hasPhysical && (
               <div>
                 <p style={{ fontSize: 12, fontWeight: 600, color: C.secondary, margin: '0 0 10px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Physical card</p>
@@ -696,12 +773,7 @@ export default function CardDetail({ customer, business }) {
                     <p style={{ fontSize: 14, fontWeight: 600, color: C.black, margin: '0 0 3px' }}>Order a physical card</p>
                     <p style={{ fontSize: 12, fontWeight: 500, color: C.secondary, margin: 0 }}>UGX 20,000 issuing fee · UGX 10,000/month · Ready in 5–7 days</p>
                   </div>
-                  <button
-                    onClick={() => setShowOrderModal(true)}
-                    style={{ padding: '9px 16px', fontSize: 13, fontWeight: 600, color: C.white, background: C.black, border: 'none', borderRadius: 10, cursor: 'pointer', flexShrink: 0 }}
-                  >
-                    Order card
-                  </button>
+                  <button onClick={() => setShowOrderModal(true)} style={{ padding: '9px 16px', fontSize: 13, fontWeight: 600, color: C.white, background: C.black, border: 'none', borderRadius: 10, cursor: 'pointer', flexShrink: 0 }}>Order card</button>
                 </div>
               </div>
             )}
@@ -722,27 +794,20 @@ export default function CardDetail({ customer, business }) {
                     <span style={{ fontSize: 11, fontWeight: 600, color: C.grayMid, background: C.grayLight, borderRadius: 6, padding: '3px 10px', flexShrink: 0 }}>Coming soon</span>
                   </div>
                 ))}
-                {/* Cancel subscription */}
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px' }}>
                   <div>
                     <p style={{ fontSize: 14, fontWeight: 600, color: C.red, margin: '0 0 2px' }}>Cancel subscription</p>
                     <p style={{ fontSize: 12, fontWeight: 500, color: C.secondary, margin: 0 }}>Your card will be locked at end of billing period</p>
                   </div>
-                  <button
-                    onClick={() => setShowCancelModal(true)}
-                    style={{ padding: '7px 14px', fontSize: 12, fontWeight: 600, color: C.red, background: C.bgRed, border: `1px solid ${C.red}`, borderRadius: 8, cursor: 'pointer', flexShrink: 0 }}
-                  >
-                    Cancel
-                  </button>
+                  <button onClick={() => setShowCancelModal(true)} style={{ padding: '7px 14px', fontSize: 12, fontWeight: 600, color: C.red, background: C.bgRed, border: `1px solid ${C.red}`, borderRadius: 8, cursor: 'pointer', flexShrink: 0 }}>Cancel</button>
                 </div>
               </div>
             </div>
 
-            {/* Cashback tier progress — unchanged from original */}
+            {/* Cashback tier progress — unchanged */}
             <div>
               <p style={{ fontSize: 12, fontWeight: 600, color: C.secondary, margin: '0 0 10px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Cashback rewards</p>
               <div style={{ background: C.white, border: `1px solid ${C.stroke}`, borderRadius: 12, overflow: 'hidden' }}>
-
                 <div style={{ background: C.black, padding: '16px 18px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                     <div style={{ width: 10, height: 10, borderRadius: '50%', background: tierColor, flexShrink: 0 }} />
@@ -760,7 +825,6 @@ export default function CardDetail({ customer, business }) {
                     </div>
                   )}
                 </div>
-
                 {withinRetention && retentionExpiry && (
                   <div style={{ padding: '12px 16px', background: C.bgGreen, borderBottom: `1px solid ${C.grayLine}`, display: 'flex', alignItems: 'center', gap: 8 }}>
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={C.green} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
@@ -771,17 +835,10 @@ export default function CardDetail({ customer, business }) {
                     </span>
                   </div>
                 )}
-
                 <div style={{ padding: '16px 18px', borderBottom: `1px solid ${C.grayLine}` }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-                    <span style={{ fontSize: 12, fontWeight: 500, color: C.secondary }}>
-                      {currentTier === 'none' ? '0% saved' : `${progressPct}% — ${tierLabel}`}
-                    </span>
-                    {nextTierObj && (
-                      <span style={{ fontSize: 12, fontWeight: 500, color: C.secondary }}>
-                        {nextPct}% — {TIER_LABELS[nextTierObj.name.toLowerCase()]}
-                      </span>
-                    )}
+                    <span style={{ fontSize: 12, fontWeight: 500, color: C.secondary }}>{currentTier === 'none' ? '0% saved' : `${progressPct}% — ${tierLabel}`}</span>
+                    {nextTierObj && <span style={{ fontSize: 12, fontWeight: 500, color: C.secondary }}>{nextPct}% — {TIER_LABELS[nextTierObj.name.toLowerCase()]}</span>}
                   </div>
                   <div style={{ height: 6, borderRadius: 999, background: C.grayLight, overflow: 'hidden' }}>
                     <div style={{ height: '100%', borderRadius: 999, background: tierColor, width: `${progressPct}%`, transition: 'width 0.4s ease' }} />
@@ -793,7 +850,6 @@ export default function CardDetail({ customer, business }) {
                     }
                   </p>
                 </div>
-
                 {tiers.map((tier, i) => {
                   const tKey      = tier.name.toLowerCase()
                   const color     = TIER_COLORS[tKey] || C.grayMid
@@ -815,15 +871,13 @@ export default function CardDetail({ customer, business }) {
               </div>
             </div>
 
-            {/* Merchant browse — unchanged from original */}
+            {/* Merchants — unchanged */}
             <div>
               <p style={{ fontSize: 12, fontWeight: 600, color: C.secondary, margin: '0 0 10px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Partna merchants</p>
               {merchants.length === 0 ? (
                 <div style={{ background: C.white, border: `1px solid ${C.stroke}`, borderRadius: 12, padding: '32px 20px', textAlign: 'center' }}>
                   <div style={{ width: 48, height: 48, borderRadius: 12, background: C.labelBg, display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 12px' }}>
-                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={C.grayMid} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /><polyline points="9 22 9 12 15 12 15 22" />
-                    </svg>
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={C.grayMid} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /><polyline points="9 22 9 12 15 12 15 22" /></svg>
                   </div>
                   <p style={{ fontSize: 14, fontWeight: 600, color: C.black, margin: '0 0 6px' }}>Merchants coming soon</p>
                   <p style={{ fontSize: 13, fontWeight: 500, color: C.secondary, margin: 0, lineHeight: '140%' }}>
@@ -842,9 +896,7 @@ export default function CardDetail({ customer, business }) {
                       </div>
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <p style={{ fontSize: 14, fontWeight: 600, color: C.black, margin: '0 0 2px' }}>{m.name}</p>
-                        <p style={{ fontSize: 12, fontWeight: 500, color: C.secondary, margin: 0 }}>
-                          {m.category || 'Merchant'}{m.description ? ` · ${m.description}` : ''}
-                        </p>
+                        <p style={{ fontSize: 12, fontWeight: 500, color: C.secondary, margin: 0 }}>{m.category || 'Merchant'}{m.description ? ` · ${m.description}` : ''}</p>
                       </div>
                       <div style={{ textAlign: 'right', flexShrink: 0 }}>
                         <p style={{ fontSize: 18, fontWeight: 600, color: currentTier !== 'none' ? C.green : C.grayMid, margin: '0 0 2px', letterSpacing: '-0.5px' }}>
@@ -858,12 +910,11 @@ export default function CardDetail({ customer, business }) {
                 </div>
               )}
             </div>
-
           </div>
         </>
       )}
 
-      {/* ── Bottom nav ── */}
+      {/* Bottom nav */}
       <nav style={{ position: 'fixed', bottom: 0, left: 0, right: 0, background: C.white, borderTop: `1px solid ${C.stroke}`, display: 'flex', alignItems: 'center', justifyContent: 'space-around', padding: '10px 0', paddingBottom: `calc(10px + env(safe-area-inset-bottom, 0px))`, zIndex: 100 }}>
         {navItems.map(({ label, path }) => {
           const active = path === '/portal/card'
@@ -880,7 +931,6 @@ export default function CardDetail({ customer, business }) {
           )
         })}
       </nav>
-
     </div>
   )
 }
