@@ -23,6 +23,15 @@ function formatDate(d) {
   if (!d) return '—'
   return new Date(d).toLocaleDateString('en-UG', { day: 'numeric', month: 'short', year: 'numeric' })
 }
+function formatDateTime(d) {
+  if (!d) return '—'
+  return new Date(d).toLocaleDateString('en-UG', { day: 'numeric', month: 'long', year: 'numeric' })
+}
+function addDays(date, days) {
+  const d = new Date(date)
+  d.setDate(d.getDate() + days)
+  return d.toISOString()
+}
 
 // ── Sellin tokens ──────────────────────────────────────────────────────────
 const C = {
@@ -45,26 +54,28 @@ const C = {
   blue:      '#85A0C5',
 }
 
-function Badge({ value, type }) {
+function Badge({ value }) {
   const cfg = {
-    verified:    { bg: C.bgGreen,   color: C.green  },
-    pending:     { bg: C.bgOrange,  color: C.orange  },
-    rejected:    { bg: C.bgRed,     color: C.red     },
-    skipped:     { bg: C.grayLight, color: C.grayMid },
-    active:      { bg: C.bgGreen,   color: C.green  },
-    suspended:   { bg: C.bgRed,     color: C.red     },
-    deactivated: { bg: C.grayLight, color: C.grayMid },
-    completed:   { bg: C.bgGreen,   color: C.green  },
-    failed:      { bg: C.bgRed,     color: C.red     },
+    verified:      { bg: C.bgGreen,   color: C.green   },
+    pending:       { bg: C.bgOrange,  color: C.orange  },
+    rejected:      { bg: C.bgRed,     color: C.red     },
+    skipped:       { bg: C.grayLight, color: C.grayMid },
+    active:        { bg: C.bgGreen,   color: C.green   },
+    suspended:     { bg: C.bgRed,     color: C.red     },
+    deactivated:   { bg: C.grayLight, color: C.grayMid },
+    completed:     { bg: C.bgGreen,   color: C.green   },
+    failed:        { bg: C.bgRed,     color: C.red     },
+    grace:         { bg: C.bgOrange,  color: C.orange  },
+    cancelled:     { bg: C.grayLight, color: C.grayMid },
+    not_submitted: { bg: C.grayLight, color: C.grayMid },
   }[value] || { bg: C.grayLight, color: C.grayMid }
   return (
     <span style={{ fontSize: 11, fontWeight: 600, color: cfg.color, background: cfg.bg, borderRadius: 6, padding: '3px 8px', textTransform: 'capitalize', whiteSpace: 'nowrap' }}>
-      {value || 'unknown'}
+      {(value || 'unknown').replace(/_/g, ' ')}
     </span>
   )
 }
 
-// ── Section card ───────────────────────────────────────────────────────────
 function SectionCard({ title, children, action }) {
   return (
     <div style={{ background: C.white, border: `1px solid ${C.stroke}`, borderRadius: 12, overflow: 'hidden' }}>
@@ -77,7 +88,6 @@ function SectionCard({ title, children, action }) {
   )
 }
 
-// ── Info row ───────────────────────────────────────────────────────────────
 function InfoRow({ label, value, last, mono, green }) {
   return (
     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '9px 0', borderBottom: last ? 'none' : `1px solid ${C.grayLine}` }}>
@@ -89,7 +99,6 @@ function InfoRow({ label, value, last, mono, green }) {
   )
 }
 
-// ── Shared table wrapper ───────────────────────────────────────────────────
 function AdminTable({ cols, rows, emptyMsg }) {
   if (rows.length === 0) return (
     <div style={{ padding: '40px 20px', textAlign: 'center', fontSize: 14, fontWeight: 500, color: C.secondary }}>{emptyMsg}</div>
@@ -146,35 +155,51 @@ export default function BusinessDetail() {
   const [savingStatus, setSavingStatus]   = useState(false)
   const [statusSuccess, setStatusSuccess] = useState('')
 
+  // Subscription tab state
+  const [subAction, setSubAction]         = useState(null) // 'mark_paid' | 'upgrade' | 'suspend' | 'cancel'
+  const [subNewPlan, setSubNewPlan]       = useState('')
+  const [subBillingCycle, setSubBillingCycle] = useState('monthly')
+  const [savingSub, setSavingSub]         = useState(false)
+  const [subSuccess, setSubSuccess]       = useState('')
+  const [subError, setSubError]           = useState('')
+
   const [activeTab, setActiveTab] = useState('profile')
 
   useEffect(() => { loadAll() }, [id])
 
-  // ── All business logic — unchanged ────────────────────────────────────
   async function loadAll() {
     setLoading(true)
     try {
       const { data: bizData } = await supabase.from('businesses').select('*').eq('id', id).maybeSingle()
       if (!bizData) { setLoading(false); return }
-      setBusiness(bizData); setNewPlan(bizData.subscription_package || 'growth')
+      setBusiness(bizData)
+      setNewPlan(bizData.subscription_package || 'growth')
+      setSubNewPlan(bizData.subscription_package || 'growth')
+      setSubBillingCycle('monthly')
+
       const { data: adminData } = await supabase.from('business_admins').select('*').eq('business_id', id).eq('role', 'owner').maybeSingle()
       setAdmin(adminData)
+
       const { data: custData } = await supabase.from('customers').select('*, wallets(balance)').eq('business_id', id).order('created_at', { ascending: false })
       setCustomers(custData || [])
       setAum((custData || []).reduce((s, c) => s + Number(c.wallets?.[0]?.balance || 0), 0))
+
       const { data: campData } = await supabase.from('campaigns').select('*').eq('business_id', id).order('created_at', { ascending: false })
       setCampaigns(campData || [])
+
       const custIds = (custData || []).map(c => c.id)
       if (custIds.length > 0) {
         const { data: txnData } = await supabase.from('transactions').select('*, customers(first_name, last_name)').in('customer_id', custIds).order('created_at', { ascending: false }).limit(20)
         setTransactions(txnData || [])
       }
+
       const { data: files } = await supabase.storage.from('kyb-documents').list(id)
       setKybDocs(files || [])
     } catch (e) { console.error('BusinessDetail load error:', e) }
     setLoading(false)
   }
 
+  // ── KYB action — unchanged ─────────────────────────────────────────────
   async function handleKYBAction() {
     if (!kybAction) return
     if (kybAction === 'reject' && !rejectReason.trim()) return
@@ -193,6 +218,7 @@ export default function BusinessDetail() {
     setSavingKYB(false)
   }
 
+  // ── Plan change (profile tab) — unchanged ─────────────────────────────
   async function handlePlanChange() {
     if (!newPlan || newPlan === business.subscription_package) return
     setSavingPlan(true)
@@ -204,6 +230,7 @@ export default function BusinessDetail() {
     setSavingPlan(false)
   }
 
+  // ── Status change (profile tab) — unchanged ───────────────────────────
   async function handleStatusChange() {
     if (!statusAction) return
     setSavingStatus(true)
@@ -220,6 +247,170 @@ export default function BusinessDetail() {
   async function getKybDocUrl(filename) {
     const { data } = await supabase.storage.from('kyb-documents').createSignedUrl(`${id}/${filename}`, 3600)
     if (data?.signedUrl) window.open(data.signedUrl, '_blank')
+  }
+
+  // ── Subscription tab actions ───────────────────────────────────────────
+
+  async function handleMarkPaid() {
+    setSavingSub(true); setSubError('')
+    try {
+      const now            = new Date()
+      const newExpiry      = addDays(now, subBillingCycle === 'annual' ? 365 : 30)
+      const updates = {
+        subscription_status:     'active',
+        subscription_expires_at: newExpiry,
+        grace_period_ends_at:    null,
+        suspension_ends_at:      null,
+        trial_ends_at:           null, // trial ends when first payment is made
+      }
+      await supabase.from('businesses').update(updates).eq('id', id)
+      setBusiness(prev => ({ ...prev, ...updates }))
+
+      // Notify business admin
+      if (business.admin_email) {
+        await sendAdminEmail({
+          to:      business.admin_email,
+          subject: 'Payment confirmed — Partna subscription active',
+          html:    `<div style="font-family: Inter, system-ui, sans-serif; max-width: 520px; margin: 0 auto; padding: 32px 24px; color: #111;">
+            <img src="https://www.partna.io/partna-logo.png" alt="Partna" style="height: 28px; margin-bottom: 24px;" />
+            <h2 style="font-size: 20px; font-weight: 600; margin: 0 0 12px;">Payment confirmed</h2>
+            <p style="font-size: 15px; color: #444; line-height: 1.6; margin: 0 0 20px;">
+              Hi ${admin?.full_name || 'there'}, your Partna subscription for <strong>${business.name}</strong> is now active.
+              Your next billing date is <strong>${formatDateTime(newExpiry)}</strong>.
+            </p>
+            <p style="font-size: 13px; color: #959687; margin: 0;">Powered by <a href="https://www.partna.io" style="color: #111; font-weight: 600;">Partna</a></p>
+          </div>`,
+        })
+      }
+
+      setSubSuccess('Payment marked. Subscription extended and business notified.')
+      setSubAction(null)
+    } catch (e) {
+      console.error('Mark paid error:', e)
+      setSubError('Could not mark as paid. Please try again.')
+    }
+    setSavingSub(false)
+  }
+
+  async function handleUpgradePlan() {
+    if (!subNewPlan || subNewPlan === business.subscription_package) {
+      setSubError('Please select a different plan.')
+      return
+    }
+    setSavingSub(true); setSubError('')
+    try {
+      await supabase.from('businesses').update({ subscription_package: subNewPlan }).eq('id', id)
+      setBusiness(prev => ({ ...prev, subscription_package: subNewPlan }))
+      setSubNewPlan(subNewPlan)
+
+      if (business.admin_email) {
+        await sendAdminEmail({
+          to:      business.admin_email,
+          subject: `Your Partna plan has been updated to ${subNewPlan.charAt(0).toUpperCase() + subNewPlan.slice(1)}`,
+          html:    `<div style="font-family: Inter, system-ui, sans-serif; max-width: 520px; margin: 0 auto; padding: 32px 24px; color: #111;">
+            <img src="https://www.partna.io/partna-logo.png" alt="Partna" style="height: 28px; margin-bottom: 24px;" />
+            <h2 style="font-size: 20px; font-weight: 600; margin: 0 0 12px;">Plan updated</h2>
+            <p style="font-size: 15px; color: #444; line-height: 1.6; margin: 0 0 20px;">
+              Hi ${admin?.full_name || 'there'}, your Partna plan for <strong>${business.name}</strong> has been updated to
+              <strong> ${subNewPlan.charAt(0).toUpperCase() + subNewPlan.slice(1)}</strong>.
+            </p>
+            <p style="font-size: 13px; color: #959687; margin: 0;">Powered by <a href="https://www.partna.io" style="color: #111; font-weight: 600;">Partna</a></p>
+          </div>`,
+        })
+      }
+
+      setSubSuccess(`Plan upgraded to ${subNewPlan}. Business notified.`)
+      setSubAction(null)
+    } catch (e) {
+      console.error('Upgrade plan error:', e)
+      setSubError('Could not update plan. Please try again.')
+    }
+    setSavingSub(false)
+  }
+
+  async function handleSuspendSubscription() {
+    setSavingSub(true); setSubError('')
+    try {
+      const gracePeriodEnds = addDays(new Date(), 7)
+      const updates = {
+        subscription_status:  'grace',
+        grace_period_ends_at: gracePeriodEnds,
+      }
+      await supabase.from('businesses').update(updates).eq('id', id)
+      setBusiness(prev => ({ ...prev, ...updates }))
+
+      if (business.admin_email) {
+        await sendAdminEmail({
+          to:      business.admin_email,
+          subject: 'Action required — Partna subscription payment overdue',
+          html:    `<div style="font-family: Inter, system-ui, sans-serif; max-width: 520px; margin: 0 auto; padding: 32px 24px; color: #111;">
+            <img src="https://www.partna.io/partna-logo.png" alt="Partna" style="height: 28px; margin-bottom: 24px;" />
+            <h2 style="font-size: 20px; font-weight: 600; margin: 0 0 12px;">Payment overdue</h2>
+            <p style="font-size: 15px; color: #444; line-height: 1.6; margin: 0 0 20px;">
+              Hi ${admin?.full_name || 'there'}, your Partna subscription for <strong>${business.name}</strong> has an overdue payment.
+              You have a <strong>7-day grace period</strong> until <strong>${formatDateTime(gracePeriodEnds)}</strong> to make payment before your account is suspended.
+            </p>
+            <p style="font-size: 15px; color: #444; line-height: 1.6; margin: 0 0 20px;">
+              Please contact <a href="mailto:billing@partna.io" style="color: #111; font-weight: 600;">billing@partna.io</a> to arrange payment.
+            </p>
+            <p style="font-size: 13px; color: #959687; margin: 0;">Powered by <a href="https://www.partna.io" style="color: #111; font-weight: 600;">Partna</a></p>
+          </div>`,
+        })
+      }
+
+      setSubSuccess('Grace period started. Business has 7 days to pay before suspension.')
+      setSubAction(null)
+    } catch (e) {
+      console.error('Suspend subscription error:', e)
+      setSubError('Could not update subscription status. Please try again.')
+    }
+    setSavingSub(false)
+  }
+
+  async function handleCancelSubscription() {
+    setSavingSub(true); setSubError('')
+    try {
+      const updates = {
+        subscription_status: 'cancelled',
+        suspension_ends_at:  null,
+        grace_period_ends_at: null,
+      }
+      await supabase.from('businesses').update(updates).eq('id', id)
+
+      // Pause all active campaigns
+      await supabase.from('campaigns')
+        .update({ status: 'paused' })
+        .eq('business_id', id)
+        .eq('status', 'active')
+
+      setBusiness(prev => ({ ...prev, ...updates }))
+
+      if (business.admin_email) {
+        await sendAdminEmail({
+          to:      business.admin_email,
+          subject: 'Your Partna subscription has been cancelled',
+          html:    `<div style="font-family: Inter, system-ui, sans-serif; max-width: 520px; margin: 0 auto; padding: 32px 24px; color: #111;">
+            <img src="https://www.partna.io/partna-logo.png" alt="Partna" style="height: 28px; margin-bottom: 24px;" />
+            <h2 style="font-size: 20px; font-weight: 600; margin: 0 0 12px;">Subscription cancelled</h2>
+            <p style="font-size: 15px; color: #444; line-height: 1.6; margin: 0 0 20px;">
+              Hi ${admin?.full_name || 'there'}, your Partna subscription for <strong>${business.name}</strong> has been cancelled.
+              All active campaigns have been paused. Customer funds are unaffected and withdrawals remain available.
+            </p>
+            <p style="font-size: 15px; color: #444; line-height: 1.6; margin: 0 0 20px;">
+              To reactivate your account, please contact <a href="mailto:billing@partna.io" style="color: #111; font-weight: 600;">billing@partna.io</a>.
+            </p>
+            <p style="font-size: 13px; color: #959687; margin: 0;">Powered by <a href="https://www.partna.io" style="color: #111; font-weight: 600;">Partna</a></p>
+          </div>`,
+        })
+      }
+
+      setSubSuccess('Subscription cancelled. All active campaigns paused. Business notified.')
+      setSubAction(null)
+    } catch (e) {
+      console.error('Cancel subscription error:', e)
+      setSubError('Could not cancel subscription. Please try again.')
+    }
+    setSavingSub(false)
   }
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -240,13 +431,20 @@ export default function BusinessDetail() {
   )
 
   const bizStatus = business.status || 'active'
+  const subStatus = business.subscription_status || 'active'
+  const isOnTrial = business.trial_ends_at && new Date(business.trial_ends_at) > new Date()
+  const trialDaysLeft = business.trial_ends_at
+    ? Math.max(0, Math.ceil((new Date(business.trial_ends_at) - new Date()) / 86400000))
+    : 0
+
   const TABS = ['profile', 'kyb', 'subscription', 'campaigns', 'customers', 'transactions']
 
-  const inputStyle = { display: 'block', width: '100%', padding: '9px 12px', fontSize: 13, fontWeight: 500, color: C.black, background: C.white, border: `1px solid ${C.grayLine}`, borderRadius: 8, outline: 'none', fontFamily: 'Inter, system-ui, sans-serif', transition: 'border-color 0.15s' }
-  const btnPrimary = { padding: '9px 18px', fontSize: 13, fontWeight: 600, color: C.white, background: C.black, border: `1px solid ${C.black}`, borderRadius: 8, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6, fontFamily: 'Inter, system-ui, sans-serif' }
+  const inputStyle   = { display: 'block', width: '100%', padding: '9px 12px', fontSize: 13, fontWeight: 500, color: C.black, background: C.white, border: `1px solid ${C.grayLine}`, borderRadius: 8, outline: 'none', fontFamily: 'Inter, system-ui, sans-serif', transition: 'border-color 0.15s' }
+  const btnPrimary   = { padding: '9px 18px', fontSize: 13, fontWeight: 600, color: C.white, background: C.black, border: `1px solid ${C.black}`, borderRadius: 8, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6, fontFamily: 'Inter, system-ui, sans-serif' }
   const btnSecondary = { padding: '9px 18px', fontSize: 13, fontWeight: 600, color: C.black, background: C.white, border: `1px solid ${C.grayLine}`, borderRadius: 8, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6, fontFamily: 'Inter, system-ui, sans-serif' }
-  const btnDanger = { padding: '9px 18px', fontSize: 13, fontWeight: 600, color: C.white, background: C.red, border: `1px solid ${C.red}`, borderRadius: 8, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6, fontFamily: 'Inter, system-ui, sans-serif' }
-  const btnSuccess = { padding: '9px 18px', fontSize: 13, fontWeight: 600, color: C.white, background: C.green, border: `1px solid ${C.green}`, borderRadius: 8, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6, fontFamily: 'Inter, system-ui, sans-serif' }
+  const btnDanger    = { padding: '9px 18px', fontSize: 13, fontWeight: 600, color: C.white, background: C.red, border: `1px solid ${C.red}`, borderRadius: 8, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6, fontFamily: 'Inter, system-ui, sans-serif' }
+  const btnSuccess   = { padding: '9px 18px', fontSize: 13, fontWeight: 600, color: C.white, background: C.green, border: `1px solid ${C.green}`, borderRadius: 8, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6, fontFamily: 'Inter, system-ui, sans-serif' }
+  const btnOrange    = { padding: '9px 18px', fontSize: 13, fontWeight: 600, color: C.white, background: C.orange, border: `1px solid ${C.orange}`, borderRadius: 8, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6, fontFamily: 'Inter, system-ui, sans-serif' }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20, fontFamily: 'Inter, system-ui, sans-serif' }}>
@@ -268,18 +466,19 @@ export default function BusinessDetail() {
               <span style={{ fontSize: 12, fontWeight: 500, color: C.secondary }}>{business.sector}</span>
               <Badge value={business.kyb_status} />
               <Badge value={bizStatus} />
+              {isOnTrial && (
+                <span style={{ fontSize: 11, fontWeight: 600, color: C.blue, background: 'rgba(133,160,197,0.12)', borderRadius: 6, padding: '3px 8px' }}>
+                  Trial — {trialDaysLeft}d left
+                </span>
+              )}
             </div>
           </div>
         </div>
       </div>
 
       {/* Toasts */}
-      {kybSuccess && (
-        <div style={{ background: C.bgGreen, border: `1px solid ${C.green}`, borderRadius: 8, padding: '12px 16px', fontSize: 13, fontWeight: 500, color: C.green }}>{kybSuccess}</div>
-      )}
-      {statusSuccess && (
-        <div style={{ background: C.bgGreen, border: `1px solid ${C.green}`, borderRadius: 8, padding: '12px 16px', fontSize: 13, fontWeight: 500, color: C.green }}>{statusSuccess}</div>
-      )}
+      {kybSuccess    && <div style={{ background: C.bgGreen, border: `1px solid ${C.green}`, borderRadius: 8, padding: '12px 16px', fontSize: 13, fontWeight: 500, color: C.green }}>{kybSuccess}</div>}
+      {statusSuccess && <div style={{ background: C.bgGreen, border: `1px solid ${C.green}`, borderRadius: 8, padding: '12px 16px', fontSize: 13, fontWeight: 500, color: C.green }}>{statusSuccess}</div>}
 
       {/* ── Tabs ── */}
       <div style={{ display: 'flex', gap: 4, background: C.white, border: `1px solid ${C.stroke}`, borderRadius: 10, padding: 4 }}>
@@ -296,7 +495,7 @@ export default function BusinessDetail() {
         ))}
       </div>
 
-      {/* ── PROFILE ── */}
+      {/* ══════════════ PROFILE ══════════════ */}
       {activeTab === 'profile' && (
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
           <SectionCard title="Business profile">
@@ -326,7 +525,7 @@ export default function BusinessDetail() {
 
           <SectionCard title="Branding">
             {[
-              { label: 'Primary colour',   color: business.primary_color  },
+              { label: 'Primary colour',   color: business.primary_color   },
               { label: 'Secondary colour', color: business.secondary_color },
             ].map((row, i, arr) => (
               <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '9px 0', borderBottom: i < arr.length - 1 ? `1px solid ${C.grayLine}` : 'none' }}>
@@ -376,7 +575,7 @@ export default function BusinessDetail() {
         </div>
       )}
 
-      {/* ── KYB ── */}
+      {/* ══════════════ KYB ══════════════ */}
       {activeTab === 'kyb' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           <SectionCard title="KYB status">
@@ -384,7 +583,6 @@ export default function BusinessDetail() {
               <Badge value={business.kyb_status} />
               {business.kyb_status === 'pending' && <span style={{ fontSize: 12, fontWeight: 500, color: C.secondary }}>Awaiting review</span>}
             </div>
-
             {business.kyb_status === 'verified' ? (
               <div style={{ background: C.bgGreen, borderRadius: 8, padding: '12px 14px', fontSize: 13, fontWeight: 500, color: C.green }}>
                 This business has been verified.
@@ -440,30 +638,189 @@ export default function BusinessDetail() {
         </div>
       )}
 
-      {/* ── SUBSCRIPTION ── */}
+      {/* ══════════════ SUBSCRIPTION ══════════════ */}
       {activeTab === 'subscription' && (
-        <SectionCard title="Subscription plan">
-          <InfoRow label="Current plan" value={business.subscription_package} />
-          <div style={{ marginTop: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <label style={{ fontSize: 13, fontWeight: 600, color: C.black }}>Change plan</label>
-            <div style={{ display: 'flex', gap: 10 }}>
-              <select value={newPlan} onChange={e => setNewPlan(e.target.value)} style={{ ...inputStyle, flex: 1 }}
-                onFocus={e => e.target.style.borderColor = C.black}
-                onBlur={e => e.target.style.borderColor = C.grayLine}
-              >
-                {PACKAGES.map(p => <option key={p} value={p}>{p.charAt(0).toUpperCase() + p.slice(1)}</option>)}
-              </select>
-              <button onClick={handlePlanChange} disabled={savingPlan || newPlan === business.subscription_package}
-                style={{ ...btnPrimary, opacity: savingPlan || newPlan === business.subscription_package ? 0.5 : 1, cursor: savingPlan || newPlan === business.subscription_package ? 'not-allowed' : 'pointer' }}>
-                {savingPlan ? <><div className="spinner spinner-sm spinner-light" /> Saving…</> : 'Save'}
-              </button>
-            </div>
-            {planSuccess && <div style={{ background: C.bgGreen, borderRadius: 8, padding: '10px 14px', fontSize: 13, fontWeight: 500, color: C.green }}>Plan updated successfully.</div>}
-          </div>
-        </SectionCard>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+
+          {/* Feedback */}
+          {subSuccess && <div style={{ background: C.bgGreen, border: `1px solid ${C.green}`, borderRadius: 8, padding: '12px 16px', fontSize: 13, fontWeight: 500, color: C.green }}>{subSuccess}</div>}
+          {subError   && <div style={{ background: C.bgRed,   border: `1px solid ${C.red}`,   borderRadius: 8, padding: '12px 16px', fontSize: 13, fontWeight: 500, color: C.red   }}>{subError}</div>}
+
+          {/* Status overview */}
+          <SectionCard title="Subscription overview">
+
+            {/* Trial banner */}
+            {isOnTrial && (
+              <div style={{ background: 'rgba(133,160,197,0.12)', border: `1px solid ${C.blue}`, borderRadius: 8, padding: '12px 16px', marginBottom: 16, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div>
+                  <p style={{ fontSize: 13, fontWeight: 600, color: C.blue, margin: '0 0 2px' }}>Free trial active</p>
+                  <p style={{ fontSize: 12, fontWeight: 500, color: C.blue, margin: 0, opacity: 0.85 }}>
+                    {trialDaysLeft} days remaining · Ends {formatDateTime(business.trial_ends_at)}
+                  </p>
+                </div>
+                <span style={{ fontSize: 12, fontWeight: 600, color: C.blue }}>No billing until trial ends</span>
+              </div>
+            )}
+
+            {/* Grace period banner */}
+            {subStatus === 'grace' && (
+              <div style={{ background: C.bgOrange, border: `1px solid ${C.orange}`, borderRadius: 8, padding: '12px 16px', marginBottom: 16 }}>
+                <p style={{ fontSize: 13, fontWeight: 600, color: C.orange, margin: '0 0 2px' }}>Grace period active</p>
+                <p style={{ fontSize: 12, fontWeight: 500, color: C.orange, margin: 0, opacity: 0.85 }}>
+                  Payment overdue. Grace period ends {formatDateTime(business.grace_period_ends_at)}.
+                </p>
+              </div>
+            )}
+
+            {/* Cancelled banner */}
+            {subStatus === 'cancelled' && (
+              <div style={{ background: C.bgRed, border: `1px solid ${C.red}`, borderRadius: 8, padding: '12px 16px', marginBottom: 16 }}>
+                <p style={{ fontSize: 13, fontWeight: 600, color: C.red, margin: '0 0 2px' }}>Subscription cancelled</p>
+                <p style={{ fontSize: 12, fontWeight: 500, color: C.red, margin: 0, opacity: 0.85 }}>All campaigns have been paused.</p>
+              </div>
+            )}
+
+            <InfoRow label="Plan"                  value={business.subscription_package ? business.subscription_package.charAt(0).toUpperCase() + business.subscription_package.slice(1) : '—'} />
+            <InfoRow label="Subscription status"   value={<Badge value={subStatus} />} />
+            <InfoRow label="Trial ends"            value={business.trial_ends_at ? formatDateTime(business.trial_ends_at) : 'No trial'} />
+            <InfoRow label="Subscription expires"  value={formatDateTime(business.subscription_expires_at)} />
+            <InfoRow label="Grace period ends"     value={formatDateTime(business.grace_period_ends_at)} />
+            <InfoRow label="Customer count"        value={`${customers.length} customers`} last />
+          </SectionCard>
+
+          {/* Actions */}
+          <SectionCard title="Subscription actions">
+            {subAction === null && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <button
+                  onClick={() => { setSubAction('mark_paid'); setSubError('') }}
+                  style={{ ...btnSuccess, width: '100%', justifyContent: 'center' }}
+                >
+                  ✓ Mark as paid — extend billing period
+                </button>
+                <button
+                  onClick={() => { setSubAction('upgrade'); setSubError('') }}
+                  style={{ ...btnPrimary, width: '100%', justifyContent: 'center' }}
+                >
+                  Change plan
+                </button>
+                {subStatus !== 'grace' && subStatus !== 'cancelled' && (
+                  <button
+                    onClick={() => { setSubAction('suspend'); setSubError('') }}
+                    style={{ ...btnOrange, width: '100%', justifyContent: 'center' }}
+                  >
+                    Start grace period — payment overdue
+                  </button>
+                )}
+                {subStatus !== 'cancelled' && (
+                  <button
+                    onClick={() => { setSubAction('cancel'); setSubError('') }}
+                    style={{ width: '100%', padding: '9px', fontSize: 13, fontWeight: 600, color: C.red, background: C.bgRed, border: `1px solid ${C.red}`, borderRadius: 8, cursor: 'pointer', fontFamily: 'Inter, system-ui, sans-serif' }}
+                  >
+                    Cancel subscription
+                  </button>
+                )}
+                {subStatus === 'cancelled' && (
+                  <button
+                    onClick={() => { setSubAction('mark_paid'); setSubError('') }}
+                    style={{ ...btnSuccess, width: '100%', justifyContent: 'center' }}
+                  >
+                    Reactivate — mark payment received
+                  </button>
+                )}
+              </div>
+            )}
+
+            {/* Mark paid confirmation */}
+            {subAction === 'mark_paid' && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                <p style={{ fontSize: 14, fontWeight: 600, color: C.black, margin: 0 }}>Mark payment received</p>
+                <p style={{ fontSize: 13, fontWeight: 500, color: C.secondary, margin: 0 }}>
+                  This will set the subscription to active and extend the billing period by the selected cycle.
+                </p>
+                <div>
+                  <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: C.black, marginBottom: 5 }}>Billing cycle paid</label>
+                  <select value={subBillingCycle} onChange={e => setSubBillingCycle(e.target.value)}
+                    style={{ ...inputStyle }}
+                    onFocus={e => e.target.style.borderColor = C.black}
+                    onBlur={e => e.target.style.borderColor = C.grayLine}>
+                    <option value="monthly">Monthly — extend by 30 days</option>
+                    <option value="annual">Annual — extend by 365 days</option>
+                  </select>
+                </div>
+                <div style={{ display: 'flex', gap: 10 }}>
+                  <button onClick={() => { setSubAction(null); setSubError('') }} style={{ ...btnSecondary, flex: 1, justifyContent: 'center' }}>Cancel</button>
+                  <button onClick={handleMarkPaid} disabled={savingSub}
+                    style={{ ...btnSuccess, flex: 1, justifyContent: 'center', opacity: savingSub ? 0.7 : 1 }}>
+                    {savingSub ? <><div className="spinner spinner-sm spinner-light" /> Saving…</> : 'Confirm payment received'}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Upgrade plan confirmation */}
+            {subAction === 'upgrade' && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                <p style={{ fontSize: 14, fontWeight: 600, color: C.black, margin: 0 }}>Change subscription plan</p>
+                <div>
+                  <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: C.black, marginBottom: 5 }}>New plan</label>
+                  <select value={subNewPlan} onChange={e => setSubNewPlan(e.target.value)}
+                    style={{ ...inputStyle }}
+                    onFocus={e => e.target.style.borderColor = C.black}
+                    onBlur={e => e.target.style.borderColor = C.grayLine}>
+                    <option value="starter">Starter — $49/month</option>
+                    <option value="growth">Growth — $149/month</option>
+                    <option value="enterprise">Enterprise — $399/month</option>
+                  </select>
+                </div>
+                <div style={{ display: 'flex', gap: 10 }}>
+                  <button onClick={() => { setSubAction(null); setSubError('') }} style={{ ...btnSecondary, flex: 1, justifyContent: 'center' }}>Cancel</button>
+                  <button onClick={handleUpgradePlan} disabled={savingSub || subNewPlan === business.subscription_package}
+                    style={{ ...btnPrimary, flex: 1, justifyContent: 'center', opacity: savingSub || subNewPlan === business.subscription_package ? 0.5 : 1 }}>
+                    {savingSub ? <><div className="spinner spinner-sm spinner-light" /> Saving…</> : 'Confirm plan change'}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Grace period confirmation */}
+            {subAction === 'suspend' && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                <p style={{ fontSize: 14, fontWeight: 600, color: C.black, margin: 0 }}>Start grace period</p>
+                <div style={{ background: C.bgOrange, border: `1px solid ${C.orange}`, borderRadius: 8, padding: '12px 14px', fontSize: 13, fontWeight: 500, color: C.orange, lineHeight: '140%' }}>
+                  This will start a 7-day grace period. The business will be notified by email and must pay within 7 days to avoid account suspension.
+                </div>
+                <div style={{ display: 'flex', gap: 10 }}>
+                  <button onClick={() => { setSubAction(null); setSubError('') }} style={{ ...btnSecondary, flex: 1, justifyContent: 'center' }}>Cancel</button>
+                  <button onClick={handleSuspendSubscription} disabled={savingSub}
+                    style={{ ...btnOrange, flex: 1, justifyContent: 'center', opacity: savingSub ? 0.7 : 1 }}>
+                    {savingSub ? <><div className="spinner spinner-sm spinner-light" /> Saving…</> : 'Start grace period'}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Cancel confirmation */}
+            {subAction === 'cancel' && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                <p style={{ fontSize: 14, fontWeight: 600, color: C.black, margin: 0 }}>Cancel subscription</p>
+                <div style={{ background: C.bgRed, border: `1px solid ${C.red}`, borderRadius: 8, padding: '12px 14px', fontSize: 13, fontWeight: 500, color: C.red, lineHeight: '140%' }}>
+                  This will cancel the subscription and pause all active campaigns. The business admin will be notified by email. Customer funds are not affected.
+                </div>
+                <div style={{ display: 'flex', gap: 10 }}>
+                  <button onClick={() => { setSubAction(null); setSubError('') }} style={{ ...btnSecondary, flex: 1, justifyContent: 'center' }}>Keep subscription</button>
+                  <button onClick={handleCancelSubscription} disabled={savingSub}
+                    style={{ ...btnDanger, flex: 1, justifyContent: 'center', opacity: savingSub ? 0.7 : 1 }}>
+                    {savingSub ? <><div className="spinner spinner-sm spinner-light" /> Cancelling…</> : 'Confirm cancellation'}
+                  </button>
+                </div>
+              </div>
+            )}
+          </SectionCard>
+        </div>
       )}
 
-      {/* ── CAMPAIGNS ── */}
+      {/* ══════════════ CAMPAIGNS ══════════════ */}
       {activeTab === 'campaigns' && (
         <SectionCard title={`Campaigns (${campaigns.length})`}>
           <AdminTable
@@ -479,7 +836,7 @@ export default function BusinessDetail() {
         </SectionCard>
       )}
 
-      {/* ── CUSTOMERS ── */}
+      {/* ══════════════ CUSTOMERS ══════════════ */}
       {activeTab === 'customers' && (
         <SectionCard title={`Customers (${customers.length})`}>
           <AdminTable
@@ -496,7 +853,7 @@ export default function BusinessDetail() {
         </SectionCard>
       )}
 
-      {/* ── TRANSACTIONS ── */}
+      {/* ══════════════ TRANSACTIONS ══════════════ */}
       {activeTab === 'transactions' && (
         <SectionCard title={`Recent transactions (${transactions.length})`}>
           <AdminTable
