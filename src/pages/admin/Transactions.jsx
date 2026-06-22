@@ -248,7 +248,7 @@ export default function Transactions() {
   async function loadBusiness() {
     setLoadingBiz(true)
     try {
-      const { data } = await supabase.from('business_transactions').select('*, businesses(id, name)').eq('type', 'withdrawal').order('created_at', { ascending: false })
+      const { data } = await supabase.from('business_transactions').select('*, businesses(id, name, admin_email, contact_email)').eq('type', 'withdrawal').order('created_at', { ascending: false })
       setBizWithdrawals(data || [])
     } catch (e) { console.error('Business withdrawals load error:', e) }
     setLoadingBiz(false)
@@ -278,9 +278,73 @@ export default function Transactions() {
   async function handleBizMarkCompleted(txnId) {
     setBizMarkingId(txnId)
     try {
-      await supabase.from('business_transactions').update({ status: 'completed' }).eq('id', txnId)
-      setBizWithdrawals(prev => prev.map(t => t.id === txnId ? { ...t, status: 'completed' } : t))
+      const txn = bizWithdrawals.find(t => t.id === txnId)
+
+      await supabase
+        .from('business_transactions')
+        .update({ status: 'completed', processed_at: new Date().toISOString() })
+        .eq('id', txnId)
+
+      setBizWithdrawals(prev => prev.map(t =>
+        t.id === txnId ? { ...t, status: 'completed' } : t
+      ))
       setBizConfirmId(null)
+
+      // Send confirmation email to business admin and contact email
+      if (txn) {
+        const { data: { session } } = await supabase.auth.getSession()
+        const recipients = [txn.businesses?.admin_email, txn.businesses?.contact_email].filter(Boolean)
+        const bankName     = txn.withdrawal_method    || 'your bank'
+        const accountNum   = txn.withdrawal_account_number || ''
+        const last4        = accountNum.length >= 4 ? accountNum.slice(-4) : accountNum
+        const accountLabel = last4 ? `${bankName} account ending in ${last4}` : bankName
+        const amountStr    = 'UGX ' + Number(txn.amount).toLocaleString('en-UG', { maximumFractionDigits: 0 })
+
+        const emailHtml = `<div style="font-family: Inter, system-ui, sans-serif; max-width: 520px; margin: 0 auto; padding: 32px 24px; color: #111;">
+          <img src="https://www.partna.io/partna-logo.png" alt="Partna" style="height: 28px; margin-bottom: 24px;" />
+          <h2 style="font-size: 20px; font-weight: 600; margin: 0 0 12px; letter-spacing: -0.5px;">Withdrawal processed — funds on the way</h2>
+          <p style="font-size: 15px; color: #444; line-height: 1.6; margin: 0 0 20px;">
+            Your withdrawal request of <strong style="color: #111;">${amountStr}</strong> from your Partna business wallet has been processed.
+            Funds will arrive in your <strong style="color: #111;">${accountLabel}</strong> within 1–2 business days.
+          </p>
+          <div style="background: #F6F7EE; border: 1px solid #D7D8CB; border-radius: 10px; padding: 16px 18px; margin: 0 0 20px;">
+            <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+              <tr>
+                <td style="padding: 6px 0; color: #959687; font-weight: 500; width: 140px;">Amount</td>
+                <td style="padding: 6px 0; font-weight: 600; color: #111;">${amountStr}</td>
+              </tr>
+              <tr>
+                <td style="padding: 6px 0; color: #959687; font-weight: 500;">Bank</td>
+                <td style="padding: 6px 0; font-weight: 600; color: #111;">${bankName}</td>
+              </tr>
+              <tr>
+                <td style="padding: 6px 0; color: #959687; font-weight: 500;">Account name</td>
+                <td style="padding: 6px 0; font-weight: 600; color: #111;">${txn.withdrawal_account_name || '—'}</td>
+              </tr>
+              ${accountNum ? `<tr><td style="padding: 6px 0; color: #959687; font-weight: 500;">Account number</td><td style="padding: 6px 0; font-weight: 600; color: #111; font-family: monospace;">${accountNum}</td></tr>` : ''}
+            </table>
+          </div>
+          <p style="font-size: 14px; color: #444; line-height: 1.6; margin: 0 0 20px;">
+            If you have any questions about this transfer, contact us at
+            <a href="mailto:billing@partna.io" style="color: #111; font-weight: 600; text-decoration: underline;">billing@partna.io</a>.
+          </p>
+          <p style="font-size: 13px; color: #959687; margin: 0;">Powered by <a href="https://www.partna.io" style="color: #111; font-weight: 600; text-decoration: none;">Partna</a></p>
+        </div>`
+
+        // Fire and forget — one call per recipient
+        for (const email of recipients) {
+          fetch(`${SUPABASE_URL}/functions/v1/send-admin-email`, {
+            method:  'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session?.access_token}` },
+            body:    JSON.stringify({
+              to:      email,
+              from:    'billing',
+              subject: `Withdrawal processed — ${amountStr} on the way`,
+              html:    emailHtml,
+            }),
+          }).catch(e => console.error('Withdrawal email send error (non-critical):', e))
+        }
+      }
     } catch (e) { console.error('Biz mark completed error:', e) }
     setBizMarkingId(null)
   }
