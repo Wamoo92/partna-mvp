@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../supabase'
 
-const UGANDA_BANKS = ['ABSA Uganda','Bank Of Africa (Uganda)','Bank of Baroda','Cairo Bank Uganda','Centenary Rural Development Bank LTD (UG)','DFCU Uganda','Diamond Trust Bank Uganda Limited','Ecobank Uganda Limited','Equity Bank Uganda','Exim bank','Finance Trust','Guaranty Trust Bank Uganda (GT Bank)','Housing Finance Bank','I & M Bank Uganda (Orient)','KCB Bank Uganda Limited','NCBA Bank Uganda Limited','Opportunity Bank','Post Bank Uganda','Stanbic Bank Uganda','Standard Chartered Bank Uganda Limited','Tropical Bank Uganda','United Bank for Africa Uganda Limited (UBA)']
 const CHART_FILTERS = [{ label: '7d', days: 7 }, { label: '30d', days: 30 }, { label: '1yr', days: 365 }]
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -86,121 +85,82 @@ function Modal({ title, sub, onClose, children }) {
 }
 
 // ── Setup checklist ────────────────────────────────────────────────────────
-function SetupChecklist({ business, admin, hasCampaign, navigate }) {
+function SetupChecklist({ business, hasCampaign, hasBankAccount, navigate }) {
   const items = [
     {
-      id:     'password',
-      label:  'Set your password',
-      detail: 'Done on first login',
-      done:   true, // always true by the time they reach Overview
-      action: null,
+      id:          'password',
+      label:       'Set your password',
+      detail:      'Done on first login',
+      done:        true,
+      action:      null,
     },
     {
-      id:     'kyb',
-      label:  'Complete KYB verification',
-      detail: 'Required to unlock all platform features',
-      done:   business?.kyb_status === 'verified',
-      action: () => navigate('/dashboard/settings', { state: { tab: 'kyb' } }),
-      actionLabel: 'Verify now →',
+      id:          'bank_account',
+      label:       'Link your bank account',
+      detail:      'Required to withdraw funds from your business wallet',
+      done:        hasBankAccount,
+      action:      () => navigate('/dashboard/settings', { state: { tab: 'bank_account' } }),
+      actionLabel: 'Link account →',
     },
     {
-      id:     'slug',
-      label:  'Set your portal URL',
-      detail: 'The link you share with your customers',
-      done:   !!business?.slug,
-      action: () => navigate('/dashboard/settings', { state: { tab: 'security' } }),
+      id:          'slug',
+      label:       'Set your portal URL',
+      detail:      'The link you share with your customers',
+      done:        !!business?.slug,
+      action:      () => navigate('/dashboard/settings', { state: { tab: 'security' } }),
       actionLabel: 'Set URL →',
     },
     {
-      id:     'logo',
-      label:  'Upload your logo',
-      detail: 'Appears on your customer portal',
-      done:   !!(business?.logo_url && !business.logo_url.startsWith('/partna')),
-      action: () => navigate('/dashboard/settings', { state: { tab: 'profile' } }),
+      id:          'logo',
+      label:       'Upload your logo',
+      detail:      'Appears on your customer portal',
+      done:        !!(business?.logo_url && !business.logo_url.startsWith('/partna')),
+      action:      () => navigate('/dashboard/settings', { state: { tab: 'profile' } }),
       actionLabel: 'Upload →',
     },
     {
-      id:     'campaign',
-      label:  'Create your first campaign',
-      detail: 'Start enrolling customers',
-      done:   hasCampaign,
-      action: () => navigate('/dashboard/campaigns'),
+      id:          'campaign',
+      label:       'Create your first campaign',
+      detail:      'Start enrolling customers',
+      done:        hasCampaign,
+      action:      () => navigate('/dashboard/campaigns'),
       actionLabel: 'Create campaign →',
     },
   ]
 
   const completedCount = items.filter(i => i.done).length
   const allDone        = completedCount === items.length
-
-  // Don't show checklist once everything is complete
   if (allDone) return null
 
   const progressPct = (completedCount / items.length) * 100
 
   return (
     <div style={{ background: C.white, border: `1px solid ${C.stroke}`, borderRadius: 12, overflow: 'hidden' }}>
-
-      {/* Header */}
       <div style={{ padding: '14px 20px', borderBottom: `1px solid ${C.grayLine}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div>
           <p style={{ fontSize: 14, fontWeight: 600, color: C.black, margin: '0 0 2px', letterSpacing: '-0.4px' }}>Complete your setup</p>
-          <p style={{ fontSize: 12, fontWeight: 500, color: C.secondary, margin: 0 }}>
-            {completedCount} of {items.length} steps complete
-          </p>
+          <p style={{ fontSize: 12, fontWeight: 500, color: C.secondary, margin: 0 }}>{completedCount} of {items.length} steps complete</p>
         </div>
-        {/* Progress bar */}
         <div style={{ width: 120 }}>
           <div style={{ height: 6, background: C.grayLight, borderRadius: 999, overflow: 'hidden' }}>
             <div style={{ height: '100%', width: `${progressPct}%`, background: C.green, borderRadius: 999, transition: 'width 0.4s ease' }} />
           </div>
         </div>
       </div>
-
-      {/* Items */}
       <div>
         {items.map((item, i) => (
-          <div
-            key={item.id}
-            style={{
-              display: 'flex', alignItems: 'center', gap: 14,
-              padding: '13px 20px',
-              borderBottom: i < items.length - 1 ? `1px solid ${C.grayLine}` : 'none',
-              background: item.done ? C.bg : C.white,
-              opacity: item.done ? 0.7 : 1,
-            }}
-          >
-            {/* Tick / circle */}
-            <div style={{
-              width: 22, height: 22, borderRadius: '50%', flexShrink: 0,
-              background: item.done ? C.green : C.white,
-              border: `2px solid ${item.done ? C.green : C.grayLine}`,
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-            }}>
-              {item.done && (
-                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                  <polyline points="20 6 9 17 4 12" />
-                </svg>
-              )}
+          <div key={item.id} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '13px 20px', borderBottom: i < items.length - 1 ? `1px solid ${C.grayLine}` : 'none', background: item.done ? C.bg : C.white, opacity: item.done ? 0.7 : 1 }}>
+            <div style={{ width: 22, height: 22, borderRadius: '50%', flexShrink: 0, background: item.done ? C.green : C.white, border: `2px solid ${item.done ? C.green : C.grayLine}`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              {item.done && <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>}
             </div>
-
-            {/* Text */}
             <div style={{ flex: 1 }}>
-              <p style={{ fontSize: 13, fontWeight: item.done ? 500 : 600, color: item.done ? C.secondary : C.black, margin: '0 0 2px', textDecoration: item.done ? 'line-through' : 'none' }}>
-                {item.label}
-              </p>
-              {!item.done && (
-                <p style={{ fontSize: 12, fontWeight: 500, color: C.secondary, margin: 0 }}>{item.detail}</p>
-              )}
+              <p style={{ fontSize: 13, fontWeight: item.done ? 500 : 600, color: item.done ? C.secondary : C.black, margin: '0 0 2px', textDecoration: item.done ? 'line-through' : 'none' }}>{item.label}</p>
+              {!item.done && <p style={{ fontSize: 12, fontWeight: 500, color: C.secondary, margin: 0 }}>{item.detail}</p>}
             </div>
-
-            {/* Action link */}
             {!item.done && item.action && (
-              <button
-                onClick={item.action}
-                style={{ padding: '6px 14px', fontSize: 12, fontWeight: 600, color: C.black, background: C.white, border: `1px solid ${C.grayLine}`, borderRadius: 8, cursor: 'pointer', fontFamily: 'Inter, system-ui, sans-serif', whiteSpace: 'nowrap' }}
+              <button onClick={item.action} style={{ padding: '6px 14px', fontSize: 12, fontWeight: 600, color: C.black, background: C.white, border: `1px solid ${C.grayLine}`, borderRadius: 8, cursor: 'pointer', fontFamily: 'Inter, system-ui, sans-serif', whiteSpace: 'nowrap' }}
                 onMouseEnter={e => { e.currentTarget.style.background = C.bg; e.currentTarget.style.borderColor = C.black }}
-                onMouseLeave={e => { e.currentTarget.style.background = C.white; e.currentTarget.style.borderColor = C.grayLine }}
-              >
+                onMouseLeave={e => { e.currentTarget.style.background = C.white; e.currentTarget.style.borderColor = C.grayLine }}>
                 {item.actionLabel}
               </button>
             )}
@@ -217,6 +177,7 @@ export default function Overview({ admin, business }) {
   const [loading, setLoading]               = useState(true)
   const [stats, setStats]                   = useState({ totalSavings: 0, activeCustomers: 0, totalPayments: 0 })
   const [businessWallet, setBusinessWallet] = useState(null)
+  const [bankAccount, setBankAccount]       = useState(null)
   const [recentActivity, setRecentActivity] = useState([])
   const [campaigns, setCampaigns]           = useState([])
   const [chartData, setChartData]           = useState([])
@@ -224,20 +185,11 @@ export default function Overview({ admin, business }) {
   const [chartType, setChartType]           = useState('bar')
   const [allTxns, setAllTxns]               = useState([])
 
-  const [showWithdraw, setShowWithdraw]         = useState(false)
-  const [withdrawTab, setWithdrawTab]           = useState('mobilemoney')
-  const [withdrawAmount, setWithdrawAmount]     = useState('')
-  const [withdrawLoading, setWithdrawLoading]   = useState(false)
-  const [withdrawSuccess, setWithdrawSuccess]   = useState(false)
-  const [withdrawError, setWithdrawError]       = useState('')
-  const [mmNetwork, setMmNetwork]               = useState('MTN')
-  const [mmRecipientName, setMmRecipientName]   = useState('')
-  const [mmPhone, setMmPhone]                   = useState('')
-  const [mmNotifyPhone, setMmNotifyPhone]       = useState('')
-  const [bankName, setBankName]                 = useState('')
-  const [bankAccountName, setBankAccountName]   = useState('')
-  const [bankAccountNumber, setBankAccountNumber] = useState('')
-  const [bankNotifyPhone, setBankNotifyPhone]   = useState('')
+  const [showWithdraw, setShowWithdraw]       = useState(false)
+  const [withdrawAmount, setWithdrawAmount]   = useState('')
+  const [withdrawLoading, setWithdrawLoading] = useState(false)
+  const [withdrawSuccess, setWithdrawSuccess] = useState(false)
+  const [withdrawError, setWithdrawError]     = useState('')
 
   useEffect(() => { if (business) loadData() }, [business])
   useEffect(() => { if (allTxns.length > 0 || !loading) buildChartData(allTxns, chartFilter) }, [chartFilter, allTxns])
@@ -260,6 +212,11 @@ export default function Overview({ admin, business }) {
       }
       const { data: bizWallet } = await supabase.from('business_wallets').select('*').eq('business_id', business.id).maybeSingle()
       setBusinessWallet(bizWallet)
+
+      // Fetch linked bank account
+      const { data: bankData } = await supabase.from('business_bank_accounts').select('*').eq('business_id', business.id).maybeSingle()
+      setBankAccount(bankData || null)
+
       setAllTxns(txns)
       setRecentActivity(txns.slice(0, 10))
       buildChartData(txns, chartFilter)
@@ -283,23 +240,27 @@ export default function Overview({ admin, business }) {
     setChartData(points)
   }
 
-  function resetWithdrawForm() { setWithdrawAmount(''); setWithdrawError(''); setWithdrawSuccess(false); setMmNetwork('MTN'); setMmRecipientName(''); setMmPhone(''); setMmNotifyPhone(''); setBankName(''); setBankAccountName(''); setBankAccountNumber(''); setBankNotifyPhone('') }
-
   async function handleWithdraw() {
     setWithdrawError('')
     const amount  = parseInt(withdrawAmount.replace(/,/g, ''), 10)
     const balance = businessWallet ? Number(businessWallet.balance) : 0
-    if (!amount || amount < 1000)   { setWithdrawError('Minimum withdrawal is UGX 1,000.'); return }
-    if (amount > balance)           { setWithdrawError('Amount exceeds your available balance.'); return }
-    if (withdrawTab === 'mobilemoney') { if (!mmRecipientName.trim()) { setWithdrawError("Recipient's name is required."); return } if (!mmPhone.trim()) { setWithdrawError('Recipient phone number is required.'); return } }
-    else { if (!bankName) { setWithdrawError('Please select a bank.'); return } if (!bankAccountName.trim()) { setWithdrawError('Account name is required.'); return } if (!bankAccountNumber.trim()) { setWithdrawError('Account number is required.'); return } }
+    if (!amount || amount < 1000) { setWithdrawError('Minimum withdrawal is UGX 1,000.'); return }
+    if (amount > balance)         { setWithdrawError('Amount exceeds your available balance.'); return }
+
     setWithdrawLoading(true)
     try {
-      const isMM = withdrawTab === 'mobilemoney'
-      const openFloatMethod = isMM ? (mmNetwork === 'MTN' ? 'MTN' : 'AirtelMoney') : bankName
-      const structuredData = { withdrawal_method: openFloatMethod, withdrawal_account_name: isMM ? mmRecipientName.trim() : bankAccountName.trim(), withdrawal_account_number: isMM ? mmPhone.trim() : bankAccountNumber.trim(), withdrawal_notify_phone: isMM ? (mmNotifyPhone.trim() || null) : (bankNotifyPhone.trim() || null) }
-      const notes = isMM ? `${mmNetwork === 'MTN' ? 'MTN MoMo' : 'Airtel Money'} · ${mmRecipientName} · ${mmPhone}${mmNotifyPhone ? ` · Notify: ${mmNotifyPhone}` : ''}` : `Bank: ${bankName} · ${bankAccountName} · ${bankAccountNumber}${bankNotifyPhone ? ` · Notify: ${bankNotifyPhone}` : ''}`
-      await supabase.from('business_transactions').insert({ business_id: business.id, type: 'withdrawal', amount, status: 'pending', notes, ...structuredData })
+      const notes = `Bank: ${bankAccount.bank_name} · ${bankAccount.account_name} · ${bankAccount.account_number}${bankAccount.notification_phone ? ` · Notify: ${bankAccount.notification_phone}` : ''}`
+      await supabase.from('business_transactions').insert({
+        business_id:              business.id,
+        type:                     'withdrawal',
+        amount,
+        status:                   'pending',
+        notes,
+        withdrawal_method:        bankAccount.bank_name,
+        withdrawal_account_name:  bankAccount.account_name,
+        withdrawal_account_number: bankAccount.account_number,
+        withdrawal_notify_phone:  bankAccount.notification_phone || null,
+      })
       await supabase.from('business_wallets').update({ balance: balance - amount }).eq('business_id', business.id)
       setBusinessWallet(prev => ({ ...prev, balance: balance - amount }))
       setWithdrawSuccess(true)
@@ -308,11 +269,13 @@ export default function Overview({ admin, business }) {
     setWithdrawLoading(false)
   }
 
-  const chartMax    = Math.max(...chartData.map(d => Math.max(d.deposits, d.withdrawals)), 1)
-  const hasData     = chartData.some(d => d.deposits > 0 || d.withdrawals > 0)
-  const bizBalance  = businessWallet ? Number(businessWallet.balance) : 0
-  const isEducation = business?.sector === 'Education' || business?.sector === 'education'
-  const hasCampaign = campaigns.length > 0
+  const chartMax       = Math.max(...chartData.map(d => Math.max(d.deposits, d.withdrawals)), 1)
+  const hasData        = chartData.some(d => d.deposits > 0 || d.withdrawals > 0)
+  const bizBalance     = businessWallet ? Number(businessWallet.balance) : 0
+  const isEducation    = business?.sector === 'Education' || business?.sector === 'education'
+  const hasCampaign    = campaigns.length > 0
+  const hasBankAccount = !!bankAccount
+  const canWithdraw    = bizBalance > 0 && hasBankAccount
 
   if (loading) return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 80 }}>
@@ -323,9 +286,13 @@ export default function Overview({ admin, business }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20, fontFamily: 'Inter, system-ui, sans-serif' }}>
 
-      {/* ── WITHDRAWAL MODAL — unchanged ── */}
+      {/* ── WITHDRAWAL MODAL ── */}
       {showWithdraw && (
-        <Modal title="Withdraw funds" sub={`Available: ${formatUGXFull(bizBalance)}`} onClose={() => { setShowWithdraw(false); resetWithdrawForm() }}>
+        <Modal
+          title="Withdraw funds"
+          sub={`Available: ${formatUGXFull(bizBalance)}`}
+          onClose={() => { setShowWithdraw(false); setWithdrawAmount(''); setWithdrawError(''); setWithdrawSuccess(false) }}
+        >
           {withdrawSuccess ? (
             <>
               <div style={{ background: C.bgGreen, border: `1px solid ${C.green}`, borderRadius: 12, padding: '24px 20px', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}>
@@ -337,18 +304,11 @@ export default function Overview({ admin, business }) {
                   Your withdrawal of <strong style={{ color: C.black }}>{formatUGXFull(parseInt(withdrawAmount.replace(/,/g, ''), 10))}</strong> has been submitted. Funds will be transferred within 1–2 business days.
                 </p>
               </div>
-              <button onClick={() => { setShowWithdraw(false); resetWithdrawForm() }} style={{ ...btnPrimary, width: '100%', justifyContent: 'center' }}>Done</button>
+              <button onClick={() => { setShowWithdraw(false); setWithdrawAmount(''); setWithdrawError(''); setWithdrawSuccess(false) }} style={{ ...btnPrimary, width: '100%', justifyContent: 'center' }}>Done</button>
             </>
           ) : (
             <>
-              <div style={{ display: 'flex', gap: 4, background: C.bg, border: `1px solid ${C.grayLine}`, borderRadius: 10, padding: 4 }}>
-                {[{ id: 'mobilemoney', label: 'Mobile Money' }, { id: 'bank', label: 'Bank Transfer' }].map(tab => (
-                  <button key={tab.id} onClick={() => { setWithdrawTab(tab.id); setWithdrawError('') }}
-                    style={{ flex: 1, padding: '7px', borderRadius: 8, border: 'none', background: withdrawTab === tab.id ? C.black : 'transparent', color: withdrawTab === tab.id ? C.white : C.secondary, fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'Inter, system-ui, sans-serif' }}>
-                    {tab.label}
-                  </button>
-                ))}
-              </div>
+              {/* Amount */}
               <div>
                 <label style={labelStyle}>Amount (UGX)</label>
                 <div style={{ position: 'relative' }}>
@@ -359,57 +319,37 @@ export default function Overview({ admin, business }) {
                 </div>
                 <p style={{ fontSize: 11, fontWeight: 500, color: C.grayMid, margin: '4px 0 0' }}>Minimum UGX 1,000 · Available: {formatUGXFull(bizBalance)}</p>
               </div>
-              {withdrawTab === 'mobilemoney' && (
-                <>
-                  <div>
-                    <label style={labelStyle}>Account type</label>
-                    <div style={{ display: 'flex', gap: 8 }}>
-                      {['MTN', 'Airtel'].map(net => (
-                        <button key={net} onClick={() => setMmNetwork(net)} style={{ flex: 1, padding: '9px', background: mmNetwork === net ? C.black : C.white, border: `1px solid ${mmNetwork === net ? C.black : C.grayLine}`, borderRadius: 8, color: mmNetwork === net ? C.white : C.black, fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'Inter, system-ui, sans-serif' }}>
-                          {net === 'MTN' ? 'MTN MoMo' : 'Airtel Money'}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
+
+              {/* Pre-filled bank account — read only */}
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                  <label style={{ ...labelStyle, marginBottom: 0 }}>Sending to</label>
+                  <span style={{ fontSize: 11, fontWeight: 600, color: C.secondary, background: C.grayLight, borderRadius: 6, padding: '2px 8px' }}>Pre-filled · Read only</span>
+                </div>
+                <div style={{ background: C.bg, border: `1px solid ${C.grayLine}`, borderRadius: 10, overflow: 'hidden' }}>
                   {[
-                    { label: "Recipient's name *", val: mmRecipientName, set: setMmRecipientName, placeholder: 'Full name on mobile money account', type: 'text' },
-                    { label: "Recipient's phone *", val: mmPhone,        set: setMmPhone,         placeholder: '+256 7XX XXX XXX',                 type: 'tel'  },
-                    { label: 'Notification phone',  val: mmNotifyPhone,  set: setMmNotifyPhone,  placeholder: '+256 7XX XXX XXX (optional)',         type: 'tel'  },
-                  ].map(f => (
-                    <div key={f.label}>
-                      <label style={labelStyle}>{f.label}</label>
-                      <input style={inputStyle} type={f.type} placeholder={f.placeholder} value={f.val} onChange={e => f.set(e.target.value)}
-                        onFocus={e => e.target.style.borderColor = C.black} onBlur={e => e.target.style.borderColor = C.grayLine} />
+                    { label: 'Bank',           value: bankAccount?.bank_name },
+                    { label: 'Account name',   value: bankAccount?.account_name },
+                    { label: 'Account number', value: bankAccount?.account_number },
+                    { label: 'Currency',       value: bankAccount?.currency },
+                  ].map((row, i, arr) => (
+                    <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '9px 14px', borderBottom: i < arr.length - 1 ? `1px solid ${C.grayLine}` : 'none' }}>
+                      <span style={{ fontSize: 12, fontWeight: 500, color: C.secondary }}>{row.label}</span>
+                      <span style={{ fontSize: 13, fontWeight: 600, color: C.black }}>{row.value}</span>
                     </div>
                   ))}
-                </>
-              )}
-              {withdrawTab === 'bank' && (
-                <>
-                  <div>
-                    <label style={labelStyle}>Bank *</label>
-                    <select style={inputStyle} value={bankName} onChange={e => setBankName(e.target.value)} onFocus={e => e.target.style.borderColor = C.black} onBlur={e => e.target.style.borderColor = C.grayLine}>
-                      <option value="">Select bank</option>
-                      {UGANDA_BANKS.map(b => <option key={b} value={b}>{b}</option>)}
-                    </select>
-                  </div>
-                  {[
-                    { label: 'Account name *',     val: bankAccountName,   set: setBankAccountName,   placeholder: 'Name on bank account',       type: 'text' },
-                    { label: 'Account number *',   val: bankAccountNumber, set: setBankAccountNumber, placeholder: 'Bank account number',         type: 'text' },
-                    { label: 'Notification phone', val: bankNotifyPhone,   set: setBankNotifyPhone,   placeholder: '+256 7XX XXX XXX (optional)', type: 'tel'  },
-                  ].map(f => (
-                    <div key={f.label}>
-                      <label style={labelStyle}>{f.label}</label>
-                      <input style={inputStyle} type={f.type} placeholder={f.placeholder} value={f.val} onChange={e => f.set(e.target.value)}
-                        onFocus={e => e.target.style.borderColor = C.black} onBlur={e => e.target.style.borderColor = C.grayLine} />
-                    </div>
-                  ))}
-                </>
-              )}
+                </div>
+                <p style={{ fontSize: 11, fontWeight: 500, color: C.grayMid, margin: '5px 0 0', lineHeight: '140%' }}>
+                  To change your bank account details, go to Settings → Bank Account.
+                </p>
+              </div>
+
               {withdrawError && <div style={{ background: C.bgRed, borderRadius: 8, padding: '10px 14px', fontSize: 13, fontWeight: 500, color: C.red }}>{withdrawError}</div>}
+
               <div style={{ background: C.bg, border: `1px solid ${C.grayLine}`, borderRadius: 8, padding: '10px 14px', fontSize: 13, fontWeight: 500, color: C.secondary, lineHeight: '140%' }}>
                 Withdrawals are processed within 1–2 business days by the Partna team.
               </div>
+
               <button onClick={handleWithdraw} disabled={withdrawLoading} style={{ ...btnPrimary, width: '100%', justifyContent: 'center', opacity: withdrawLoading ? 0.75 : 1 }}>
                 {withdrawLoading ? <><div className="spinner spinner-sm spinner-light" /> Submitting…</> : `Request ${withdrawAmount ? 'UGX ' + withdrawAmount : 'withdrawal'}`}
               </button>
@@ -421,8 +361,8 @@ export default function Overview({ admin, business }) {
       {/* ── SETUP CHECKLIST ── */}
       <SetupChecklist
         business={business}
-        admin={admin}
         hasCampaign={hasCampaign}
+        hasBankAccount={hasBankAccount}
         navigate={navigate}
       />
 
@@ -432,14 +372,22 @@ export default function Overview({ admin, business }) {
         <StatCard label="Active customers"      value={stats.activeCustomers}             sub="Registered accounts"    accentColor={C.orange} />
         <StatCard label={isEducation ? 'Total fees received' : 'Total payments'} value={formatUGX(stats.totalPayments)} sub={isEducation ? 'From all students' : 'Completed payments'} accentColor={C.green} />
         <StatCard label="Active campaigns"      value={campaigns.length}                  sub={campaigns[0]?.name || 'No campaigns yet'} accentColor={C.red} onClick={() => navigate('/dashboard/campaigns')} />
+
+        {/* Business wallet card */}
         <div style={{ background: C.black, border: `1px solid ${C.stroke}`, borderRadius: 12, padding: '16px 18px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
           <div>
             <p style={{ fontSize: 11, fontWeight: 500, color: 'rgba(255,255,255,0.4)', margin: '0 0 8px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Business wallet</p>
             <p style={{ fontSize: 22, fontWeight: 600, color: bizBalance > 0 ? C.green : 'rgba(255,255,255,0.2)', letterSpacing: '-0.8px', margin: '0 0 2px', lineHeight: 1 }}>{formatUGX(bizBalance)}</p>
-            <p style={{ fontSize: 11, fontWeight: 500, color: 'rgba(255,255,255,0.3)', margin: '0 0 14px' }}>Available to withdraw</p>
+            <p style={{ fontSize: 11, fontWeight: 500, color: 'rgba(255,255,255,0.3)', margin: '0 0 14px' }}>
+              {!hasBankAccount ? 'Link a bank account to withdraw' : 'Available to withdraw'}
+            </p>
           </div>
-          <button onClick={() => { setShowWithdraw(true); setWithdrawSuccess(false); setWithdrawError('') }} disabled={bizBalance === 0}
-            style={{ width: '100%', padding: '8px', fontSize: 13, fontWeight: 600, color: bizBalance > 0 ? C.black : 'rgba(255,255,255,0.2)', background: bizBalance > 0 ? C.white : 'rgba(255,255,255,0.06)', border: `1px solid ${bizBalance > 0 ? C.white : 'rgba(255,255,255,0.1)'}`, borderRadius: 8, cursor: bizBalance > 0 ? 'pointer' : 'not-allowed', fontFamily: 'Inter, system-ui, sans-serif' }}>
+          <button
+            onClick={() => { setShowWithdraw(true); setWithdrawSuccess(false); setWithdrawError('') }}
+            disabled={!canWithdraw}
+            title={!hasBankAccount ? 'Link a bank account in Settings before withdrawing' : bizBalance === 0 ? 'No funds to withdraw' : undefined}
+            style={{ width: '100%', padding: '8px', fontSize: 13, fontWeight: 600, color: canWithdraw ? C.black : 'rgba(255,255,255,0.2)', background: canWithdraw ? C.white : 'rgba(255,255,255,0.06)', border: `1px solid ${canWithdraw ? C.white : 'rgba(255,255,255,0.1)'}`, borderRadius: 8, cursor: canWithdraw ? 'pointer' : 'not-allowed', fontFamily: 'Inter, system-ui, sans-serif' }}
+          >
             Withdraw
           </button>
         </div>
@@ -588,9 +536,7 @@ export default function Overview({ admin, business }) {
           </div>
           <p style={{ fontSize: 15, fontWeight: 600, color: C.black, margin: 0 }}>No campaigns yet</p>
           <p style={{ fontSize: 13, fontWeight: 500, color: C.secondary, margin: 0 }}>Create your first campaign to start enrolling customers.</p>
-          <button onClick={() => navigate('/dashboard/campaigns')} style={{ ...btnPrimary, marginTop: 4 }}>
-            + Create campaign
-          </button>
+          <button onClick={() => navigate('/dashboard/campaigns')} style={{ ...btnPrimary, marginTop: 4 }}>+ Create campaign</button>
         </div>
       )}
 

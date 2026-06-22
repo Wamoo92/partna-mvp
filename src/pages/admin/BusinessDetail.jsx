@@ -5,6 +5,16 @@ import { supabase } from '../../supabase'
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL
 const PACKAGES     = ['starter', 'growth', 'enterprise']
 
+const UGANDA_BANKS = [
+  'ABSA Uganda','Bank Of Africa (Uganda)','Bank of Baroda','Cairo Bank Uganda',
+  'Centenary Rural Development Bank LTD (UG)','DFCU Uganda','Diamond Trust Bank Uganda Limited',
+  'Ecobank Uganda Limited','Equity Bank Uganda','Exim bank','Finance Trust',
+  'Guaranty Trust Bank Uganda (GT Bank)','Housing Finance Bank','I & M Bank Uganda (Orient)',
+  'KCB Bank Uganda Limited','NCBA Bank Uganda Limited','Opportunity Bank','Post Bank Uganda',
+  'Stanbic Bank Uganda','Standard Chartered Bank Uganda Limited','Tropical Bank Uganda',
+  'United Bank for Africa Uganda Limited (UBA)',
+]
+
 async function sendAdminEmail({ to, subject, html }) {
   const { data: { session } } = await supabase.auth.getSession()
   await fetch(`${SUPABASE_URL}/functions/v1/send-admin-email`, {
@@ -142,6 +152,14 @@ export default function BusinessDetail() {
   const [loading, setLoading]           = useState(true)
   const [aum, setAum]                   = useState(0)
 
+  // Bank account state
+  const [bankAccount, setBankAccount]       = useState(null)
+  const [editingBank, setEditingBank]       = useState(false)
+  const [bankForm, setBankForm]             = useState({ bank_name: '', account_name: '', account_number: '', currency: 'UGX', notification_phone: '' })
+  const [savingBank, setSavingBank]         = useState(false)
+  const [bankError, setBankError]           = useState('')
+  const [bankSuccess, setBankSuccess]       = useState('')
+
   const [newPlan, setNewPlan]           = useState('')
   const [savingPlan, setSavingPlan]     = useState(false)
   const [planSuccess, setPlanSuccess]   = useState(false)
@@ -155,13 +173,12 @@ export default function BusinessDetail() {
   const [savingStatus, setSavingStatus]   = useState(false)
   const [statusSuccess, setStatusSuccess] = useState('')
 
-  // Subscription tab state
-  const [subAction, setSubAction]         = useState(null) // 'mark_paid' | 'upgrade' | 'suspend' | 'cancel'
-  const [subNewPlan, setSubNewPlan]       = useState('')
+  const [subAction, setSubAction]             = useState(null)
+  const [subNewPlan, setSubNewPlan]           = useState('')
   const [subBillingCycle, setSubBillingCycle] = useState('monthly')
-  const [savingSub, setSavingSub]         = useState(false)
-  const [subSuccess, setSubSuccess]       = useState('')
-  const [subError, setSubError]           = useState('')
+  const [savingSub, setSavingSub]             = useState(false)
+  const [subSuccess, setSubSuccess]           = useState('')
+  const [subError, setSubError]               = useState('')
 
   const [activeTab, setActiveTab] = useState('profile')
 
@@ -195,11 +212,56 @@ export default function BusinessDetail() {
 
       const { data: files } = await supabase.storage.from('kyb-documents').list(id)
       setKybDocs(files || [])
+
+      // Fetch bank account
+      const { data: bankData } = await supabase.from('business_bank_accounts').select('*').eq('business_id', id).maybeSingle()
+      setBankAccount(bankData || null)
+      if (bankData) {
+        setBankForm({
+          bank_name:          bankData.bank_name,
+          account_name:       bankData.account_name,
+          account_number:     bankData.account_number,
+          currency:           bankData.currency,
+          notification_phone: bankData.notification_phone || '',
+        })
+      }
     } catch (e) { console.error('BusinessDetail load error:', e) }
     setLoading(false)
   }
 
-  // ── KYB action — unchanged ─────────────────────────────────────────────
+  // ── Bank account save (admin can create or update) ─────────────────────
+  async function handleSaveBankAccount() {
+    setBankError('')
+    if (!bankForm.bank_name)             { setBankError('Please select a bank.'); return }
+    if (!bankForm.account_name.trim())   { setBankError('Account name is required.'); return }
+    if (!bankForm.account_number.trim()) { setBankError('Account number is required.'); return }
+    setSavingBank(true)
+    try {
+      const payload = {
+        business_id:        id,
+        bank_name:          bankForm.bank_name,
+        account_name:       bankForm.account_name.trim(),
+        account_number:     bankForm.account_number.trim(),
+        currency:           bankForm.currency,
+        notification_phone: bankForm.notification_phone.trim() || null,
+      }
+      const { error } = await supabase
+        .from('business_bank_accounts')
+        .upsert(payload, { onConflict: 'business_id' })
+      if (error) throw error
+      await loadAll()
+      setEditingBank(false)
+      setBankSuccess('Bank account saved.')
+      setTimeout(() => setBankSuccess(''), 3000)
+    } catch (e) {
+      console.error('Save bank account error:', e)
+      setBankError('Could not save bank account. Please try again.')
+    }
+    setSavingBank(false)
+  }
+
+  // ── All other handlers — unchanged ────────────────────────────────────
+
   async function handleKYBAction() {
     if (!kybAction) return
     if (kybAction === 'reject' && !rejectReason.trim()) return
@@ -218,7 +280,6 @@ export default function BusinessDetail() {
     setSavingKYB(false)
   }
 
-  // ── Plan change (profile tab) — unchanged ─────────────────────────────
   async function handlePlanChange() {
     if (!newPlan || newPlan === business.subscription_package) return
     setSavingPlan(true)
@@ -230,7 +291,6 @@ export default function BusinessDetail() {
     setSavingPlan(false)
   }
 
-  // ── Status change (profile tab) — unchanged ───────────────────────────
   async function handleStatusChange() {
     if (!statusAction) return
     setSavingStatus(true)
@@ -249,82 +309,35 @@ export default function BusinessDetail() {
     if (data?.signedUrl) window.open(data.signedUrl, '_blank')
   }
 
-  // ── Subscription tab actions ───────────────────────────────────────────
-
   async function handleMarkPaid() {
     setSavingSub(true); setSubError('')
     try {
-      const now            = new Date()
-      const newExpiry      = addDays(now, subBillingCycle === 'annual' ? 365 : 30)
-      const updates = {
-        subscription_status:     'active',
-        subscription_expires_at: newExpiry,
-        grace_period_ends_at:    null,
-        suspension_ends_at:      null,
-        trial_ends_at:           null, // trial ends when first payment is made
-      }
+      const now       = new Date()
+      const newExpiry = addDays(now, subBillingCycle === 'annual' ? 365 : 30)
+      const updates   = { subscription_status: 'active', subscription_expires_at: newExpiry, grace_period_ends_at: null, suspension_ends_at: null, trial_ends_at: null }
       await supabase.from('businesses').update(updates).eq('id', id)
       setBusiness(prev => ({ ...prev, ...updates }))
-
-      // Notify business admin
       if (business.admin_email) {
-        await sendAdminEmail({
-          to:      business.admin_email,
-          subject: 'Payment confirmed — Partna subscription active',
-          html:    `<div style="font-family: Inter, system-ui, sans-serif; max-width: 520px; margin: 0 auto; padding: 32px 24px; color: #111;">
-            <img src="https://www.partna.io/partna-logo.png" alt="Partna" style="height: 28px; margin-bottom: 24px;" />
-            <h2 style="font-size: 20px; font-weight: 600; margin: 0 0 12px;">Payment confirmed</h2>
-            <p style="font-size: 15px; color: #444; line-height: 1.6; margin: 0 0 20px;">
-              Hi ${admin?.full_name || 'there'}, your Partna subscription for <strong>${business.name}</strong> is now active.
-              Your next billing date is <strong>${formatDateTime(newExpiry)}</strong>.
-            </p>
-            <p style="font-size: 13px; color: #959687; margin: 0;">Powered by <a href="https://www.partna.io" style="color: #111; font-weight: 600;">Partna</a></p>
-          </div>`,
-        })
+        await sendAdminEmail({ to: business.admin_email, subject: 'Payment confirmed — Partna subscription active', html: `<div style="font-family: Inter, system-ui, sans-serif; max-width: 520px; margin: 0 auto; padding: 32px 24px; color: #111;"><img src="https://www.partna.io/partna-logo.png" alt="Partna" style="height: 28px; margin-bottom: 24px;" /><h2 style="font-size: 20px; font-weight: 600; margin: 0 0 12px;">Payment confirmed</h2><p style="font-size: 15px; color: #444; line-height: 1.6; margin: 0 0 20px;">Hi ${admin?.full_name || 'there'}, your Partna subscription for <strong>${business.name}</strong> is now active. Your next billing date is <strong>${formatDateTime(newExpiry)}</strong>.</p><p style="font-size: 13px; color: #959687; margin: 0;">Powered by <a href="https://www.partna.io" style="color: #111; font-weight: 600;">Partna</a></p></div>` })
       }
-
       setSubSuccess('Payment marked. Subscription extended and business notified.')
       setSubAction(null)
-    } catch (e) {
-      console.error('Mark paid error:', e)
-      setSubError('Could not mark as paid. Please try again.')
-    }
+    } catch (e) { setSubError('Could not mark as paid. Please try again.') }
     setSavingSub(false)
   }
 
   async function handleUpgradePlan() {
-    if (!subNewPlan || subNewPlan === business.subscription_package) {
-      setSubError('Please select a different plan.')
-      return
-    }
+    if (!subNewPlan || subNewPlan === business.subscription_package) { setSubError('Please select a different plan.'); return }
     setSavingSub(true); setSubError('')
     try {
       await supabase.from('businesses').update({ subscription_package: subNewPlan }).eq('id', id)
       setBusiness(prev => ({ ...prev, subscription_package: subNewPlan }))
-      setSubNewPlan(subNewPlan)
-
       if (business.admin_email) {
-        await sendAdminEmail({
-          to:      business.admin_email,
-          subject: `Your Partna plan has been updated to ${subNewPlan.charAt(0).toUpperCase() + subNewPlan.slice(1)}`,
-          html:    `<div style="font-family: Inter, system-ui, sans-serif; max-width: 520px; margin: 0 auto; padding: 32px 24px; color: #111;">
-            <img src="https://www.partna.io/partna-logo.png" alt="Partna" style="height: 28px; margin-bottom: 24px;" />
-            <h2 style="font-size: 20px; font-weight: 600; margin: 0 0 12px;">Plan updated</h2>
-            <p style="font-size: 15px; color: #444; line-height: 1.6; margin: 0 0 20px;">
-              Hi ${admin?.full_name || 'there'}, your Partna plan for <strong>${business.name}</strong> has been updated to
-              <strong> ${subNewPlan.charAt(0).toUpperCase() + subNewPlan.slice(1)}</strong>.
-            </p>
-            <p style="font-size: 13px; color: #959687; margin: 0;">Powered by <a href="https://www.partna.io" style="color: #111; font-weight: 600;">Partna</a></p>
-          </div>`,
-        })
+        await sendAdminEmail({ to: business.admin_email, subject: `Your Partna plan has been updated to ${subNewPlan.charAt(0).toUpperCase() + subNewPlan.slice(1)}`, html: `<div style="font-family: Inter, system-ui, sans-serif; max-width: 520px; margin: 0 auto; padding: 32px 24px; color: #111;"><img src="https://www.partna.io/partna-logo.png" alt="Partna" style="height: 28px; margin-bottom: 24px;" /><h2 style="font-size: 20px; font-weight: 600; margin: 0 0 12px;">Plan updated</h2><p style="font-size: 15px; color: #444; line-height: 1.6; margin: 0 0 20px;">Hi ${admin?.full_name || 'there'}, your Partna plan for <strong>${business.name}</strong> has been updated to <strong>${subNewPlan.charAt(0).toUpperCase() + subNewPlan.slice(1)}</strong>.</p><p style="font-size: 13px; color: #959687; margin: 0;">Powered by <a href="https://www.partna.io" style="color: #111; font-weight: 600;">Partna</a></p></div>` })
       }
-
-      setSubSuccess(`Plan upgraded to ${subNewPlan}. Business notified.`)
+      setSubSuccess(`Plan changed to ${subNewPlan}. Business notified.`)
       setSubAction(null)
-    } catch (e) {
-      console.error('Upgrade plan error:', e)
-      setSubError('Could not update plan. Please try again.')
-    }
+    } catch (e) { setSubError('Could not update plan. Please try again.') }
     setSavingSub(false)
   }
 
@@ -332,84 +345,31 @@ export default function BusinessDetail() {
     setSavingSub(true); setSubError('')
     try {
       const gracePeriodEnds = addDays(new Date(), 7)
-      const updates = {
-        subscription_status:  'grace',
-        grace_period_ends_at: gracePeriodEnds,
-      }
+      const updates = { subscription_status: 'grace', grace_period_ends_at: gracePeriodEnds }
       await supabase.from('businesses').update(updates).eq('id', id)
       setBusiness(prev => ({ ...prev, ...updates }))
-
       if (business.admin_email) {
-        await sendAdminEmail({
-          to:      business.admin_email,
-          subject: 'Action required — Partna subscription payment overdue',
-          html:    `<div style="font-family: Inter, system-ui, sans-serif; max-width: 520px; margin: 0 auto; padding: 32px 24px; color: #111;">
-            <img src="https://www.partna.io/partna-logo.png" alt="Partna" style="height: 28px; margin-bottom: 24px;" />
-            <h2 style="font-size: 20px; font-weight: 600; margin: 0 0 12px;">Payment overdue</h2>
-            <p style="font-size: 15px; color: #444; line-height: 1.6; margin: 0 0 20px;">
-              Hi ${admin?.full_name || 'there'}, your Partna subscription for <strong>${business.name}</strong> has an overdue payment.
-              You have a <strong>7-day grace period</strong> until <strong>${formatDateTime(gracePeriodEnds)}</strong> to make payment before your account is suspended.
-            </p>
-            <p style="font-size: 15px; color: #444; line-height: 1.6; margin: 0 0 20px;">
-              Please contact <a href="mailto:billing@partna.io" style="color: #111; font-weight: 600;">billing@partna.io</a> to arrange payment.
-            </p>
-            <p style="font-size: 13px; color: #959687; margin: 0;">Powered by <a href="https://www.partna.io" style="color: #111; font-weight: 600;">Partna</a></p>
-          </div>`,
-        })
+        await sendAdminEmail({ to: business.admin_email, subject: 'Action required — Partna subscription payment overdue', html: `<div style="font-family: Inter, system-ui, sans-serif; max-width: 520px; margin: 0 auto; padding: 32px 24px; color: #111;"><img src="https://www.partna.io/partna-logo.png" alt="Partna" style="height: 28px; margin-bottom: 24px;" /><h2 style="font-size: 20px; font-weight: 600; margin: 0 0 12px;">Payment overdue</h2><p style="font-size: 15px; color: #444; line-height: 1.6; margin: 0 0 20px;">Hi ${admin?.full_name || 'there'}, your Partna subscription for <strong>${business.name}</strong> has an overdue payment. You have a <strong>7-day grace period</strong> until <strong>${formatDateTime(gracePeriodEnds)}</strong> to make payment before your account is suspended.</p><p style="font-size: 15px; color: #444; line-height: 1.6; margin: 0 0 20px;">Please contact <a href="mailto:billing@partna.io" style="color: #111; font-weight: 600;">billing@partna.io</a> to arrange payment.</p><p style="font-size: 13px; color: #959687; margin: 0;">Powered by <a href="https://www.partna.io" style="color: #111; font-weight: 600;">Partna</a></p></div>` })
       }
-
       setSubSuccess('Grace period started. Business has 7 days to pay before suspension.')
       setSubAction(null)
-    } catch (e) {
-      console.error('Suspend subscription error:', e)
-      setSubError('Could not update subscription status. Please try again.')
-    }
+    } catch (e) { setSubError('Could not update subscription status. Please try again.') }
     setSavingSub(false)
   }
 
   async function handleCancelSubscription() {
     setSavingSub(true); setSubError('')
     try {
-      const updates = {
-        subscription_status: 'cancelled',
-        suspension_ends_at:  null,
-        grace_period_ends_at: null,
-      }
+      const updates = { subscription_status: 'cancelled', suspension_ends_at: null, grace_period_ends_at: null }
       await supabase.from('businesses').update(updates).eq('id', id)
-
-      // Pause all active campaigns
-      await supabase.from('campaigns')
-        .update({ status: 'paused' })
-        .eq('business_id', id)
-        .eq('status', 'active')
-
+      await supabase.from('campaigns').update({ status: 'paused' }).eq('business_id', id).eq('status', 'active')
       setBusiness(prev => ({ ...prev, ...updates }))
-
       if (business.admin_email) {
-        await sendAdminEmail({
-          to:      business.admin_email,
-          subject: 'Your Partna subscription has been cancelled',
-          html:    `<div style="font-family: Inter, system-ui, sans-serif; max-width: 520px; margin: 0 auto; padding: 32px 24px; color: #111;">
-            <img src="https://www.partna.io/partna-logo.png" alt="Partna" style="height: 28px; margin-bottom: 24px;" />
-            <h2 style="font-size: 20px; font-weight: 600; margin: 0 0 12px;">Subscription cancelled</h2>
-            <p style="font-size: 15px; color: #444; line-height: 1.6; margin: 0 0 20px;">
-              Hi ${admin?.full_name || 'there'}, your Partna subscription for <strong>${business.name}</strong> has been cancelled.
-              All active campaigns have been paused. Customer funds are unaffected and withdrawals remain available.
-            </p>
-            <p style="font-size: 15px; color: #444; line-height: 1.6; margin: 0 0 20px;">
-              To reactivate your account, please contact <a href="mailto:billing@partna.io" style="color: #111; font-weight: 600;">billing@partna.io</a>.
-            </p>
-            <p style="font-size: 13px; color: #959687; margin: 0;">Powered by <a href="https://www.partna.io" style="color: #111; font-weight: 600;">Partna</a></p>
-          </div>`,
-        })
+        await sendAdminEmail({ to: business.admin_email, subject: 'Your Partna subscription has been cancelled', html: `<div style="font-family: Inter, system-ui, sans-serif; max-width: 520px; margin: 0 auto; padding: 32px 24px; color: #111;"><img src="https://www.partna.io/partna-logo.png" alt="Partna" style="height: 28px; margin-bottom: 24px;" /><h2 style="font-size: 20px; font-weight: 600; margin: 0 0 12px;">Subscription cancelled</h2><p style="font-size: 15px; color: #444; line-height: 1.6; margin: 0 0 20px;">Hi ${admin?.full_name || 'there'}, your Partna subscription for <strong>${business.name}</strong> has been cancelled. All active campaigns have been paused. Customer funds are unaffected and withdrawals remain available.</p><p style="font-size: 15px; color: #444; line-height: 1.6; margin: 0 0 20px;">To reactivate your account, please contact <a href="mailto:billing@partna.io" style="color: #111; font-weight: 600;">billing@partna.io</a>.</p><p style="font-size: 13px; color: #959687; margin: 0;">Powered by <a href="https://www.partna.io" style="color: #111; font-weight: 600;">Partna</a></p></div>` })
       }
-
       setSubSuccess('Subscription cancelled. All active campaigns paused. Business notified.')
       setSubAction(null)
-    } catch (e) {
-      console.error('Cancel subscription error:', e)
-      setSubError('Could not cancel subscription. Please try again.')
-    }
+    } catch (e) { setSubError('Could not cancel subscription. Please try again.') }
     setSavingSub(false)
   }
 
@@ -430,14 +390,11 @@ export default function BusinessDetail() {
     </div>
   )
 
-  const bizStatus = business.status || 'active'
-  const subStatus = business.subscription_status || 'active'
-  const isOnTrial = business.trial_ends_at && new Date(business.trial_ends_at) > new Date()
-  const trialDaysLeft = business.trial_ends_at
-    ? Math.max(0, Math.ceil((new Date(business.trial_ends_at) - new Date()) / 86400000))
-    : 0
-
-  const TABS = ['profile', 'kyb', 'subscription', 'campaigns', 'customers', 'transactions']
+  const bizStatus     = business.status || 'active'
+  const subStatus     = business.subscription_status || 'active'
+  const isOnTrial     = business.trial_ends_at && new Date(business.trial_ends_at) > new Date()
+  const trialDaysLeft = business.trial_ends_at ? Math.max(0, Math.ceil((new Date(business.trial_ends_at) - new Date()) / 86400000)) : 0
+  const TABS          = ['profile', 'kyb', 'subscription', 'campaigns', 'customers', 'transactions']
 
   const inputStyle   = { display: 'block', width: '100%', padding: '9px 12px', fontSize: 13, fontWeight: 500, color: C.black, background: C.white, border: `1px solid ${C.grayLine}`, borderRadius: 8, outline: 'none', fontFamily: 'Inter, system-ui, sans-serif', transition: 'border-color 0.15s' }
   const btnPrimary   = { padding: '9px 18px', fontSize: 13, fontWeight: 600, color: C.white, background: C.black, border: `1px solid ${C.black}`, borderRadius: 8, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6, fontFamily: 'Inter, system-ui, sans-serif' }
@@ -479,6 +436,7 @@ export default function BusinessDetail() {
       {/* Toasts */}
       {kybSuccess    && <div style={{ background: C.bgGreen, border: `1px solid ${C.green}`, borderRadius: 8, padding: '12px 16px', fontSize: 13, fontWeight: 500, color: C.green }}>{kybSuccess}</div>}
       {statusSuccess && <div style={{ background: C.bgGreen, border: `1px solid ${C.green}`, borderRadius: 8, padding: '12px 16px', fontSize: 13, fontWeight: 500, color: C.green }}>{statusSuccess}</div>}
+      {bankSuccess   && <div style={{ background: C.bgGreen, border: `1px solid ${C.green}`, borderRadius: 8, padding: '12px 16px', fontSize: 13, fontWeight: 500, color: C.green }}>{bankSuccess}</div>}
 
       {/* ── Tabs ── */}
       <div style={{ display: 'flex', gap: 4, background: C.white, border: `1px solid ${C.stroke}`, borderRadius: 10, padding: 4 }}>
@@ -545,6 +503,77 @@ export default function BusinessDetail() {
             <InfoRow label="Total transactions" value={transactions.length} last />
           </SectionCard>
 
+          {/* ── Bank account card ── */}
+          <SectionCard
+            title="Linked bank account"
+            action={
+              !editingBank ? (
+                <button
+                  onClick={() => {
+                    setEditingBank(true)
+                    setBankError('')
+                    if (!bankAccount) setBankForm({ bank_name: '', account_name: '', account_number: '', currency: 'UGX', notification_phone: '' })
+                  }}
+                  style={{ ...btnSecondary, padding: '5px 12px', fontSize: 12 }}
+                >
+                  {bankAccount ? 'Edit' : '+ Link account'}
+                </button>
+              ) : null
+            }
+          >
+            {editingBank ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: C.black, marginBottom: 5 }}>Bank *</label>
+                  <select style={{ ...inputStyle, cursor: 'pointer' }} value={bankForm.bank_name} onChange={e => setBankForm(p => ({ ...p, bank_name: e.target.value }))}
+                    onFocus={e => e.target.style.borderColor = C.black} onBlur={e => e.target.style.borderColor = C.grayLine}>
+                    <option value="">Select bank</option>
+                    {UGANDA_BANKS.map(b => <option key={b} value={b}>{b}</option>)}
+                  </select>
+                </div>
+                {[
+                  { label: 'Account name *',    key: 'account_name',       placeholder: 'Name on account',            type: 'text' },
+                  { label: 'Account number *',  key: 'account_number',     placeholder: 'Bank account number',        type: 'text' },
+                  { label: 'Notification phone', key: 'notification_phone', placeholder: '+256 7XX XXX XXX (optional)', type: 'tel'  },
+                ].map(f => (
+                  <div key={f.key}>
+                    <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: C.black, marginBottom: 5 }}>{f.label}</label>
+                    <input type={f.type} style={inputStyle} placeholder={f.placeholder}
+                      value={bankForm[f.key]} onChange={e => setBankForm(p => ({ ...p, [f.key]: e.target.value }))}
+                      onFocus={e => e.target.style.borderColor = C.black} onBlur={e => e.target.style.borderColor = C.grayLine} />
+                  </div>
+                ))}
+                <div>
+                  <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: C.black, marginBottom: 5 }}>Currency</label>
+                  <select style={{ ...inputStyle, cursor: 'pointer' }} value={bankForm.currency} onChange={e => setBankForm(p => ({ ...p, currency: e.target.value }))}
+                    onFocus={e => e.target.style.borderColor = C.black} onBlur={e => e.target.style.borderColor = C.grayLine}>
+                    <option value="UGX">UGX — Ugandan Shilling</option>
+                  </select>
+                </div>
+                {bankError && <div style={{ background: C.bgRed, border: `1px solid ${C.red}`, borderRadius: 8, padding: '9px 12px', fontSize: 12, fontWeight: 500, color: C.red }}>{bankError}</div>}
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button onClick={() => { setEditingBank(false); setBankError('') }} style={{ ...btnSecondary, flex: 1, justifyContent: 'center', padding: '8px' }}>Cancel</button>
+                  <button onClick={handleSaveBankAccount} disabled={savingBank} style={{ ...btnPrimary, flex: 1, justifyContent: 'center', padding: '8px', opacity: savingBank ? 0.7 : 1 }}>
+                    {savingBank ? <><div className="spinner spinner-sm spinner-light" /> Saving…</> : 'Save'}
+                  </button>
+                </div>
+              </div>
+            ) : bankAccount ? (
+              <>
+                <InfoRow label="Bank"               value={bankAccount.bank_name} />
+                <InfoRow label="Account name"       value={bankAccount.account_name} />
+                <InfoRow label="Account number"     value={bankAccount.account_number} mono />
+                <InfoRow label="Currency"           value={bankAccount.currency} />
+                <InfoRow label="Notification phone" value={bankAccount.notification_phone || '—'} last />
+              </>
+            ) : (
+              <div style={{ padding: '20px 0', textAlign: 'center' }}>
+                <p style={{ fontSize: 13, fontWeight: 500, color: C.secondary, margin: '0 0 12px' }}>No bank account linked yet.</p>
+                <button onClick={() => { setEditingBank(true); setBankError('') }} style={{ ...btnPrimary, fontSize: 12, padding: '7px 14px' }}>+ Link bank account</button>
+              </div>
+            )}
+          </SectionCard>
+
           <SectionCard title="Account actions">
             {statusAction ? (
               <div style={{ background: C.bg, border: `1px solid ${C.grayLine}`, borderRadius: 8, padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -584,9 +613,7 @@ export default function BusinessDetail() {
               {business.kyb_status === 'pending' && <span style={{ fontSize: 12, fontWeight: 500, color: C.secondary }}>Awaiting review</span>}
             </div>
             {business.kyb_status === 'verified' ? (
-              <div style={{ background: C.bgGreen, borderRadius: 8, padding: '12px 14px', fontSize: 13, fontWeight: 500, color: C.green }}>
-                This business has been verified.
-              </div>
+              <div style={{ background: C.bgGreen, borderRadius: 8, padding: '12px 14px', fontSize: 13, fontWeight: 500, color: C.green }}>This business has been verified.</div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                 {kybAction === 'reject' && (
@@ -596,8 +623,7 @@ export default function BusinessDetail() {
                       placeholder="Explain why the KYB submission is being rejected…"
                       style={{ ...inputStyle, resize: 'vertical' }}
                       onFocus={e => e.target.style.borderColor = C.black}
-                      onBlur={e => e.target.style.borderColor = C.grayLine}
-                    />
+                      onBlur={e => e.target.style.borderColor = C.grayLine} />
                   </div>
                 )}
                 {kybAction ? (
@@ -617,7 +643,6 @@ export default function BusinessDetail() {
               </div>
             )}
           </SectionCard>
-
           <SectionCard title={`Uploaded documents (${kybDocs.length})`}>
             {kybDocs.length === 0 ? (
               <div style={{ padding: '32px 0', textAlign: 'center', fontSize: 13, fontWeight: 500, color: C.secondary }}>No documents uploaded</div>
@@ -641,133 +666,78 @@ export default function BusinessDetail() {
       {/* ══════════════ SUBSCRIPTION ══════════════ */}
       {activeTab === 'subscription' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-
-          {/* Feedback */}
           {subSuccess && <div style={{ background: C.bgGreen, border: `1px solid ${C.green}`, borderRadius: 8, padding: '12px 16px', fontSize: 13, fontWeight: 500, color: C.green }}>{subSuccess}</div>}
           {subError   && <div style={{ background: C.bgRed,   border: `1px solid ${C.red}`,   borderRadius: 8, padding: '12px 16px', fontSize: 13, fontWeight: 500, color: C.red   }}>{subError}</div>}
-
-          {/* Status overview */}
           <SectionCard title="Subscription overview">
-
-            {/* Trial banner */}
             {isOnTrial && (
               <div style={{ background: 'rgba(133,160,197,0.12)', border: `1px solid ${C.blue}`, borderRadius: 8, padding: '12px 16px', marginBottom: 16, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <div>
                   <p style={{ fontSize: 13, fontWeight: 600, color: C.blue, margin: '0 0 2px' }}>Free trial active</p>
-                  <p style={{ fontSize: 12, fontWeight: 500, color: C.blue, margin: 0, opacity: 0.85 }}>
-                    {trialDaysLeft} days remaining · Ends {formatDateTime(business.trial_ends_at)}
-                  </p>
+                  <p style={{ fontSize: 12, fontWeight: 500, color: C.blue, margin: 0, opacity: 0.85 }}>{trialDaysLeft} days remaining · Ends {formatDateTime(business.trial_ends_at)}</p>
                 </div>
                 <span style={{ fontSize: 12, fontWeight: 600, color: C.blue }}>No billing until trial ends</span>
               </div>
             )}
-
-            {/* Grace period banner */}
             {subStatus === 'grace' && (
               <div style={{ background: C.bgOrange, border: `1px solid ${C.orange}`, borderRadius: 8, padding: '12px 16px', marginBottom: 16 }}>
                 <p style={{ fontSize: 13, fontWeight: 600, color: C.orange, margin: '0 0 2px' }}>Grace period active</p>
-                <p style={{ fontSize: 12, fontWeight: 500, color: C.orange, margin: 0, opacity: 0.85 }}>
-                  Payment overdue. Grace period ends {formatDateTime(business.grace_period_ends_at)}.
-                </p>
+                <p style={{ fontSize: 12, fontWeight: 500, color: C.orange, margin: 0, opacity: 0.85 }}>Payment overdue. Grace period ends {formatDateTime(business.grace_period_ends_at)}.</p>
               </div>
             )}
-
-            {/* Cancelled banner */}
             {subStatus === 'cancelled' && (
               <div style={{ background: C.bgRed, border: `1px solid ${C.red}`, borderRadius: 8, padding: '12px 16px', marginBottom: 16 }}>
                 <p style={{ fontSize: 13, fontWeight: 600, color: C.red, margin: '0 0 2px' }}>Subscription cancelled</p>
                 <p style={{ fontSize: 12, fontWeight: 500, color: C.red, margin: 0, opacity: 0.85 }}>All campaigns have been paused.</p>
               </div>
             )}
-
-            <InfoRow label="Plan"                  value={business.subscription_package ? business.subscription_package.charAt(0).toUpperCase() + business.subscription_package.slice(1) : '—'} />
-            <InfoRow label="Subscription status"   value={<Badge value={subStatus} />} />
-            <InfoRow label="Trial ends"            value={business.trial_ends_at ? formatDateTime(business.trial_ends_at) : 'No trial'} />
-            <InfoRow label="Subscription expires"  value={formatDateTime(business.subscription_expires_at)} />
-            <InfoRow label="Grace period ends"     value={formatDateTime(business.grace_period_ends_at)} />
-            <InfoRow label="Customer count"        value={`${customers.length} customers`} last />
+            <InfoRow label="Plan"                 value={business.subscription_package ? business.subscription_package.charAt(0).toUpperCase() + business.subscription_package.slice(1) : '—'} />
+            <InfoRow label="Subscription status"  value={<Badge value={subStatus} />} />
+            <InfoRow label="Trial ends"           value={business.trial_ends_at ? formatDateTime(business.trial_ends_at) : 'No trial'} />
+            <InfoRow label="Subscription expires" value={formatDateTime(business.subscription_expires_at)} />
+            <InfoRow label="Grace period ends"    value={formatDateTime(business.grace_period_ends_at)} />
+            <InfoRow label="Customer count"       value={`${customers.length} customers`} last />
           </SectionCard>
-
-          {/* Actions */}
           <SectionCard title="Subscription actions">
             {subAction === null && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                <button
-                  onClick={() => { setSubAction('mark_paid'); setSubError('') }}
-                  style={{ ...btnSuccess, width: '100%', justifyContent: 'center' }}
-                >
-                  ✓ Mark as paid — extend billing period
-                </button>
-                <button
-                  onClick={() => { setSubAction('upgrade'); setSubError('') }}
-                  style={{ ...btnPrimary, width: '100%', justifyContent: 'center' }}
-                >
-                  Change plan
-                </button>
+                <button onClick={() => { setSubAction('mark_paid'); setSubError('') }} style={{ ...btnSuccess, width: '100%', justifyContent: 'center' }}>✓ Mark as paid — extend billing period</button>
+                <button onClick={() => { setSubAction('upgrade'); setSubError('') }} style={{ ...btnPrimary, width: '100%', justifyContent: 'center' }}>Change plan</button>
                 {subStatus !== 'grace' && subStatus !== 'cancelled' && (
-                  <button
-                    onClick={() => { setSubAction('suspend'); setSubError('') }}
-                    style={{ ...btnOrange, width: '100%', justifyContent: 'center' }}
-                  >
-                    Start grace period — payment overdue
-                  </button>
+                  <button onClick={() => { setSubAction('suspend'); setSubError('') }} style={{ ...btnOrange, width: '100%', justifyContent: 'center' }}>Start grace period — payment overdue</button>
                 )}
                 {subStatus !== 'cancelled' && (
-                  <button
-                    onClick={() => { setSubAction('cancel'); setSubError('') }}
-                    style={{ width: '100%', padding: '9px', fontSize: 13, fontWeight: 600, color: C.red, background: C.bgRed, border: `1px solid ${C.red}`, borderRadius: 8, cursor: 'pointer', fontFamily: 'Inter, system-ui, sans-serif' }}
-                  >
-                    Cancel subscription
-                  </button>
+                  <button onClick={() => { setSubAction('cancel'); setSubError('') }} style={{ width: '100%', padding: '9px', fontSize: 13, fontWeight: 600, color: C.red, background: C.bgRed, border: `1px solid ${C.red}`, borderRadius: 8, cursor: 'pointer', fontFamily: 'Inter, system-ui, sans-serif' }}>Cancel subscription</button>
                 )}
                 {subStatus === 'cancelled' && (
-                  <button
-                    onClick={() => { setSubAction('mark_paid'); setSubError('') }}
-                    style={{ ...btnSuccess, width: '100%', justifyContent: 'center' }}
-                  >
-                    Reactivate — mark payment received
-                  </button>
+                  <button onClick={() => { setSubAction('mark_paid'); setSubError('') }} style={{ ...btnSuccess, width: '100%', justifyContent: 'center' }}>Reactivate — mark payment received</button>
                 )}
               </div>
             )}
-
-            {/* Mark paid confirmation */}
             {subAction === 'mark_paid' && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
                 <p style={{ fontSize: 14, fontWeight: 600, color: C.black, margin: 0 }}>Mark payment received</p>
-                <p style={{ fontSize: 13, fontWeight: 500, color: C.secondary, margin: 0 }}>
-                  This will set the subscription to active and extend the billing period by the selected cycle.
-                </p>
+                <p style={{ fontSize: 13, fontWeight: 500, color: C.secondary, margin: 0 }}>This will set the subscription to active and extend the billing period by the selected cycle.</p>
                 <div>
                   <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: C.black, marginBottom: 5 }}>Billing cycle paid</label>
-                  <select value={subBillingCycle} onChange={e => setSubBillingCycle(e.target.value)}
-                    style={{ ...inputStyle }}
-                    onFocus={e => e.target.style.borderColor = C.black}
-                    onBlur={e => e.target.style.borderColor = C.grayLine}>
+                  <select value={subBillingCycle} onChange={e => setSubBillingCycle(e.target.value)} style={inputStyle} onFocus={e => e.target.style.borderColor = C.black} onBlur={e => e.target.style.borderColor = C.grayLine}>
                     <option value="monthly">Monthly — extend by 30 days</option>
                     <option value="annual">Annual — extend by 365 days</option>
                   </select>
                 </div>
                 <div style={{ display: 'flex', gap: 10 }}>
                   <button onClick={() => { setSubAction(null); setSubError('') }} style={{ ...btnSecondary, flex: 1, justifyContent: 'center' }}>Cancel</button>
-                  <button onClick={handleMarkPaid} disabled={savingSub}
-                    style={{ ...btnSuccess, flex: 1, justifyContent: 'center', opacity: savingSub ? 0.7 : 1 }}>
+                  <button onClick={handleMarkPaid} disabled={savingSub} style={{ ...btnSuccess, flex: 1, justifyContent: 'center', opacity: savingSub ? 0.7 : 1 }}>
                     {savingSub ? <><div className="spinner spinner-sm spinner-light" /> Saving…</> : 'Confirm payment received'}
                   </button>
                 </div>
               </div>
             )}
-
-            {/* Upgrade plan confirmation */}
             {subAction === 'upgrade' && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
                 <p style={{ fontSize: 14, fontWeight: 600, color: C.black, margin: 0 }}>Change subscription plan</p>
                 <div>
                   <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: C.black, marginBottom: 5 }}>New plan</label>
-                  <select value={subNewPlan} onChange={e => setSubNewPlan(e.target.value)}
-                    style={{ ...inputStyle }}
-                    onFocus={e => e.target.style.borderColor = C.black}
-                    onBlur={e => e.target.style.borderColor = C.grayLine}>
+                  <select value={subNewPlan} onChange={e => setSubNewPlan(e.target.value)} style={inputStyle} onFocus={e => e.target.style.borderColor = C.black} onBlur={e => e.target.style.borderColor = C.grayLine}>
                     <option value="starter">Starter — $49/month</option>
                     <option value="growth">Growth — $149/month</option>
                     <option value="enterprise">Enterprise — $399/month</option>
@@ -775,15 +745,12 @@ export default function BusinessDetail() {
                 </div>
                 <div style={{ display: 'flex', gap: 10 }}>
                   <button onClick={() => { setSubAction(null); setSubError('') }} style={{ ...btnSecondary, flex: 1, justifyContent: 'center' }}>Cancel</button>
-                  <button onClick={handleUpgradePlan} disabled={savingSub || subNewPlan === business.subscription_package}
-                    style={{ ...btnPrimary, flex: 1, justifyContent: 'center', opacity: savingSub || subNewPlan === business.subscription_package ? 0.5 : 1 }}>
+                  <button onClick={handleUpgradePlan} disabled={savingSub || subNewPlan === business.subscription_package} style={{ ...btnPrimary, flex: 1, justifyContent: 'center', opacity: savingSub || subNewPlan === business.subscription_package ? 0.5 : 1 }}>
                     {savingSub ? <><div className="spinner spinner-sm spinner-light" /> Saving…</> : 'Confirm plan change'}
                   </button>
                 </div>
               </div>
             )}
-
-            {/* Grace period confirmation */}
             {subAction === 'suspend' && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
                 <p style={{ fontSize: 14, fontWeight: 600, color: C.black, margin: 0 }}>Start grace period</p>
@@ -792,15 +759,12 @@ export default function BusinessDetail() {
                 </div>
                 <div style={{ display: 'flex', gap: 10 }}>
                   <button onClick={() => { setSubAction(null); setSubError('') }} style={{ ...btnSecondary, flex: 1, justifyContent: 'center' }}>Cancel</button>
-                  <button onClick={handleSuspendSubscription} disabled={savingSub}
-                    style={{ ...btnOrange, flex: 1, justifyContent: 'center', opacity: savingSub ? 0.7 : 1 }}>
+                  <button onClick={handleSuspendSubscription} disabled={savingSub} style={{ ...btnOrange, flex: 1, justifyContent: 'center', opacity: savingSub ? 0.7 : 1 }}>
                     {savingSub ? <><div className="spinner spinner-sm spinner-light" /> Saving…</> : 'Start grace period'}
                   </button>
                 </div>
               </div>
             )}
-
-            {/* Cancel confirmation */}
             {subAction === 'cancel' && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
                 <p style={{ fontSize: 14, fontWeight: 600, color: C.black, margin: 0 }}>Cancel subscription</p>
@@ -809,8 +773,7 @@ export default function BusinessDetail() {
                 </div>
                 <div style={{ display: 'flex', gap: 10 }}>
                   <button onClick={() => { setSubAction(null); setSubError('') }} style={{ ...btnSecondary, flex: 1, justifyContent: 'center' }}>Keep subscription</button>
-                  <button onClick={handleCancelSubscription} disabled={savingSub}
-                    style={{ ...btnDanger, flex: 1, justifyContent: 'center', opacity: savingSub ? 0.7 : 1 }}>
+                  <button onClick={handleCancelSubscription} disabled={savingSub} style={{ ...btnDanger, flex: 1, justifyContent: 'center', opacity: savingSub ? 0.7 : 1 }}>
                     {savingSub ? <><div className="spinner spinner-sm spinner-light" /> Cancelling…</> : 'Confirm cancellation'}
                   </button>
                 </div>
@@ -823,42 +786,34 @@ export default function BusinessDetail() {
       {/* ══════════════ CAMPAIGNS ══════════════ */}
       {activeTab === 'campaigns' && (
         <SectionCard title={`Campaigns (${campaigns.length})`}>
-          <AdminTable
-            cols={['Name', 'Status', 'Target', 'Created']}
-            emptyMsg="No campaigns yet"
+          <AdminTable cols={['Name', 'Status', 'Target', 'Created']} emptyMsg="No campaigns yet"
             rows={campaigns.map(c => [
-              td(<><p style={{ fontSize: 13, fontWeight: 600, color: C.black, margin: 0 }}>{c.name}</p></>, {}),
+              td(<p style={{ fontSize: 13, fontWeight: 600, color: C.black, margin: 0 }}>{c.name}</p>, {}),
               td(<Badge value={c.status} />, {}),
               td(formatUGX(c.target_amount), { bold: true }),
               td(formatDate(c.created_at), { secondary: true, nowrap: true }),
-            ])}
-          />
+            ])} />
         </SectionCard>
       )}
 
       {/* ══════════════ CUSTOMERS ══════════════ */}
       {activeTab === 'customers' && (
         <SectionCard title={`Customers (${customers.length})`}>
-          <AdminTable
-            cols={['Name', 'Phone', 'Balance', 'KYC', '']}
-            emptyMsg="No customers yet"
+          <AdminTable cols={['Name', 'Phone', 'Balance', 'KYC', '']} emptyMsg="No customers yet"
             rows={customers.map(c => [
               td(<><p style={{ fontSize: 13, fontWeight: 600, color: C.black, margin: '0 0 2px' }}>{c.first_name} {c.last_name}</p><p style={{ fontSize: 11, fontWeight: 500, color: C.secondary, margin: 0 }}>{c.email}</p></>, {}),
               td(c.phone, { secondary: true }),
               td(formatUGX(c.wallets?.[0]?.balance || 0), { bold: true, color: C.green }),
               td(<Badge value={c.kyc_status === 'verified' ? 'verified' : 'pending'} />, {}),
               td(<button onClick={() => navigate(`/admin/customers/${c.id}`)} style={{ ...btnSecondary, padding: '5px 12px', fontSize: 12 }}>View →</button>, {}),
-            ])}
-          />
+            ])} />
         </SectionCard>
       )}
 
       {/* ══════════════ TRANSACTIONS ══════════════ */}
       {activeTab === 'transactions' && (
         <SectionCard title={`Recent transactions (${transactions.length})`}>
-          <AdminTable
-            cols={['Reference', 'Customer', 'Type', 'Amount', 'Status', 'Date']}
-            emptyMsg="No transactions yet"
+          <AdminTable cols={['Reference', 'Customer', 'Type', 'Amount', 'Status', 'Date']} emptyMsg="No transactions yet"
             rows={transactions.map(t => [
               td(t.reference || t.id.slice(0, 8), { mono: true, secondary: true }),
               td(`${t.customers?.first_name} ${t.customers?.last_name}`, { bold: true }),
@@ -866,8 +821,7 @@ export default function BusinessDetail() {
               td(`${t.type === 'deposit' ? '+' : '-'}${formatUGX(t.amount)}`, { bold: true, color: t.type === 'deposit' ? C.green : C.red }),
               td(<Badge value={t.status} />, {}),
               td(formatDate(t.created_at), { secondary: true, nowrap: true }),
-            ])}
-          />
+            ])} />
         </SectionCard>
       )}
 

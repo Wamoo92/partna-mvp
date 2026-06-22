@@ -1,17 +1,38 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../../supabase'
 
-// ── Constants — unchanged ──────────────────────────────────────────────────
+// ── Constants ──────────────────────────────────────────────────────────────
+const UGANDA_BANKS = [
+  'ABSA Uganda',
+  'Bank Of Africa (Uganda)',
+  'Bank of Baroda',
+  'Cairo Bank Uganda',
+  'Centenary Rural Development Bank LTD (UG)',
+  'DFCU Uganda',
+  'Diamond Trust Bank Uganda Limited',
+  'Ecobank Uganda Limited',
+  'Equity Bank Uganda',
+  'Exim bank',
+  'Finance Trust',
+  'Guaranty Trust Bank Uganda (GT Bank)',
+  'Housing Finance Bank',
+  'I & M Bank Uganda (Orient)',
+  'KCB Bank Uganda Limited',
+  'NCBA Bank Uganda Limited',
+  'Opportunity Bank',
+  'Post Bank Uganda',
+  'Stanbic Bank Uganda',
+  'Standard Chartered Bank Uganda Limited',
+  'Tropical Bank Uganda',
+  'United Bank for Africa Uganda Limited (UBA)',
+]
+
 const REG_TYPES = [
   { value: 'sole_proprietor', label: 'Sole Proprietorship' },
   { value: 'partnership',     label: 'Partnership' },
   { value: 'limited_company', label: 'Private Limited Company (Ltd)' },
 ]
-const KYB_DOCS = {
-  limited_company: ['Certificate of Incorporation (URSB)', 'Memorandum & Articles of Association', 'URA TIN Certificate', 'Board Resolution authorizing Partna', 'National IDs of all directors', 'Voided cheque or bank letter'],
-  partnership:     ['Certificate of Registration (URSB)', 'Partnership URA TIN', 'Partnership Deed', 'Resolution authorizing Partna', 'ID/Passport copies of all partners', 'Cancelled cheque or bank letter'],
-  sole_proprietor: ['Business Registration Certificate', "National ID, Passport or Driver's License", 'URA TIN Certificate', 'Cancelled cheque or bank statement'],
-}
+
 const PACKAGES = [
   {
     id: 'starter',
@@ -51,9 +72,12 @@ const PACKAGES = [
     ],
   },
 ]
+
 const ADDRESS_LABELS = ['Address line 1 (Street)', 'Address line 2 (Area / Village)', 'City / Town', 'Postal code', 'P.O. Box']
+
 const TABS = [
   { id: 'profile',      label: 'Business Profile' },
+  { id: 'bank_account', label: 'Bank Account'     },
   { id: 'kyb',          label: 'KYB Verification' },
   { id: 'team',         label: 'Team'             },
   { id: 'subscription', label: 'Subscription'     },
@@ -142,52 +166,6 @@ function ReadOnlyBadge() {
   return <span style={{ fontSize: 11, fontWeight: 600, color: C.secondary, background: C.grayLight, borderRadius: 6, padding: '3px 8px' }}>Read only</span>
 }
 
-// ── File upload field ──────────────────────────────────────────────────────
-function FileUploadField({ label, businessId, docSlug }) {
-  const [uploading, setUploading]       = useState(false)
-  const [uploaded, setUploaded]         = useState(false)
-  const [uploadedName, setUploadedName] = useState('')
-  const [uploadError, setUploadError]   = useState('')
-
-  async function handleChange(e) {
-    const f = e.target.files[0]; if (!f) return
-    setUploadError(''); setUploading(true)
-    try {
-      const ext = f.name.split('.').pop()
-      const path = `kyb/${businessId}/${docSlug}.${ext}`
-      const { error } = await supabase.storage.from('kyb-documents').upload(path, f, { upsert: true })
-      if (error) throw error
-      setUploaded(true); setUploadedName(f.name)
-    } catch (e) { console.error('Upload error:', e); setUploadError('Upload failed. Please try again.') }
-    setUploading(false)
-  }
-  function handleRemove() { setUploaded(false); setUploadedName(''); setUploadError('') }
-
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 0', borderBottom: `1px solid ${C.grayLine}` }}>
-      <span style={{ fontSize: 13, fontWeight: 500, color: C.secondary, flex: 1, marginRight: 16 }}>{label}</span>
-      {uploadError && <span style={{ fontSize: 11, fontWeight: 500, color: C.red, marginRight: 8 }}>{uploadError}</span>}
-      {uploading ? (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexShrink: 0 }}>
-          <div className="spinner spinner-sm" />
-          <span style={{ fontSize: 12, fontWeight: 500, color: C.secondary }}>Uploading…</span>
-        </div>
-      ) : uploaded ? (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexShrink: 0 }}>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={C.green} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5" /></svg>
-          <span style={{ fontSize: 11, fontWeight: 600, color: C.green, maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{uploadedName}</span>
-          <button onClick={handleRemove} style={{ ...btnDanger, padding: '3px 8px', fontSize: 11 }}>Remove</button>
-        </div>
-      ) : (
-        <label style={{ cursor: 'pointer', flexShrink: 0 }}>
-          <span style={{ ...btnSecondary, padding: '5px 10px', fontSize: 11 }}>Upload</span>
-          <input type="file" accept=".pdf,.jpg,.jpeg,.png" style={{ display: 'none' }} onChange={handleChange} />
-        </label>
-      )}
-    </div>
-  )
-}
-
 // ── Main ───────────────────────────────────────────────────────────────────
 export default function Settings({ admin, business }) {
   const [tab, setTab]         = useState('profile')
@@ -195,11 +173,13 @@ export default function Settings({ admin, business }) {
   const [success, setSuccess] = useState('')
   const [error, setError]     = useState('')
 
+  // Branding
   const [primaryColor, setPrimaryColor]     = useState(business?.primary_color   || '#1B4F72')
   const [secondaryColor, setSecondaryColor] = useState(business?.secondary_color || '#D4AF37')
   const [logoPreview, setLogoPreview]       = useState(business?.logo_url        || null)
   const [heroPreview, setHeroPreview]       = useState(business?.hero_image_url  || null)
 
+  // Team
   const [admins, setAdmins]               = useState([])
   const [adminsLoading, setAdminsLoading] = useState(false)
   const [showInvite, setShowInvite]       = useState(false)
@@ -208,6 +188,7 @@ export default function Settings({ admin, business }) {
   const [inviteRole, setInviteRole]       = useState('admin')
   const [inviting, setInviting]           = useState(false)
 
+  // Subscription
   const [subscription, setSubscription]           = useState(null)
   const [billingCycle, setBillingCycle]           = useState('monthly')
   const [showCancelModal, setShowCancelModal]     = useState(false)
@@ -215,21 +196,32 @@ export default function Settings({ admin, business }) {
   const [cancelling, setCancelling]               = useState(false)
   const [cancelConfirmText, setCancelConfirmText] = useState('')
 
+  // Security
   const [currentPassword, setCurrentPassword] = useState('')
   const [newPassword, setNewPassword]         = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [changingPw, setChangingPw]           = useState(false)
+  const [slug, setSlug]                       = useState(business?.slug || '')
+  const [slugError, setSlugError]             = useState('')
+  const [savingSlug, setSavingSlug]           = useState(false)
 
-  const [slug, setSlug]             = useState(business?.slug || '')
-  const [slugError, setSlugError]   = useState('')
-  const [savingSlug, setSavingSlug] = useState(false)
+  // Bank account
+  const [bankAccount, setBankAccount]       = useState(null)
+  const [bankLoading, setBankLoading]       = useState(false)
+  const [bankForm, setBankForm]             = useState({
+    bank_name: '', account_name: '', account_number: '',
+    currency: 'UGX', notification_phone: '',
+  })
+  const [bankFormError, setBankFormError]   = useState('')
+  const [savingBank, setSavingBank]         = useState(false)
 
   useEffect(() => {
     if (tab === 'team')         loadAdmins()
     if (tab === 'subscription') loadSubscription()
+    if (tab === 'bank_account') loadBankAccount()
   }, [tab])
 
-  // ── All business logic — unchanged ────────────────────────────────────
+  // ── Loaders ───────────────────────────────────────────────────────────────
 
   async function loadAdmins() {
     setAdminsLoading(true)
@@ -242,6 +234,21 @@ export default function Settings({ admin, business }) {
     if (data?.length > 0) { setSubscription(data[0]); setBillingCycle(data[0].billing_cycle || 'monthly') }
   }
 
+  async function loadBankAccount() {
+    setBankLoading(true)
+    try {
+      const { data } = await supabase
+        .from('business_bank_accounts')
+        .select('*')
+        .eq('business_id', business.id)
+        .maybeSingle()
+      setBankAccount(data || null)
+    } catch (e) { console.error('Load bank account error:', e) }
+    setBankLoading(false)
+  }
+
+  // ── Helpers ───────────────────────────────────────────────────────────────
+
   function flash(msg, isError = false) {
     if (isError) { setError(msg); setSuccess('') } else { setSuccess(msg); setError('') }
     setTimeout(() => { setSuccess(''); setError('') }, 4000)
@@ -250,6 +257,8 @@ export default function Settings({ admin, business }) {
   function handleLogoSelect(e) { const f = e.target.files[0]; if (!f) return; const r = new FileReader(); r.onload = ev => setLogoPreview(ev.target.result); r.readAsDataURL(f) }
   function handleHeroSelect(e) { const f = e.target.files[0]; if (!f) return; const r = new FileReader(); r.onload = ev => setHeroPreview(ev.target.result); r.readAsDataURL(f) }
 
+  // ── Actions ───────────────────────────────────────────────────────────────
+
   async function saveBranding() {
     setSaving(true)
     try {
@@ -257,6 +266,34 @@ export default function Settings({ admin, business }) {
       if (err) throw err; flash('Branding updated.')
     } catch (e) { flash('Could not save branding. Please try again.', true) }
     setSaving(false)
+  }
+
+  async function handleSaveBankAccount() {
+    setBankFormError('')
+    if (!bankForm.bank_name)      { setBankFormError('Please select a bank.'); return }
+    if (!bankForm.account_name.trim())   { setBankFormError('Account name is required.'); return }
+    if (!bankForm.account_number.trim()) { setBankFormError('Account number is required.'); return }
+    setSavingBank(true)
+    try {
+      const payload = {
+        business_id:        business.id,
+        bank_name:          bankForm.bank_name,
+        account_name:       bankForm.account_name.trim(),
+        account_number:     bankForm.account_number.trim(),
+        currency:           bankForm.currency,
+        notification_phone: bankForm.notification_phone.trim() || null,
+      }
+      const { error: err } = await supabase
+        .from('business_bank_accounts')
+        .upsert(payload, { onConflict: 'business_id' })
+      if (err) throw err
+      await loadBankAccount()
+      flash('Bank account linked successfully.')
+    } catch (e) {
+      console.error('Save bank account error:', e)
+      flash('Could not save bank account. Please try again.', true)
+    }
+    setSavingBank(false)
   }
 
   async function handleInvite() {
@@ -306,7 +343,7 @@ export default function Settings({ admin, business }) {
       const fullUrl = `https://${cleanSlug}.partna.io`
       const { error: err } = await supabase.from('businesses').update({ slug: cleanSlug, portal_url: fullUrl }).eq('id', business.id)
       if (err) throw err; setSlug(cleanSlug); flash('Portal URL saved. Share ' + fullUrl + ' with your customers.')
-    } catch (e) { console.error('Save slug error:', e); flash('Could not save portal URL. Please try again.', true) }
+    } catch (e) { flash('Could not save portal URL. Please try again.', true) }
     setSavingSlug(false)
   }
 
@@ -324,10 +361,9 @@ export default function Settings({ admin, business }) {
   }
 
   const addressParts = (business?.address || '').split(', ').filter(Boolean)
+  const supportLink  = <a href="mailto:support@partna.io" style={{ color: C.black, fontWeight: 600, textDecoration: 'underline' }}>support@partna.io</a>
 
   // ─────────────────────────────────────────────────────────────────────────
-
-  const supportLink = <a href="mailto:support@partna.co" style={{ color: C.black, fontWeight: 600, textDecoration: 'underline' }}>support@partna.co</a>
 
   return (
     <div style={{ display: 'flex', gap: 24, alignItems: 'flex-start', fontFamily: 'Inter, system-ui, sans-serif' }}>
@@ -440,7 +476,6 @@ export default function Settings({ admin, business }) {
             <SectionCard title="Branding">
               <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16 }}>
-                  {/* Logo */}
                   <div>
                     <label style={labelStyle}>Logo</label>
                     <label style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '18px', border: `2px dashed ${C.grayLine}`, borderRadius: 10, background: C.bg, cursor: 'pointer' }}>
@@ -453,7 +488,6 @@ export default function Settings({ admin, business }) {
                       <input type="file" accept="image/*" style={{ display: 'none' }} onChange={handleLogoSelect} />
                     </label>
                   </div>
-                  {/* Colours */}
                   {[
                     { label: 'Primary colour',   val: primaryColor,   set: setPrimaryColor,   hint: 'Header, buttons, CTAs' },
                     { label: 'Secondary colour',  val: secondaryColor, set: setSecondaryColor, hint: 'Accents, highlights' },
@@ -468,8 +502,6 @@ export default function Settings({ admin, business }) {
                     </div>
                   ))}
                 </div>
-
-                {/* Hero image */}
                 <div>
                   <label style={labelStyle}>Portal hero image</label>
                   <label style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8, padding: heroPreview ? 0 : '24px 20px', border: `2px dashed ${C.grayLine}`, borderRadius: 10, background: C.bg, cursor: 'pointer', overflow: 'hidden', minHeight: 80 }}>
@@ -484,8 +516,6 @@ export default function Settings({ admin, business }) {
                   <p style={hintStyle}>Recommended: 1920 × 600px · PNG or JPG · Max 5MB. Shown on your customer portal landing page.</p>
                   {heroPreview && <button onClick={() => setHeroPreview(null)} style={{ ...btnDanger, padding: '5px 10px', fontSize: 12, marginTop: 8 }}>Remove hero image</button>}
                 </div>
-
-                {/* Preview */}
                 <div style={{ border: `1px solid ${C.grayLine}`, borderRadius: 8, overflow: 'hidden' }}>
                   <div style={{ padding: '10px 14px', background: primaryColor, display: 'flex', alignItems: 'center', gap: 10 }}>
                     {logoPreview ? <img src={logoPreview} alt="" style={{ width: 24, height: 24, objectFit: 'contain' }} /> : <div style={{ width: 24, height: 24, background: secondaryColor, borderRadius: 4 }} />}
@@ -503,20 +533,159 @@ export default function Settings({ admin, business }) {
           </>
         )}
 
+        {/* ══════════════ BANK ACCOUNT ══════════════ */}
+        {tab === 'bank_account' && (
+          <>
+            {bankLoading ? (
+              <div style={{ display: 'flex', justifyContent: 'center', padding: 60 }}><div className="spinner spinner-lg" /></div>
+            ) : bankAccount ? (
+              // ── Linked account — read only ──
+              <>
+                <SectionCard title="Linked bank account" badge={<ReadOnlyBadge />} noPad>
+                  {[
+                    { label: 'Bank',                value: bankAccount.bank_name },
+                    { label: 'Account name',        value: bankAccount.account_name },
+                    { label: 'Account number',      value: bankAccount.account_number },
+                    { label: 'Currency',            value: bankAccount.currency },
+                    { label: 'Notification phone',  value: bankAccount.notification_phone || '—' },
+                  ].map((row, i, arr) => (
+                    <InfoRow key={i} label={row.label} value={row.value} last={i === arr.length - 1} />
+                  ))}
+                  <div style={{ padding: '12px 18px', background: C.bg, borderTop: `1px solid ${C.grayLine}`, display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={C.grayMid} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+                      <circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" />
+                    </svg>
+                    <p style={{ fontSize: 12, fontWeight: 500, color: C.secondary, margin: 0 }}>
+                      To edit your bank account details, contact {supportLink}.
+                    </p>
+                  </div>
+                </SectionCard>
+
+                <div style={{ background: C.bgGreen, border: `1px solid ${C.green}`, borderRadius: 10, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={C.green} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+                    <path d="M20 6L9 17l-5-5" />
+                  </svg>
+                  <p style={{ fontSize: 13, fontWeight: 600, color: C.green, margin: 0 }}>
+                    Bank account linked — withdrawals will be sent to this account.
+                  </p>
+                </div>
+              </>
+            ) : (
+              // ── No account linked — show form ──
+              <>
+                <div style={{ background: C.bgOrange, border: `1px solid ${C.orange}`, borderRadius: 10, padding: '14px 16px', display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={C.orange} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, marginTop: 1 }}>
+                    <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" /><line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" />
+                  </svg>
+                  <p style={{ fontSize: 13, fontWeight: 500, color: C.orange, margin: 0, lineHeight: '150%' }}>
+                    No bank account linked yet. You must link a bank account before you can withdraw funds from your business wallet.
+                  </p>
+                </div>
+
+                <SectionCard title="Link bank account">
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                    <div>
+                      <label style={labelStyle}>Bank *</label>
+                      <select
+                        style={{ ...inputStyle, cursor: 'pointer' }}
+                        value={bankForm.bank_name}
+                        onChange={e => setBankForm(p => ({ ...p, bank_name: e.target.value }))}
+                        onFocus={e => e.target.style.borderColor = C.black}
+                        onBlur={e => e.target.style.borderColor = C.grayLine}
+                      >
+                        <option value="">Select bank</option>
+                        {UGANDA_BANKS.map(b => <option key={b} value={b}>{b}</option>)}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label style={labelStyle}>Account name *</label>
+                      <input
+                        type="text" style={inputStyle}
+                        placeholder="Name as it appears on the account"
+                        value={bankForm.account_name}
+                        onChange={e => setBankForm(p => ({ ...p, account_name: e.target.value }))}
+                        onFocus={e => e.target.style.borderColor = C.black}
+                        onBlur={e => e.target.style.borderColor = C.grayLine}
+                      />
+                    </div>
+
+                    <div>
+                      <label style={labelStyle}>Account number *</label>
+                      <input
+                        type="text" style={inputStyle}
+                        placeholder="Bank account number"
+                        value={bankForm.account_number}
+                        onChange={e => setBankForm(p => ({ ...p, account_number: e.target.value }))}
+                        onFocus={e => e.target.style.borderColor = C.black}
+                        onBlur={e => e.target.style.borderColor = C.grayLine}
+                      />
+                    </div>
+
+                    <div>
+                      <label style={labelStyle}>Currency *</label>
+                      <select
+                        style={{ ...inputStyle, cursor: 'pointer' }}
+                        value={bankForm.currency}
+                        onChange={e => setBankForm(p => ({ ...p, currency: e.target.value }))}
+                        onFocus={e => e.target.style.borderColor = C.black}
+                        onBlur={e => e.target.style.borderColor = C.grayLine}
+                      >
+                        <option value="UGX">UGX — Ugandan Shilling</option>
+                      </select>
+                      <p style={hintStyle}>Additional currencies will be available in future.</p>
+                    </div>
+
+                    <div>
+                      <label style={labelStyle}>Notification phone <span style={{ fontWeight: 400, color: C.grayMid }}>(optional)</span></label>
+                      <input
+                        type="tel" style={inputStyle}
+                        placeholder="e.g. +256 700 000000"
+                        value={bankForm.notification_phone}
+                        onChange={e => setBankForm(p => ({ ...p, notification_phone: e.target.value }))}
+                        onFocus={e => e.target.style.borderColor = C.black}
+                        onBlur={e => e.target.style.borderColor = C.grayLine}
+                      />
+                      <p style={hintStyle}>Phone number to receive SMS notifications when a withdrawal is processed.</p>
+                    </div>
+
+                    {bankFormError && (
+                      <div style={{ background: C.bgRed, border: `1px solid ${C.red}`, borderRadius: 8, padding: '10px 14px', fontSize: 13, fontWeight: 500, color: C.red }}>
+                        {bankFormError}
+                      </div>
+                    )}
+
+                    <div style={{ background: C.bg, border: `1px solid ${C.grayLine}`, borderRadius: 8, padding: '10px 14px', fontSize: 12, fontWeight: 500, color: C.secondary, lineHeight: '150%' }}>
+                      Once saved, your bank account details can only be changed by contacting {supportLink}. Please double-check all details before saving.
+                    </div>
+
+                    <button
+                      onClick={handleSaveBankAccount}
+                      disabled={savingBank}
+                      style={{ ...btnPrimary, alignSelf: 'flex-start', opacity: savingBank ? 0.75 : 1 }}
+                    >
+                      {savingBank ? <><div className="spinner spinner-sm spinner-light" /> Saving…</> : 'Link bank account'}
+                    </button>
+                  </div>
+                </SectionCard>
+              </>
+            )}
+          </>
+        )}
+
         {/* ══════════════ KYB ══════════════ */}
         {tab === 'kyb' && (
           <>
             {(() => {
               const status = business?.kyb_status
               const cfg = status === 'verified'
-                ? { bg: C.bgGreen,  border: C.green,  color: C.green,  title: 'Business verified — full access unlocked',         sub: null }
+                ? { bg: C.bgGreen,  border: C.green,    color: C.green,    title: 'Business verified — full access unlocked' }
                 : status === 'pending'
-                ? { bg: C.bgOrange, border: C.orange, color: C.orange, title: 'Verification pending — typically 1–2 business days', sub: 'Verification is required to unlock full platform features and payment processing.' }
-                : { bg: C.bg,       border: C.grayLine, color: C.secondary, title: 'Upload documents below to begin verification',    sub: 'Verification is required to unlock full platform features and payment processing.' }
+                ? { bg: C.bgOrange, border: C.orange,   color: C.orange,   title: 'Verification in progress — typically 1–2 business days' }
+                : { bg: C.bg,       border: C.grayLine, color: C.secondary, title: 'KYB verification not yet submitted' }
               return (
                 <div style={{ background: cfg.bg, border: `1px solid ${cfg.border}`, borderRadius: 8, padding: '12px 16px' }}>
-                  <p style={{ fontSize: 13, fontWeight: 600, color: cfg.color, margin: '0 0 2px' }}>{cfg.title}</p>
-                  {cfg.sub && <p style={{ fontSize: 12, fontWeight: 500, color: cfg.color, margin: 0, opacity: 0.85 }}>{cfg.sub}</p>}
+                  <p style={{ fontSize: 13, fontWeight: 600, color: cfg.color, margin: 0 }}>{cfg.title}</p>
                 </div>
               )
             })()}
@@ -533,32 +702,14 @@ export default function Settings({ admin, business }) {
               </div>
             </SectionCard>
 
-            {business?.registration_type && KYB_DOCS[business.registration_type] ? (
-              <SectionCard title="Required documents">
-                <p style={{ fontSize: 13, fontWeight: 500, color: C.secondary, margin: '0 0 14px' }}>
-                  Upload all required documents. Accepted: PDF, JPEG, PNG · Max 10MB per file.
-                </p>
-                {KYB_DOCS[business.registration_type].map((doc, i) => (
-                  <FileUploadField key={i} label={doc} businessId={business.id} docSlug={doc.toLowerCase().replace(/[^a-z0-9]/g, '_').slice(0, 40)} />
-                ))}
-                {business?.kyb_status !== 'verified' && (
-                  <button onClick={async () => { await supabase.from('businesses').update({ kyb_status: 'pending' }).eq('id', business.id); flash('Documents submitted. Verification typically takes 1–2 business days.') }}
-                    style={{ ...btnPrimary, width: '100%', justifyContent: 'center', marginTop: 16, padding: '11px 18px' }}>
-                    Submit for verification
-                  </button>
-                )}
-              </SectionCard>
-            ) : (
-              <SectionCard>
-                <div style={{ padding: '32px 20px', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}>
-                  <div style={{ width: 44, height: 44, borderRadius: 10, background: C.labelBg, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={C.grayMid} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /></svg>
-                  </div>
-                  <p style={{ fontSize: 14, fontWeight: 600, color: C.black, margin: 0 }}>No registration type on file</p>
-                  <p style={{ fontSize: 13, fontWeight: 500, color: C.secondary, margin: 0 }}>Contact {supportLink} to update your KYB details.</p>
-                </div>
-              </SectionCard>
-            )}
+            <div style={{ background: C.bg, border: `1px solid ${C.grayLine}`, borderRadius: 10, padding: '16px 18px', display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={C.grayMid} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, marginTop: 1 }}>
+                <circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" />
+              </svg>
+              <p style={{ fontSize: 13, fontWeight: 500, color: C.secondary, margin: 0, lineHeight: '150%' }}>
+                KYB documents are submitted to Partna during the onboarding process before your account is created. If you need to update your KYB documents or details, contact {supportLink}.
+              </p>
+            </div>
           </>
         )}
 
@@ -676,7 +827,7 @@ export default function Settings({ admin, business }) {
               })}
             </div>
             <p style={{ textAlign: 'center', fontSize: 12, fontWeight: 500, color: C.secondary, margin: 0 }}>
-              To upgrade, contact <a href="mailto:hello@partna.co" style={{ color: C.black, fontWeight: 600, textDecoration: 'underline' }}>hello@partna.co</a>
+              To upgrade, contact <a href="mailto:hello@partna.io" style={{ color: C.black, fontWeight: 600, textDecoration: 'underline' }}>hello@partna.io</a>
             </p>
           </>
         )}
@@ -729,7 +880,6 @@ export default function Settings({ admin, business }) {
                 {slugError && <p style={{ fontSize: 12, fontWeight: 500, color: C.red, margin: '4px 0 0' }}>{slugError}</p>}
                 <p style={hintStyle}>Lowercase letters, numbers, and hyphens only. Minimum 3 characters.</p>
               </div>
-
               {slug && !slugError && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: slug === (business?.slug || '') ? C.bgGreen : C.bg, border: `1px solid ${slug === (business?.slug || '') ? C.green : C.grayLine}`, borderRadius: 8, marginTop: 12 }}>
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={slug === (business?.slug || '') ? C.green : C.grayMid} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
@@ -739,11 +889,9 @@ export default function Settings({ admin, business }) {
                   {slug === (business?.slug || '') && <span style={{ fontSize: 11, fontWeight: 600, color: C.green }}>Active</span>}
                 </div>
               )}
-
               <button onClick={handleSaveSlug} disabled={savingSlug || !slug} style={{ ...btnPrimary, alignSelf: 'flex-start', marginTop: 14, opacity: savingSlug || !slug ? 0.5 : 1 }}>
                 {savingSlug ? <><div className="spinner spinner-sm spinner-light" /> Saving…</> : 'Save portal URL'}
               </button>
-
               {business?.slug && (
                 <div style={{ borderTop: `1px solid ${C.grayLine}`, paddingTop: 16, marginTop: 16 }}>
                   <p style={{ fontSize: 12, fontWeight: 600, color: C.secondary, margin: '0 0 10px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Share with your customers</p>
