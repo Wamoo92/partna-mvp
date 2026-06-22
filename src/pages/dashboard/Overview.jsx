@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../supabase'
 
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL
+
 const CHART_FILTERS = [{ label: '7d', days: 7 }, { label: '30d', days: 30 }, { label: '1yr', days: 365 }]
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -212,11 +214,8 @@ export default function Overview({ admin, business }) {
       }
       const { data: bizWallet } = await supabase.from('business_wallets').select('*').eq('business_id', business.id).maybeSingle()
       setBusinessWallet(bizWallet)
-
-      // Fetch linked bank account
       const { data: bankData } = await supabase.from('business_bank_accounts').select('*').eq('business_id', business.id).maybeSingle()
       setBankAccount(bankData || null)
-
       setAllTxns(txns)
       setRecentActivity(txns.slice(0, 10))
       buildChartData(txns, chartFilter)
@@ -251,18 +250,80 @@ export default function Overview({ admin, business }) {
     try {
       const notes = `Bank: ${bankAccount.bank_name} · ${bankAccount.account_name} · ${bankAccount.account_number}${bankAccount.notification_phone ? ` · Notify: ${bankAccount.notification_phone}` : ''}`
       await supabase.from('business_transactions').insert({
-        business_id:              business.id,
-        type:                     'withdrawal',
+        business_id:               business.id,
+        type:                      'withdrawal',
         amount,
-        status:                   'pending',
+        status:                    'pending',
         notes,
-        withdrawal_method:        bankAccount.bank_name,
-        withdrawal_account_name:  bankAccount.account_name,
+        withdrawal_method:         bankAccount.bank_name,
+        withdrawal_account_name:   bankAccount.account_name,
         withdrawal_account_number: bankAccount.account_number,
-        withdrawal_notify_phone:  bankAccount.notification_phone || null,
+        withdrawal_notify_phone:   bankAccount.notification_phone || null,
       })
       await supabase.from('business_wallets').update({ balance: balance - amount }).eq('business_id', business.id)
       setBusinessWallet(prev => ({ ...prev, balance: balance - amount }))
+
+      // ── Fire-and-forget confirmation email to business ──────────────────
+      const amountStr    = formatUGXFull(amount)
+      const accountNum   = bankAccount.account_number || ''
+      const last4        = accountNum.length >= 4 ? accountNum.slice(-4) : accountNum
+      const accountLabel = last4
+        ? `${bankAccount.bank_name} account ending in ${last4}`
+        : bankAccount.bank_name
+
+      const recipients = [business.admin_email, business.contact_email].filter(Boolean)
+
+      const emailHtml = `<div style="font-family: Inter, system-ui, sans-serif; max-width: 520px; margin: 0 auto; padding: 32px 24px; color: #111;">
+        <img src="https://www.partna.io/partna-logo.png" alt="Partna" style="height: 28px; margin-bottom: 24px;" />
+        <h2 style="font-size: 20px; font-weight: 600; margin: 0 0 12px; letter-spacing: -0.5px;">Withdrawal request received</h2>
+        <p style="font-size: 15px; color: #444; line-height: 1.6; margin: 0 0 20px;">
+          Hi ${admin?.full_name || 'there'}, we have received your withdrawal request of
+          <strong style="color: #111;"> ${amountStr}</strong> from your
+          <strong style="color: #111;"> ${business.name}</strong> Partna wallet.
+          Funds will be transferred to your ${accountLabel} within 1–2 business days.
+        </p>
+        <div style="background: #F6F7EE; border: 1px solid #D7D8CB; border-radius: 10px; padding: 16px 18px; margin: 0 0 20px;">
+          <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+            <tr>
+              <td style="padding: 6px 0; color: #959687; font-weight: 500; width: 140px;">Amount</td>
+              <td style="padding: 6px 0; font-weight: 600; color: #111;">${amountStr}</td>
+            </tr>
+            <tr>
+              <td style="padding: 6px 0; color: #959687; font-weight: 500;">Bank</td>
+              <td style="padding: 6px 0; font-weight: 600; color: #111;">${bankAccount.bank_name}</td>
+            </tr>
+            <tr>
+              <td style="padding: 6px 0; color: #959687; font-weight: 500;">Account name</td>
+              <td style="padding: 6px 0; font-weight: 600; color: #111;">${bankAccount.account_name}</td>
+            </tr>
+            <tr>
+              <td style="padding: 6px 0; color: #959687; font-weight: 500;">Account number</td>
+              <td style="padding: 6px 0; font-weight: 600; color: #111; font-family: monospace;">${accountNum}</td>
+            </tr>
+            <tr>
+              <td style="padding: 6px 0; color: #959687; font-weight: 500;">Status</td>
+              <td style="padding: 6px 0; font-weight: 600; color: #EF8354;">Pending processing</td>
+            </tr>
+          </table>
+        </div>
+        <p style="font-size: 14px; color: #444; line-height: 1.6; margin: 0 0 20px;">
+          You will receive another email once the transfer has been processed.
+          If you have any questions, contact us at
+          <a href="mailto:billing@partna.io" style="color: #111; font-weight: 600; text-decoration: underline;">billing@partna.io</a>.
+        </p>
+        <p style="font-size: 13px; color: #959687; margin: 0;">Powered by <a href="https://www.partna.io" style="color: #111; font-weight: 600; text-decoration: none;">Partna</a></p>
+      </div>`
+
+      supabase.auth.getSession().then(({ data: { session } }) => {
+        for (const email of recipients) {
+          fetch(`${SUPABASE_URL}/functions/v1/send-admin-email`, {
+            method:  'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session?.access_token}` },
+            body:    JSON.stringify({ to: email, from: 'billing', subject: `Withdrawal request received — ${amountStr}`, html: emailHtml }),
+          }).catch(e => console.error('Withdrawal confirmation email error (non-critical):', e))
+        }
+      })
+
       setWithdrawSuccess(true)
       await loadData()
     } catch (e) { console.error('Withdrawal error:', e); setWithdrawError('Something went wrong. Please try again.') }
@@ -308,7 +369,6 @@ export default function Overview({ admin, business }) {
             </>
           ) : (
             <>
-              {/* Amount */}
               <div>
                 <label style={labelStyle}>Amount (UGX)</label>
                 <div style={{ position: 'relative' }}>
@@ -320,7 +380,6 @@ export default function Overview({ admin, business }) {
                 <p style={{ fontSize: 11, fontWeight: 500, color: C.grayMid, margin: '4px 0 0' }}>Minimum UGX 1,000 · Available: {formatUGXFull(bizBalance)}</p>
               </div>
 
-              {/* Pre-filled bank account — read only */}
               <div>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
                   <label style={{ ...labelStyle, marginBottom: 0 }}>Sending to</label>
@@ -373,7 +432,6 @@ export default function Overview({ admin, business }) {
         <StatCard label={isEducation ? 'Total fees received' : 'Total payments'} value={formatUGX(stats.totalPayments)} sub={isEducation ? 'From all students' : 'Completed payments'} accentColor={C.green} />
         <StatCard label="Active campaigns"      value={campaigns.length}                  sub={campaigns[0]?.name || 'No campaigns yet'} accentColor={C.red} onClick={() => navigate('/dashboard/campaigns')} />
 
-        {/* Business wallet card */}
         <div style={{ background: C.black, border: `1px solid ${C.stroke}`, borderRadius: 12, padding: '16px 18px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
           <div>
             <p style={{ fontSize: 11, fontWeight: 500, color: 'rgba(255,255,255,0.4)', margin: '0 0 8px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Business wallet</p>
@@ -396,7 +454,6 @@ export default function Overview({ admin, business }) {
       {/* ── CHART + ACTIVITY ── */}
       <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 16 }}>
 
-        {/* Chart */}
         <div style={{ background: C.white, border: `1px solid ${C.stroke}`, borderRadius: 12, padding: '18px 20px' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
             <p style={{ fontSize: 14, fontWeight: 600, color: C.black, margin: 0, letterSpacing: '-0.4px' }}>Deposits & Withdrawals</p>
@@ -467,7 +524,6 @@ export default function Overview({ admin, business }) {
           )}
         </div>
 
-        {/* Recent activity */}
         <div style={{ background: C.white, border: `1px solid ${C.stroke}`, borderRadius: 12, padding: '18px 20px' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
             <p style={{ fontSize: 14, fontWeight: 600, color: C.black, margin: 0, letterSpacing: '-0.4px' }}>Recent activity</p>
