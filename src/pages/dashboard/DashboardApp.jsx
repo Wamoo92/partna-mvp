@@ -4,6 +4,7 @@ import { useBusinessAuth } from '../../hooks/useBusinessAuth'
 import DashboardLogin    from './DashboardLogin'
 import DashboardRegister from './DashboardRegister'
 import ResetPassword     from './ResetPassword'
+import FirstLogin        from './FirstLogin'
 import DashboardLayout   from './DashboardLayout'
 import Overview          from './Overview'
 import Customers         from './Customers'
@@ -15,18 +16,25 @@ import Settings          from './Settings'
 import Products          from './Products'
 import Sales             from './Sales'
 
-function DashboardGuard({ admin, loading, children }) {
+function DashboardGuard({ admin, loading, mustChangePassword, business, clearFirstLogin, children }) {
   if (loading) return (
     <div className="loading-screen">
       <div className="spinner spinner-lg spinner-purple" />
     </div>
   )
   if (!admin) return <Navigate to="/dashboard/login" replace />
+  if (mustChangePassword) return (
+    <FirstLogin
+      admin={admin}
+      business={business}
+      clearFirstLogin={clearFirstLogin}
+    />
+  )
   return children
 }
 
 export default function DashboardApp() {
-  const { admin, business, loading, signOut } = useBusinessAuth()
+  const { admin, business, loading, signOut, mustChangePassword, clearFirstLogin } = useBusinessAuth()
 
   return (
     <Routes>
@@ -35,7 +43,13 @@ export default function DashboardApp() {
       <Route path="/reset-password" element={<ResetPassword />} />
 
       <Route path="/*" element={
-        <DashboardGuard admin={admin} loading={loading}>
+        <DashboardGuard
+          admin={admin}
+          loading={loading}
+          mustChangePassword={mustChangePassword}
+          business={business}
+          clearFirstLogin={clearFirstLogin}
+        >
           <DashboardLayout admin={admin} business={business} signOut={signOut}>
             <Routes>
               <Route path="/overview"   element={<Overview   admin={admin} business={business} />} />

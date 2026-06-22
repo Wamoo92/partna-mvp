@@ -2,9 +2,10 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../supabase'
 
 export function useBusinessAuth() {
-  const [admin, setAdmin] = useState(null)
-  const [business, setBusiness] = useState(null)
-  const [loading, setLoading] = useState(true)
+  const [admin, setAdmin]                   = useState(null)
+  const [business, setBusiness]             = useState(null)
+  const [loading, setLoading]               = useState(true)
+  const [mustChangePassword, setMustChangePassword] = useState(false)
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -22,6 +23,7 @@ export function useBusinessAuth() {
         } else {
           setAdmin(null)
           setBusiness(null)
+          setMustChangePassword(false)
           setLoading(false)
         }
       }
@@ -44,6 +46,7 @@ export function useBusinessAuth() {
       }
 
       setAdmin(adminData)
+      setMustChangePassword(adminData.first_login === true)
 
       if (adminData.business_id) {
         const { data: businessData } = await supabase
@@ -65,13 +68,22 @@ export function useBusinessAuth() {
     await supabase.auth.signOut()
     setAdmin(null)
     setBusiness(null)
+    setMustChangePassword(false)
+  }
+
+  // Called by FirstLogin.jsx after password change succeeds
+  function clearFirstLogin() {
+    setMustChangePassword(false)
+    setAdmin(prev => prev ? { ...prev, first_login: false } : prev)
   }
 
   return {
     admin,
     business,
     loading,
+    mustChangePassword,
     signOut,
+    clearFirstLogin,
     refetch: () => admin && fetchAdmin(admin.auth_user_id),
   }
 }
