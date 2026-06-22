@@ -2,6 +2,9 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../supabase'
 
+const SUPABASE_URL      = import.meta.env.VITE_SUPABASE_URL
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY
+
 // ── Sellin tokens ──────────────────────────────────────────────────────────
 const C = {
   bg:        '#F6F7EE',
@@ -29,6 +32,74 @@ const inputStyle = {
   transition: 'border-color 0.15s', boxSizing: 'border-box',
 }
 
+// ── Account ready email ────────────────────────────────────────────────────
+function accountReadyEmail({ adminName, businessName }) {
+  return `
+    <div style="font-family: Inter, system-ui, sans-serif; max-width: 560px; margin: 0 auto; padding: 32px 24px; color: #111;">
+      <img src="https://www.partna.io/partna-logo.png" alt="Partna" style="height: 28px; margin-bottom: 28px;" />
+
+      <h2 style="font-size: 22px; font-weight: 600; color: #111; letter-spacing: -0.5px; margin: 0 0 12px;">
+        Your account is ready
+      </h2>
+
+      <p style="font-size: 15px; color: #444; line-height: 1.6; margin: 0 0 20px;">
+        Hi ${adminName}, your Partna dashboard for <strong>${businessName}</strong> is now set up and ready to use.
+      </p>
+
+      <div style="background: #E4F8EC; border: 1px solid #59886D; border-radius: 10px; padding: 16px 20px; margin: 0 0 24px;">
+        <p style="font-size: 14px; font-weight: 600; color: #59886D; margin: 0 0 6px;">Log in to your dashboard</p>
+        <a href="https://www.partna.io/dashboard/login"
+          style="font-size: 14px; color: #111; font-weight: 600; word-break: break-all;">
+          https://www.partna.io/dashboard/login
+        </a>
+      </div>
+
+      <p style="font-size: 15px; color: #444; line-height: 1.6; margin: 0 0 20px;">
+        Bookmark this link for future visits. From your dashboard you can:
+      </p>
+
+      <ul style="font-size: 15px; color: #444; line-height: 1.8; margin: 0 0 24px; padding-left: 20px;">
+        <li>Complete your KYB verification to unlock all features</li>
+        <li>Set your customer portal URL</li>
+        <li>Upload your logo and set your brand colours</li>
+        <li>Create your first savings campaign</li>
+      </ul>
+
+      <p style="font-size: 14px; color: #444; line-height: 1.6; margin: 0 0 24px;">
+        If you need any help getting started, contact us at
+        <a href="mailto:support@partna.io" style="color: #111; font-weight: 600;">support@partna.io</a>.
+      </p>
+
+      <div style="border-top: 1px solid #D7D8CB; padding-top: 20px;">
+        <p style="font-size: 13px; color: #959687; margin: 0;">
+          Powered by <a href="https://www.partna.io" style="color: #111; font-weight: 600;">Partna</a>
+        </p>
+      </div>
+    </div>
+  `
+}
+
+async function sendAccountReadyEmail({ adminEmail, adminName, businessName }) {
+  try {
+    await fetch(`${SUPABASE_URL}/functions/v1/send-admin-email`, {
+      method:  'POST',
+      headers: {
+        'Content-Type':  'application/json',
+        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+      },
+      body: JSON.stringify({
+        to:      adminEmail,
+        subject: `Your ${businessName} dashboard is ready — Partna`,
+        html:    accountReadyEmail({ adminName, businessName }),
+        from:    'support',
+      }),
+    })
+  } catch (e) {
+    console.error('Account ready email error (non-critical):', e)
+  }
+}
+
+// ── Main ──────────────────────────────────────────────────────────────────
 export default function FirstLogin({ admin, business, clearFirstLogin }) {
   const navigate = useNavigate()
 
@@ -39,10 +110,10 @@ export default function FirstLogin({ admin, business, clearFirstLogin }) {
   const [success, setSuccess]                 = useState(false)
 
   // Strength indicators
-  const hasLength    = newPassword.length >= 8
-  const hasUpper     = /[A-Z]/.test(newPassword)
-  const hasLower     = /[a-z]/.test(newPassword)
-  const hasNumber    = /[0-9]/.test(newPassword)
+  const hasLength     = newPassword.length >= 8
+  const hasUpper      = /[A-Z]/.test(newPassword)
+  const hasLower      = /[a-z]/.test(newPassword)
+  const hasNumber     = /[0-9]/.test(newPassword)
   const strengthScore = [hasLength, hasUpper, hasLower, hasNumber].filter(Boolean).length
   const strengthLabel = ['', 'Weak', 'Fair', 'Good', 'Strong'][strengthScore]
   const strengthColor = [C.grayLine, C.red, C.orange, C.orange, C.green][strengthScore]
@@ -69,7 +140,14 @@ export default function FirstLogin({ admin, business, clearFirstLogin }) {
 
       if (dbError) throw dbError
 
-      // 3. Update hook state so the guard doesn't re-intercept
+      // 3. Send account ready email — non-blocking, fire and forget
+      sendAccountReadyEmail({
+        adminEmail:   admin.email,
+        adminName:    admin.full_name?.split(' ')[0] || 'there',
+        businessName: business?.name || 'your business',
+      })
+
+      // 4. Update hook state so the guard doesn't re-intercept
       clearFirstLogin()
 
       setSuccess(true)
@@ -166,7 +244,7 @@ export default function FirstLogin({ admin, business, clearFirstLogin }) {
                           { label: '8+ chars', met: hasLength },
                           { label: 'Uppercase', met: hasUpper },
                           { label: 'Lowercase', met: hasLower },
-                          { label: 'Number', met: hasNumber },
+                          { label: 'Number',    met: hasNumber },
                         ].map(({ label, met }) => (
                           <span key={label} style={{ fontSize: 10, fontWeight: 600, color: met ? C.green : C.grayMid }}>
                             {met ? '✓ ' : '· '}{label}
