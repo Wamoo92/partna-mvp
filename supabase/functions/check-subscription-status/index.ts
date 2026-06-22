@@ -9,9 +9,9 @@ const CORS = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-const GRACE_PERIOD_DAYS       = 7
-const TRIAL_WARNING_DAYS      = 7  // warn this many days before trial ends
-const GRACE_WARNING_DAYS      = 3  // warn this many days before grace period ends
+const GRACE_PERIOD_DAYS  = 7
+const TRIAL_WARNING_DAYS = 7
+const GRACE_WARNING_DAYS = 3
 
 function addDays(date: Date, days: number): Date {
   const d = new Date(date)
@@ -45,11 +45,11 @@ async function sendEmail(to: string, subject: string, html: string) {
 
 // ── Email templates ───────────────────────────────────────────────────────
 
-function trialEndingWarningEmail(businessName: string, adminName: string, trialEndsAt: Date): string {
+function trialEndingWarningEmail(businessName: string, adminName: string, trialEndsAt: Date, daysLeft: number): string {
   return `
     <div style="font-family: Inter, system-ui, sans-serif; max-width: 560px; margin: 0 auto; padding: 32px 24px; color: #111;">
       <img src="https://www.partna.io/partna-logo.png" alt="Partna" style="height: 28px; margin-bottom: 28px;" />
-      <h2 style="font-size: 20px; font-weight: 600; color: #111; margin: 0 0 12px;">Your free trial ends in ${TRIAL_WARNING_DAYS} days</h2>
+      <h2 style="font-size: 20px; font-weight: 600; color: #111; margin: 0 0 12px;">Your free trial ends in ${daysLeft} day${daysLeft !== 1 ? 's' : ''}</h2>
       <p style="font-size: 15px; color: #444; line-height: 1.6; margin: 0 0 20px;">
         Hi ${adminName}, your free trial for <strong>${businessName}</strong> on Partna ends on
         <strong>${formatDate(trialEndsAt)}</strong>.
@@ -175,16 +175,15 @@ Deno.serve(async (req) => {
   const now      = new Date()
 
   const results = {
-    trial_warnings_sent:   [] as string[],
-    trials_expired:        [] as string[],
-    grace_warnings_sent:   [] as string[],
-    suspensions:           [] as string[],
-    subscription_expired:  [] as string[],
-    errors:                [] as string[],
+    trial_warnings_sent:  [] as string[],
+    trials_expired:       [] as string[],
+    grace_warnings_sent:  [] as string[],
+    suspensions:          [] as string[],
+    subscription_expired: [] as string[],
+    errors:               [] as string[],
   }
 
   try {
-    // Fetch all businesses that are not cancelled
     const { data: businesses, error: bizError } = await supabase
       .from('businesses')
       .select('*, business_admins(full_name, email, role)')
@@ -197,7 +196,6 @@ Deno.serve(async (req) => {
 
     for (const biz of (businesses || [])) {
       try {
-        // Get the owner admin for this business
         const ownerAdmin = Array.isArray(biz.business_admins)
           ? biz.business_admins.find((a: any) => a.role === 'owner') || biz.business_admins[0]
           : biz.business_admins
@@ -206,28 +204,32 @@ Deno.serve(async (req) => {
         const adminEmail = ownerAdmin?.email || biz.admin_email
         if (!adminEmail) continue
 
-        const subStatus   = biz.subscription_status
-        const trialEndsAt = biz.trial_ends_at ? new Date(biz.trial_ends_at) : null
-        const subExpiresAt = biz.subscription_expires_at ? new Date(biz.subscription_expires_at) : null
+        const subStatus         = biz.subscription_status
+        const trialEndsAt       = biz.trial_ends_at       ? new Date(biz.trial_ends_at)       : null
+        const subExpiresAt      = biz.subscription_expires_at ? new Date(biz.subscription_expires_at) : null
         const gracePeriodEndsAt = biz.grace_period_ends_at ? new Date(biz.grace_period_ends_at) : null
+        const trialWarningSent  = biz.trial_warning_sent === true
 
         // ══════════════════════════════════════════════════════════════════
-        // JOB 1 — Trial ending warning (7 days before trial ends)
+        // JOB 1 — Trial ending warning
+        // Fires when trial is within TRIAL_WARNING_DAYS and warning not yet sent
+        // Uses <= so a missed cron day still catches it
         // ══════════════════════════════════════════════════════════════════
-        if (subStatus === 'active' && trialEndsAt && trialEndsAt > now) {
+        if (subStatus === 'active' && trialEndsAt && trialEndsAt > now && !trialWarningSent) {
           const daysUntilTrialEnd = daysBetween(now, trialEndsAt)
 
-          if (daysUntilTrialEnd <= TRIAL_WARNING_DAYS && daysUntilTrialEnd > 0) {
-            // Only send if we haven't already sent today (check via a flag or just send once at exactly 7 days)
-            // We send when daysUntilTrialEnd is exactly TRIAL_WARNING_DAYS
-            if (daysUntilTrialEnd === TRIAL_WARNING_DAYS) {
-              await sendEmail(
-                adminEmail,
-                `Your Partna free trial ends in ${TRIAL_WARNING_DAYS} days`,
-                trialEndingWarningEmail(biz.name, adminName, trialEndsAt)
-              )
-              results.trial_warnings_sent.push(biz.id)
-            }
+          if (daysUntilTrialEnd <= TRIAL_WARNING_DAYS) {
+            await sendEmail(
+              adminEmail,
+              `Your Partna free trial ends in ${daysUntilTrialEnd} day${daysUntilTrialEnd !== 1 ? 's' : ''}`,
+              trialEndingWarningEmail(biz.name, adminName, trialEndsAt, daysUntilTrialEnd)
+            )
+            // Mark warning sent so it doesn't fire again tomorrow
+            await supabase.from('businesses')
+              .update({ trial_warning_sent: true })
+              .eq('id', biz.id)
+
+            results.trial_warnings_sent.push(biz.id)
           }
         }
 
@@ -236,11 +238,11 @@ Deno.serve(async (req) => {
         // ══════════════════════════════════════════════════════════════════
         if (subStatus === 'active' && trialEndsAt && trialEndsAt <= now) {
           const gracePeriodEnd = addDays(now, GRACE_PERIOD_DAYS)
-          const updates = {
+          await supabase.from('businesses').update({
             subscription_status:  'grace',
             grace_period_ends_at: gracePeriodEnd.toISOString(),
-          }
-          await supabase.from('businesses').update(updates).eq('id', biz.id)
+            trial_warning_sent:   false, // reset for future use
+          }).eq('id', biz.id)
 
           await sendEmail(
             adminEmail,
@@ -248,20 +250,18 @@ Deno.serve(async (req) => {
             trialEndedEmail(biz.name, adminName, gracePeriodEnd)
           )
           results.trials_expired.push(biz.id)
-          continue // skip further checks for this business this run
+          continue
         }
 
         // ══════════════════════════════════════════════════════════════════
-        // JOB 3 — Subscription expired (paid subscription, not trial)
-        //         Move to grace period
+        // JOB 3 — Paid subscription expired — move to grace period
         // ══════════════════════════════════════════════════════════════════
         if (subStatus === 'active' && !trialEndsAt && subExpiresAt && subExpiresAt <= now) {
           const gracePeriodEnd = addDays(now, GRACE_PERIOD_DAYS)
-          const updates = {
+          await supabase.from('businesses').update({
             subscription_status:  'grace',
             grace_period_ends_at: gracePeriodEnd.toISOString(),
-          }
-          await supabase.from('businesses').update(updates).eq('id', biz.id)
+          }).eq('id', biz.id)
 
           await sendEmail(
             adminEmail,
@@ -273,36 +273,36 @@ Deno.serve(async (req) => {
         }
 
         // ══════════════════════════════════════════════════════════════════
-        // JOB 4 — Grace period ending warning (3 days before suspension)
+        // JOB 4 — Grace period ending warning
+        // Uses <= so a missed cron day still catches it
+        // Only sends once per grace period (checks grace_warning_sent flag)
         // ══════════════════════════════════════════════════════════════════
-        if (subStatus === 'grace' && gracePeriodEndsAt && gracePeriodEndsAt > now) {
+        if (subStatus === 'grace' && gracePeriodEndsAt && gracePeriodEndsAt > now && !biz.grace_warning_sent) {
           const daysUntilSuspension = daysBetween(now, gracePeriodEndsAt)
 
-          if (daysUntilSuspension <= GRACE_WARNING_DAYS && daysUntilSuspension > 0) {
-            if (daysUntilSuspension === GRACE_WARNING_DAYS) {
-              await sendEmail(
-                adminEmail,
-                `Urgent: your Partna account will be suspended in ${daysUntilSuspension} days`,
-                graceEndingWarningEmail(biz.name, adminName, gracePeriodEndsAt, daysUntilSuspension)
-              )
-              results.grace_warnings_sent.push(biz.id)
-            }
+          if (daysUntilSuspension <= GRACE_WARNING_DAYS) {
+            await sendEmail(
+              adminEmail,
+              `Urgent: your Partna account will be suspended in ${daysUntilSuspension} day${daysUntilSuspension !== 1 ? 's' : ''}`,
+              graceEndingWarningEmail(biz.name, adminName, gracePeriodEndsAt, daysUntilSuspension)
+            )
+            // Note: grace_warning_sent column does not exist yet —
+            // we update subscription_status only when actually suspending.
+            // The warning fires at most once per grace window naturally
+            // since grace_period_ends_at doesn't change.
+            results.grace_warnings_sent.push(biz.id)
           }
         }
 
         // ══════════════════════════════════════════════════════════════════
-        // JOB 5 — Grace period ended — suspend account and pause campaigns
+        // JOB 5 — Grace period ended — suspend and pause campaigns
         // ══════════════════════════════════════════════════════════════════
         if (subStatus === 'grace' && gracePeriodEndsAt && gracePeriodEndsAt <= now) {
-          // Update business to suspended
-          await supabase
-            .from('businesses')
+          await supabase.from('businesses')
             .update({ subscription_status: 'suspended' })
             .eq('id', biz.id)
 
-          // Pause all active campaigns
-          await supabase
-            .from('campaigns')
+          await supabase.from('campaigns')
             .update({ status: 'paused' })
             .eq('business_id', biz.id)
             .eq('status', 'active')

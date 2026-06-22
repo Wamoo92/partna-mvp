@@ -64,6 +64,15 @@ function NavIcon({ label, active }) {
   )
 }
 
+// ── Small lock icon for nav items ──────────────────────────────────────────
+function LockIcon() {
+  return (
+    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke={C.orange} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, marginLeft: 'auto' }}>
+      <rect x="3" y="11" width="18" height="11" rx="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" />
+    </svg>
+  )
+}
+
 export default function DashboardLayout({ admin, business, signOut, children }) {
   const navigate  = useNavigate()
   const location  = useLocation()
@@ -169,7 +178,8 @@ export default function DashboardLayout({ admin, business, signOut, children }) 
         {/* Nav */}
         <nav style={{ flex: 1, padding: '10px 8px', display: 'flex', flexDirection: 'column', gap: 2 }}>
           {NAV_ITEMS.map(item => {
-            const active = location.pathname === item.path || (item.path !== '/dashboard/overview' && location.pathname.startsWith(item.path))
+            const active      = location.pathname === item.path || (item.path !== '/dashboard/overview' && location.pathname.startsWith(item.path))
+            const showLock    = kybPending && item.label === 'Campaigns' && !collapsed
             return (
               <button
                 key={item.label}
@@ -192,6 +202,7 @@ export default function DashboardLayout({ admin, business, signOut, children }) 
               >
                 <NavIcon label={item.label} active={active} />
                 {!collapsed && <span style={{ whiteSpace: 'nowrap' }}>{item.label}</span>}
+                {showLock && <LockIcon />}
               </button>
             )
           })}
