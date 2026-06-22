@@ -55,14 +55,13 @@ function Modal({ title, onClose, footer, children }) {
   )
 }
 
-// ── Import result modal ────────────────────────────────────────────────────
+// ── Import result modal — unchanged ────────────────────────────────────────
 function ImportResultModal({ result, onClose }) {
   if (!result) return null
   const hasErrors = result.failedRows > 0
   return (
     <Modal title={hasErrors ? 'Import completed with errors' : 'Import successful'} onClose={onClose}
       footer={<button onClick={onClose} style={{ ...btnPrimary, flex: 1, justifyContent: 'center', padding: '10px' }}>Done</button>}>
-      {/* Summary */}
       <div style={{ background: C.white, border: `1px solid ${C.stroke}`, borderRadius: 10, overflow: 'hidden' }}>
         {[
           { label: 'Total rows', value: result.totalRows,    color: C.black },
@@ -75,7 +74,6 @@ function ImportResultModal({ result, onClose }) {
           </div>
         ))}
       </div>
-      {/* Error rows */}
       {hasErrors && result.errors?.length > 0 && (
         <div>
           <p style={{ fontSize: 12, fontWeight: 600, color: C.secondary, margin: '0 0 8px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Failed rows</p>
@@ -166,6 +164,7 @@ export default function Students({ admin, business }) {
 
   const activeCount   = students.filter(s =>  s.is_active).length
   const inactiveCount = students.filter(s => !s.is_active).length
+  const noStudents    = !loading && students.length === 0
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20, fontFamily: 'Inter, system-ui, sans-serif' }}>
@@ -215,6 +214,46 @@ export default function Students({ admin, business }) {
         </Modal>
       )}
 
+      {/* ── ACTION REQUIRED BANNER — shown when no students added yet ── */}
+      {noStudents && (
+        <div style={{ background: C.bgRed, border: `1px solid ${C.red}`, borderRadius: 12, padding: '18px 20px', display: 'flex', alignItems: 'flex-start', gap: 16 }}>
+          <div style={{ width: 40, height: 40, borderRadius: 10, background: C.red, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+              <line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" />
+            </svg>
+          </div>
+          <div style={{ flex: 1 }}>
+            <p style={{ fontSize: 15, fontWeight: 600, color: C.red, margin: '0 0 6px', letterSpacing: '-0.3px' }}>
+              Add students before parents can enrol
+            </p>
+            <p style={{ fontSize: 13, fontWeight: 500, color: C.red, margin: '0 0 14px', lineHeight: '150%', opacity: 0.85 }}>
+              When a parent visits your portal and tries to link their child to a campaign, they must find their child in your student register. If no students have been added, the parent will hit a dead end and cannot enrol. Add your students first — then launch your campaign.
+            </p>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <button
+                onClick={downloadTemplate}
+                style={{ padding: '8px 14px', fontSize: 12, fontWeight: 600, color: C.red, background: C.white, border: `1px solid ${C.red}`, borderRadius: 8, cursor: 'pointer', fontFamily: 'Inter, system-ui, sans-serif', display: 'inline-flex', alignItems: 'center', gap: 6 }}
+              >
+                ↓ Download CSV template
+              </button>
+              <button
+                onClick={() => fileRef.current?.click()}
+                style={{ padding: '8px 14px', fontSize: 12, fontWeight: 600, color: C.red, background: C.white, border: `1px solid ${C.red}`, borderRadius: 8, cursor: 'pointer', fontFamily: 'Inter, system-ui, sans-serif', display: 'inline-flex', alignItems: 'center', gap: 6 }}
+              >
+                ↑ Import CSV
+              </button>
+              <button
+                onClick={() => { setShowAddModal(true); setAddError('') }}
+                style={{ padding: '8px 14px', fontSize: 12, fontWeight: 600, color: C.white, background: C.red, border: `1px solid ${C.red}`, borderRadius: 8, cursor: 'pointer', fontFamily: 'Inter, system-ui, sans-serif', display: 'inline-flex', alignItems: 'center', gap: 6 }}
+              >
+                + Add student
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── Header ── */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
         <div style={{ display: 'flex', gap: 24 }}>
@@ -241,13 +280,13 @@ export default function Students({ admin, business }) {
         </div>
       </div>
 
-      {/* Info banner */}
+      {/* Info banner — unchanged */}
       <div style={{ background: C.bg, border: `1px solid ${C.grayLine}`, borderRadius: 8, padding: '10px 14px', fontSize: 13, fontWeight: 500, color: C.secondary, lineHeight: '140%' }}>
         Download the CSV template to see the required format. Required columns are <strong style={{ color: C.black }}>first_name</strong> and <strong style={{ color: C.black }}>last_name</strong>.
         Optional: school_student_id, year_group, stream. Each student is automatically assigned a unique Partna Student ID (PTN-ST-XXXXX).
       </div>
 
-      {/* ── Filters ── */}
+      {/* ── Filters — unchanged ── */}
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
         <div style={{ position: 'relative', flex: 1, minWidth: 220 }}>
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke={C.grayMid} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }}><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
@@ -268,19 +307,22 @@ export default function Students({ admin, business }) {
         </div>
       </div>
 
-      {/* ── Table / empty states ── */}
+      {/* ── Table / empty states — unchanged ── */}
       {loading ? (
         <div style={{ display: 'flex', justifyContent: 'center', padding: 80 }}><div className="spinner spinner-lg" /></div>
       ) : students.length === 0 ? (
-        <div style={{ background: C.white, border: `1px solid ${C.stroke}`, borderRadius: 12, padding: '56px 20px', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}>
+        <div style={{ background: C.white, border: `1px solid ${C.stroke}`, borderRadius: 12, padding: '40px 20px', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}>
           <div style={{ width: 48, height: 48, borderRadius: 12, background: C.labelBg, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={C.grayMid} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M22 10v6M2 10l10-5 10 5-10 5z" /><path d="M6 12v5c3 3 9 3 12 0v-5" /></svg>
           </div>
           <p style={{ fontSize: 15, fontWeight: 600, color: C.black, margin: 0 }}>No students yet</p>
-          <p style={{ fontSize: 13, fontWeight: 500, color: C.secondary, margin: 0, maxWidth: 360 }}>Import your student register using the CSV template, or add students one by one.</p>
-          <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
+          <p style={{ fontSize: 13, fontWeight: 500, color: C.secondary, margin: 0, maxWidth: 360 }}>
+            Import your full student register using the CSV template for the fastest setup, or add students one by one.
+          </p>
+          <div style={{ display: 'flex', gap: 10, marginTop: 4, flexWrap: 'wrap', justifyContent: 'center' }}>
             <button onClick={downloadTemplate} style={{ ...btnSecondary, padding: '9px 16px', fontSize: 13 }}>↓ Download template</button>
-            <button onClick={() => fileRef.current?.click()} style={{ ...btnPrimary, padding: '9px 16px', fontSize: 13 }}>↑ Import CSV</button>
+            <button onClick={() => fileRef.current?.click()} style={{ ...btnSecondary, padding: '9px 16px', fontSize: 13 }}>↑ Import CSV</button>
+            <button onClick={() => { setShowAddModal(true); setAddError('') }} style={{ ...btnPrimary, padding: '9px 16px', fontSize: 13 }}>+ Add student</button>
           </div>
         </div>
       ) : filtered.length === 0 ? (

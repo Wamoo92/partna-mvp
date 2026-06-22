@@ -1,5 +1,6 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
+import { supabase } from '../../supabase'
 
 const BASE_NAV_ITEMS = [
   { path: '/dashboard/overview',  label: 'Overview',     sectors: null },
@@ -64,7 +65,7 @@ function NavIcon({ label, active }) {
   )
 }
 
-// ── Small lock icon for nav items ──────────────────────────────────────────
+// ── Small lock icon for Campaigns nav item ─────────────────────────────────
 function LockIcon() {
   return (
     <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke={C.orange} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, marginLeft: 'auto' }}>
@@ -73,13 +74,57 @@ function LockIcon() {
   )
 }
 
+// ── Alert badge for Students nav item — expanded sidebar ───────────────────
+function StudentAlertBadge() {
+  return (
+    <div style={{
+      marginLeft: 'auto', flexShrink: 0,
+      width: 16, height: 16, borderRadius: '50%',
+      background: C.red,
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      fontSize: 10, fontWeight: 700, color: C.white, lineHeight: 1,
+    }}>
+      !
+    </div>
+  )
+}
+
+// ── Red dot for Students nav icon — collapsed sidebar ─────────────────────
+function StudentAlertDot() {
+  return (
+    <div style={{
+      position: 'absolute', top: 6, right: 6,
+      width: 7, height: 7, borderRadius: '50%',
+      background: C.red,
+      border: `1.5px solid ${C.white}`,
+    }} />
+  )
+}
+
 export default function DashboardLayout({ admin, business, signOut, children }) {
   const navigate  = useNavigate()
   const location  = useLocation()
-  const [collapsed, setCollapsed] = useState(false)
+  const [collapsed, setCollapsed]       = useState(false)
+  const [studentCount, setStudentCount] = useState(null) // null = not yet fetched
 
-  const kybPending = business?.kyb_status !== 'verified'
-  const sector     = business?.sector || ''
+  const kybPending    = business?.kyb_status !== 'verified'
+  const sector        = business?.sector || ''
+  const isEducation   = sector === 'Education'
+  const showStudentAlert = isEducation && studentCount === 0
+
+  // ── Fetch student count for Education businesses ───────────────────────
+  useEffect(() => {
+    if (!isEducation || !business?.id) return
+    supabase
+      .from('students')
+      .select('id', { count: 'exact', head: true })
+      .eq('business_id', business.id)
+      .eq('is_active', true)
+      .then(({ count }) => {
+        setStudentCount(count ?? 0)
+      })
+      .catch(() => setStudentCount(0))
+  }, [business?.id, isEducation])
 
   const NAV_ITEMS = BASE_NAV_ITEMS.filter(item => {
     if (item.sectors === null) return true
@@ -178,8 +223,11 @@ export default function DashboardLayout({ admin, business, signOut, children }) 
         {/* Nav */}
         <nav style={{ flex: 1, padding: '10px 8px', display: 'flex', flexDirection: 'column', gap: 2 }}>
           {NAV_ITEMS.map(item => {
-            const active      = location.pathname === item.path || (item.path !== '/dashboard/overview' && location.pathname.startsWith(item.path))
-            const showLock    = kybPending && item.label === 'Campaigns' && !collapsed
+            const active           = location.pathname === item.path || (item.path !== '/dashboard/overview' && location.pathname.startsWith(item.path))
+            const showLock         = kybPending && item.label === 'Campaigns' && !collapsed
+            const showStudentBadge = showStudentAlert && item.label === 'Students' && !collapsed
+            const showStudentDot   = showStudentAlert && item.label === 'Students' && collapsed
+
             return (
               <button
                 key={item.label}
@@ -196,13 +244,16 @@ export default function DashboardLayout({ admin, business, signOut, children }) 
                   color: active ? C.black : C.secondary,
                   transition: 'all 0.12s',
                   fontFamily: 'Inter, system-ui, sans-serif',
+                  position: 'relative',
                 }}
                 onMouseEnter={e => { if (!active) { e.currentTarget.style.background = C.bg; e.currentTarget.style.color = C.black } }}
                 onMouseLeave={e => { if (!active) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = C.secondary } }}
               >
                 <NavIcon label={item.label} active={active} />
                 {!collapsed && <span style={{ whiteSpace: 'nowrap' }}>{item.label}</span>}
-                {showLock && <LockIcon />}
+                {showLock         && <LockIcon />}
+                {showStudentBadge && <StudentAlertBadge />}
+                {showStudentDot   && <StudentAlertDot />}
               </button>
             )
           })}
