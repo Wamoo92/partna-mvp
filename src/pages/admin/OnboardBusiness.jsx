@@ -30,7 +30,7 @@ async function sendEmail(to, subject, html) {
         'Content-Type':  'application/json',
         'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
       },
-      body: JSON.stringify({ to, subject, html }),
+      body: JSON.stringify({ to, subject, html, from: 'support' }),
     })
   } catch (e) {
     console.error('Welcome email error (non-critical):', e)
@@ -154,7 +154,7 @@ export default function OnboardBusiness() {
   // Submission state
   const [submitting, setSubmitting]           = useState(false)
   const [error, setError]                     = useState('')
-  const [success, setSuccess]                 = useState(null) // { businessName, contactName, contactEmail, tempPassword }
+  const [success, setSuccess]                 = useState(null)
 
   // ── Validation ──────────────────────────────────────────────────────────
   function validate() {
@@ -184,11 +184,10 @@ export default function OnboardBusiness() {
       const trialEndsAt  = trialDaysInt > 0 ? addDays(now, trialDaysInt) : null
 
       // ── 1. Create auth user ────────────────────────────────────────────
-      // Uses the service role client so Partna admin can create users
       const { data: authData, error: authError } = await supabase.auth.admin.createUser({
-        email:          contactEmail.trim().toLowerCase(),
-        password:       tempPassword,
-        email_confirm:  true,
+        email:         contactEmail.trim().toLowerCase(),
+        password:      tempPassword,
+        email_confirm: true,
       })
 
       if (authError) {
@@ -206,24 +205,23 @@ export default function OnboardBusiness() {
       const { data: bizData, error: bizError } = await supabase
         .from('businesses')
         .insert({
-          name:                   businessName.trim(),
+          name:                    businessName.trim(),
           sector,
-          phone:                  phone.trim() || null,
-          website:                website.trim() || null,
-          address:                address.trim() || null,
-          admin_email:            contactEmail.trim().toLowerCase(),
-          subscription_package:   plan,
-          subscription_status:    'active',
+          phone:                   phone.trim() || null,
+          website:                 website.trim() || null,
+          address:                 address.trim() || null,
+          admin_email:             contactEmail.trim().toLowerCase(),
+          subscription_package:    plan,
+          subscription_status:     'active',
           subscription_expires_at: trialEndsAt || addDays(now, billingCycle === 'annual' ? 365 : 30),
-          trial_ends_at:          trialEndsAt,
-          kyb_status:             'not_submitted',
-          status:                 'active',
+          trial_ends_at:           trialEndsAt,
+          kyb_status:              'not_submitted',
+          status:                  'active',
         })
         .select()
         .single()
 
       if (bizError || !bizData) {
-        // Rollback auth user
         await supabase.auth.admin.deleteUser(authUserId)
         setError(`Could not create business record: ${bizError?.message || 'Unknown error'}`)
         setSubmitting(false); return
@@ -244,14 +242,13 @@ export default function OnboardBusiness() {
         })
 
       if (adminError) {
-        // Rollback both
         await supabase.from('businesses').delete().eq('id', bizData.id)
         await supabase.auth.admin.deleteUser(authUserId)
         setError(`Could not create admin record: ${adminError.message}`)
         setSubmitting(false); return
       }
 
-      // ── 4. Send welcome email ──────────────────────────────────────────
+      // ── 4. Send welcome email from support@partna.io ──────────────────
       const registrationLink = `https://www.partna.io/dashboard/register?token=${inviteToken}`
       await sendEmail(
         contactEmail.trim().toLowerCase(),
@@ -287,7 +284,6 @@ export default function OnboardBusiness() {
       <div style={{ maxWidth: 560, margin: '0 auto', fontFamily: 'Inter, system-ui, sans-serif' }}>
         <div style={{ background: C.white, border: `1px solid ${C.stroke}`, borderRadius: 16, overflow: 'hidden' }}>
 
-          {/* Green header */}
           <div style={{ background: C.green, padding: '28px 28px 24px', display: 'flex', flexDirection: 'column', gap: 8 }}>
             <div style={{ width: 48, height: 48, borderRadius: '50%', background: 'rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -298,18 +294,17 @@ export default function OnboardBusiness() {
               {success.businessName} onboarded
             </p>
             <p style={{ fontSize: 14, fontWeight: 500, color: 'rgba(255,255,255,0.75)', margin: 0 }}>
-              Account created and welcome email sent to {success.contactEmail}
+              Account created and welcome email sent from support@partna.io to {success.contactEmail}
             </p>
           </div>
 
-          {/* Details */}
           <div style={{ padding: '20px 28px', display: 'flex', flexDirection: 'column', gap: 0 }}>
             {[
-              { label: 'Business',       value: success.businessName },
-              { label: 'Contact',        value: success.contactName },
-              { label: 'Email',          value: success.contactEmail },
-              { label: 'Plan',           value: success.plan.charAt(0).toUpperCase() + success.plan.slice(1) },
-              { label: 'Free trial',     value: success.trialDays > 0 ? `${success.trialDays} days` : 'No trial — billing starts immediately' },
+              { label: 'Business',   value: success.businessName },
+              { label: 'Contact',    value: success.contactName },
+              { label: 'Email',      value: success.contactEmail },
+              { label: 'Plan',       value: success.plan.charAt(0).toUpperCase() + success.plan.slice(1) },
+              { label: 'Free trial', value: success.trialDays > 0 ? `${success.trialDays} days` : 'No trial — billing starts immediately' },
             ].map((row, i, arr) => (
               <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '11px 0', borderBottom: i < arr.length - 1 ? `1px solid ${C.grayLine}` : 'none' }}>
                 <span style={{ fontSize: 13, fontWeight: 500, color: C.secondary }}>{row.label}</span>
@@ -317,7 +312,6 @@ export default function OnboardBusiness() {
               </div>
             ))}
 
-            {/* Temp password — for Partna admin reference */}
             <div style={{ margin: '16px 0 0', background: C.bg, border: `1px solid ${C.grayLine}`, borderRadius: 10, padding: '14px 16px' }}>
               <p style={{ fontSize: 11, fontWeight: 600, color: C.secondary, margin: '0 0 6px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Temporary password (admin reference only)</p>
               <p style={{ fontFamily: 'monospace', fontSize: 18, fontWeight: 700, color: C.black, margin: '0 0 6px', letterSpacing: '0.08em' }}>{success.tempPassword}</p>
@@ -327,10 +321,14 @@ export default function OnboardBusiness() {
             </div>
           </div>
 
-          {/* Actions */}
           <div style={{ padding: '0 28px 24px', display: 'flex', gap: 10 }}>
             <button
-              onClick={() => { setSuccess(null); setBusinessName(''); setSector(''); setPhone(''); setWebsite(''); setAddress(''); setContactName(''); setContactEmail(''); setContactPhone(''); setPlan('starter'); setBillingCycle('monthly'); setTrialDays('90') }}
+              onClick={() => {
+                setSuccess(null)
+                setBusinessName(''); setSector(''); setPhone(''); setWebsite('')
+                setAddress(''); setContactName(''); setContactEmail('')
+                setContactPhone(''); setPlan('starter'); setBillingCycle('monthly'); setTrialDays('90')
+              }}
               style={{ flex: 1, padding: '11px', fontSize: 14, fontWeight: 600, color: C.black, background: C.white, border: `1px solid ${C.stroke}`, borderRadius: 10, cursor: 'pointer', fontFamily: 'Inter, system-ui, sans-serif' }}
             >
               Onboard another
@@ -351,7 +349,6 @@ export default function OnboardBusiness() {
   return (
     <div style={{ maxWidth: 640, margin: '0 auto', fontFamily: 'Inter, system-ui, sans-serif' }}>
 
-      {/* Back link */}
       <button
         onClick={() => navigate('/admin/businesses')}
         style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', cursor: 'pointer', color: C.secondary, fontSize: 13, fontWeight: 500, padding: '0 0 20px', fontFamily: 'Inter, system-ui, sans-serif' }}
@@ -364,17 +361,15 @@ export default function OnboardBusiness() {
 
       <div style={{ background: C.white, border: `1px solid ${C.stroke}`, borderRadius: 16, overflow: 'hidden' }}>
 
-        {/* Header */}
         <div style={{ padding: '20px 24px', borderBottom: `1px solid ${C.grayLine}`, background: C.black }}>
           <p style={{ fontSize: 17, fontWeight: 600, color: C.white, margin: '0 0 3px', letterSpacing: '-0.5px' }}>Onboard new business</p>
           <p style={{ fontSize: 13, fontWeight: 500, color: 'rgba(255,255,255,0.45)', margin: 0 }}>
-            Creates the business account, sends a welcome email with a registration link
+            Creates the business account and sends a welcome email from support@partna.io
           </p>
         </div>
 
         <div style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: 20 }}>
 
-          {/* Error */}
           {error && (
             <div style={{ background: C.bgRed, border: `1px solid ${C.red}`, borderRadius: 10, padding: '12px 16px', fontSize: 13, fontWeight: 500, color: C.red }}>
               {error}
