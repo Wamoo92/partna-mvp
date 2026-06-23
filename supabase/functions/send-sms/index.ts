@@ -48,7 +48,6 @@ const TEMPLATES: Record<string, (vars: Record<string, string>) => string> = {
   campaign_enrolled: (v) =>
     `Partna: Welcome to ${v.campaign}! ` +
     `Your savings campaign is now active. ` +
-    `Draw code: ${v.draw_code}. ` +
     `Start saving at www.partna.io`,
 
   pin_changed: (_v) =>

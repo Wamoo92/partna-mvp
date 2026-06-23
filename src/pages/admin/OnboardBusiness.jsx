@@ -37,7 +37,7 @@ async function sendEmail(to, subject, html) {
   }
 }
 
-function welcomeEmail({ contactName, businessName, registrationLink }) {
+function welcomeEmail({ contactName, businessName, tempPassword, registrationLink }) {
   return `
     <div style="font-family: Inter, system-ui, sans-serif; max-width: 560px; margin: 0 auto; padding: 32px 24px; color: #111;">
       <img src="https://www.partna.io/partna-logo.png" alt="Partna" style="height: 28px; margin-bottom: 28px;" />
@@ -48,25 +48,37 @@ function welcomeEmail({ contactName, businessName, registrationLink }) {
 
       <p style="font-size: 15px; color: #444; line-height: 1.6; margin: 0 0 20px;">
         Your <strong>${businessName}</strong> account has been created on Partna.
-        Click the button below to set up your password and access your dashboard.
+        Use the credentials below to log in to your dashboard for the first time.
+        You will be prompted to set a new password on your first login.
       </p>
 
-      <a href="${registrationLink}"
+      <div style="background: #F6F7EE; border: 1px solid #D7D8CB; border-radius: 10px; overflow: hidden; margin: 0 0 24px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; border-bottom: 1px solid #D5D9DD;">
+          <span style="font-size: 13px; font-weight: 500; color: #959687;">Email</span>
+          <span style="font-size: 13px; font-weight: 600; color: #111;">${contactName}</span>
+        </div>
+        <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 16px;">
+          <span style="font-size: 13px; font-weight: 500; color: #959687;">Temporary password</span>
+          <span style="font-size: 15px; font-weight: 700; color: #111; font-family: monospace; letter-spacing: 0.08em;">${tempPassword}</span>
+        </div>
+      </div>
+
+      <a href="https://www.partna.io/dashboard/login"
         style="display: inline-block; padding: 13px 28px; background: #111; color: #fff; font-size: 15px; font-weight: 600; text-decoration: none; border-radius: 10px; margin: 0 0 24px;">
-        Set up your account →
+        Log in to your dashboard →
       </a>
 
       <p style="font-size: 13px; color: #959687; line-height: 1.6; margin: 0 0 8px;">
-        If the button does not work, copy and paste this link into your browser:
+        Or copy and paste this link into your browser:
       </p>
       <p style="font-size: 13px; color: #111; word-break: break-all; margin: 0 0 28px;">
-        ${registrationLink}
+        https://www.partna.io/dashboard/login
       </p>
 
       <div style="border-top: 1px solid #D7D8CB; padding-top: 20px;">
         <p style="font-size: 12px; color: #959687; margin: 0; line-height: 1.6;">
-          This link is unique to your account and can only be used once.
-          If you did not expect this email, please ignore it or contact
+          For security, you will be asked to change your password immediately after your first login.
+          If you did not expect this email, please contact
           <a href="mailto:support@partna.io" style="color: #111; font-weight: 600;">support@partna.io</a>.
         </p>
       </div>
@@ -248,15 +260,14 @@ export default function OnboardBusiness() {
         setSubmitting(false); return
       }
 
-      // ── 4. Send welcome email from support@partna.io ──────────────────
-      const registrationLink = `https://www.partna.io/dashboard/register?token=${inviteToken}`
+      // ── 4. Send welcome email with temporary password ──────────────────
       await sendEmail(
         contactEmail.trim().toLowerCase(),
-        `Welcome to Partna — set up your ${businessName.trim()} account`,
+        `Welcome to Partna — your ${businessName.trim()} account is ready`,
         welcomeEmail({
-          contactName:      contactName.trim(),
-          businessName:     businessName.trim(),
-          registrationLink,
+          contactName:  contactName.trim(),
+          businessName: businessName.trim(),
+          tempPassword,
         })
       )
 
@@ -316,7 +327,7 @@ export default function OnboardBusiness() {
               <p style={{ fontSize: 11, fontWeight: 600, color: C.secondary, margin: '0 0 6px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Temporary password (admin reference only)</p>
               <p style={{ fontFamily: 'monospace', fontSize: 18, fontWeight: 700, color: C.black, margin: '0 0 6px', letterSpacing: '0.08em' }}>{success.tempPassword}</p>
               <p style={{ fontSize: 11, fontWeight: 500, color: C.grayMid, margin: 0 }}>
-                This password is not shown again. The business admin will be prompted to change it on first login. The welcome email contains their registration link — not this password.
+                This password has been included in the welcome email sent to the business admin. They will be prompted to change it on first login.
               </p>
             </div>
           </div>
@@ -364,7 +375,7 @@ export default function OnboardBusiness() {
         <div style={{ padding: '20px 24px', borderBottom: `1px solid ${C.grayLine}`, background: C.black }}>
           <p style={{ fontSize: 17, fontWeight: 600, color: C.white, margin: '0 0 3px', letterSpacing: '-0.5px' }}>Onboard new business</p>
           <p style={{ fontSize: 13, fontWeight: 500, color: 'rgba(255,255,255,0.45)', margin: 0 }}>
-            Creates the business account and sends a welcome email from support@partna.io
+            Creates the business account and sends a welcome email with login credentials from support@partna.io
           </p>
         </div>
 

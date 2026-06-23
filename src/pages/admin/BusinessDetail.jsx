@@ -268,11 +268,7 @@ export default function BusinessDetail() {
     setSavingKYB(true)
     try {
       const newStatus = kybAction === 'approve' ? 'verified' : 'rejected'
-      const emailBody = kybAction === 'approve'
-        ? `Your KYB verification for ${business.name} has been approved. You now have full access to the Partna platform.`
-        : `Your KYB verification for ${business.name} was not approved. Reason: ${rejectReason}. Please resubmit with the correct documents from your Settings page.`
       await supabase.from('businesses').update({ kyb_status: newStatus }).eq('id', id)
-      await sendAdminEmail({ to: business.admin_email, subject: kybAction === 'approve' ? 'KYB Approved — Welcome to Partna' : 'KYB Update — Action Required', html: `<p>Hi ${admin?.full_name || 'there'},</p><p>${emailBody}</p><p>— The Partna Team</p>` })
       setBusiness(prev => ({ ...prev, kyb_status: newStatus }))
       setKybSuccess(kybAction === 'approve' ? 'KYB approved successfully.' : 'KYB rejected. Business notified.')
       setKybAction(null); setRejectReason('')
