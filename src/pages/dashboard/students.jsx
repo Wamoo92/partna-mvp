@@ -149,7 +149,7 @@ export default function Students({
     if (!addForm.last_name.trim())  { setAddError('Last name is required.'); return }
     setAddSaving(true)
     try {
-      const { error } = await supabase.from('students').insert({ business_id: business.id, partna_student_id: '', first_name: addForm.first_name.trim(), last_name: addForm.last_name.trim(), school_student_id: addForm.school_student_id.trim() || null, year_group: addForm.year_group.trim() || null, stream: addForm.stream.trim() || null })
+      const { error } = await supabase.from('students').insert({ business_id: business.id, first_name: addForm.first_name.trim(), last_name: addForm.last_name.trim(), school_student_id: addForm.school_student_id.trim() || null, year_group: addForm.year_group.trim() || null, stream: addForm.stream.trim() || null })
       if (error) { setAddError(error.code === '23505' ? 'A student with this ID already exists.' : 'Could not add student. Please try again.'); setAddSaving(false); return }
       setShowAddModal(false); setAddForm({ first_name: '', last_name: '', school_student_id: '', year_group: '', stream: '' }); await loadStudents()
     } catch (e) { setAddError('Something went wrong. Please try again.') }

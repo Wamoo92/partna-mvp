@@ -149,8 +149,6 @@ const td = (content, opts = {}) => (
 )
 
 export default function BusinessDetail() {
-  useEffect(() => { document.title = business ? `${business.name} - Partna` : 'Business - Partna' }, [business])
-
   const { id } = useParams()
   const navigate = useNavigate()
   const fileInputRef = useRef(null)
@@ -201,6 +199,8 @@ export default function BusinessDetail() {
   const [subError, setSubError]               = useState('')
 
   const [activeTab, setActiveTab] = useState('profile')
+
+  useEffect(() => { document.title = business ? `${business.name} - Partna` : 'Business - Partna' }, [business])
 
   useEffect(() => { loadAll() }, [id])
 
