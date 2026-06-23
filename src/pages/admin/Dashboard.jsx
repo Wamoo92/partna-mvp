@@ -93,6 +93,8 @@ function StatCard({ label, value, sub, accentColor, onClick }) {
 
 // ── Main ───────────────────────────────────────────────────────────────────
 export default function Dashboard() {
+  useEffect(() => { document.title = 'Dashboard - Partna' }, [])
+
   const navigate = useNavigate()
   const [loading, setLoading]           = useState(true)
   const [stats, setStats]               = useState({ totalBusinesses: 0, totalCustomers: 0, totalAUM: 0, totalVolume: 0, totalRevenue: 0, pendingKYB: 0 })

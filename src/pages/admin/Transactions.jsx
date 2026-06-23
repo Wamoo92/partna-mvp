@@ -180,6 +180,8 @@ function SummaryTable({ rows }) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export default function Transactions() {
+  useEffect(() => { document.title = 'Transactions - Partna' }, [])
+
   const [tab, setTab] = useState('customer')
 
   const [transactions, setTransactions]       = useState([])

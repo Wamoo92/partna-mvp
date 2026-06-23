@@ -72,7 +72,10 @@ const C = {
   orange:    '#EF8354',
 }
 
-export default function Transactions({ customer }) {
+export default function Transactions({
+ customer }) {
+  useEffect(() => { document.title = 'Transactions - Partna' }, [])
+
   const brand    = useBrand()
   const navigate = useNavigate()
   const location = useLocation()

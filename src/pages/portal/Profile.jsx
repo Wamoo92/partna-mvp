@@ -248,7 +248,10 @@ function DeleteModal({ enrollments, deleteSummary, deleteLoading, deleteSuccess,
 }
 
 // ── Main ───────────────────────────────────────────────────────────────────
-export default function Profile({ customer, signOut }) {
+export default function Profile({
+ customer, signOut }) {
+  useEffect(() => { document.title = 'Profile - Partna' }, [])
+
   const brand    = useBrand()
   const navigate = useNavigate()
 

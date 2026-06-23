@@ -38,6 +38,8 @@ const C = {
 const selectStyle = { padding: '8px 12px', fontSize: 13, fontWeight: 500, color: C.black, background: C.white, border: `1px solid ${C.grayLine}`, borderRadius: 8, outline: 'none', fontFamily: 'Inter, system-ui, sans-serif', cursor: 'pointer' }
 
 export default function Revenue() {
+  useEffect(() => { document.title = 'Revenue - Partna' }, [])
+
   const [loading, setLoading]               = useState(true)
   const [fees, setFees]                     = useState([])
   const [subscriptions, setSubscriptions]   = useState([])

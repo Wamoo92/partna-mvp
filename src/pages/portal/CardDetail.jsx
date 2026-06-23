@@ -190,7 +190,10 @@ function cardCancellationEmail({ customerName, businessName, billingPeriodEnd })
 
 // ── Main ──────────────────────────────────────────────────────────────────
 
-export default function CardDetail({ customer, business }) {
+export default function CardDetail({
+ customer, business }) {
+  useEffect(() => { document.title = 'My Card - Partna' }, [])
+
   const brand    = useBrand()
   const navigate = useNavigate()
 

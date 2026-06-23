@@ -1,11 +1,14 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useBrand } from '../../lib/BrandContext'
 
 const SUPABASE_URL      = import.meta.env.VITE_SUPABASE_URL
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY
 
-export default function KYC({ customer }) {
+export default function KYC({
+ customer }) {
+  useEffect(() => { document.title = 'Verify Identity - Partna' }, [])
+
   const brand    = useBrand()
   const navigate = useNavigate()
 

@@ -110,7 +110,10 @@ function customerDeliveryEmail({ customerName, businessName }) {
 
 // ── Main ──────────────────────────────────────────────────────────────────
 
-export default function Cards({ admin, business }) {
+export default function Cards({
+ admin, business }) {
+  useEffect(() => { document.title = 'Cards - Partna' }, [])
+
 
   // Code lookup
   const [code, setCode]                   = useState('')

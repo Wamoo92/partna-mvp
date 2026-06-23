@@ -33,7 +33,10 @@ const C = {
   bgRed:     '#F8E4E4',
 }
 
-export default function AddMoney({ customer }) {
+export default function AddMoney({
+ customer }) {
+  useEffect(() => { document.title = 'Add Money - Partna' }, [])
+
   const brand    = useBrand()
   const navigate = useNavigate()
   const location = useLocation()

@@ -423,7 +423,10 @@ function GeneralPayments({ business }) {
 // ══════════════════════════════════════════════════════════════════════════
 // ROOT
 // ══════════════════════════════════════════════════════════════════════════
-export default function Payments({ admin, business }) {
+export default function Payments({
+ admin, business }) {
+  useEffect(() => { document.title = 'Payments - Partna' }, [])
+
   if (business?.sector === 'Education') return <EducationPayments business={business} />
   return <GeneralPayments business={business} />
 }

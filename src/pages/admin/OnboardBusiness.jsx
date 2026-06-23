@@ -1,9 +1,8 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../supabase'
 
-const SUPABASE_URL      = import.meta.env.VITE_SUPABASE_URL
-const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -20,74 +19,6 @@ function addDays(date, days) {
   const d = new Date(date)
   d.setDate(d.getDate() + days)
   return d.toISOString()
-}
-
-async function sendEmail(to, subject, html) {
-  try {
-    await fetch(`${SUPABASE_URL}/functions/v1/send-admin-email`, {
-      method:  'POST',
-      headers: {
-        'Content-Type':  'application/json',
-        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
-      },
-      body: JSON.stringify({ to, subject, html, from: 'support' }),
-    })
-  } catch (e) {
-    console.error('Welcome email error (non-critical):', e)
-  }
-}
-
-function welcomeEmail({ contactName, businessName, tempPassword, registrationLink }) {
-  return `
-    <div style="font-family: Inter, system-ui, sans-serif; max-width: 560px; margin: 0 auto; padding: 32px 24px; color: #111;">
-      <img src="https://www.partna.io/partna-logo.png" alt="Partna" style="height: 28px; margin-bottom: 28px;" />
-
-      <h2 style="font-size: 22px; font-weight: 600; color: #111; letter-spacing: -0.5px; margin: 0 0 12px;">
-        Welcome to Partna, ${contactName}
-      </h2>
-
-      <p style="font-size: 15px; color: #444; line-height: 1.6; margin: 0 0 20px;">
-        Your <strong>${businessName}</strong> account has been created on Partna.
-        Use the credentials below to log in to your dashboard for the first time.
-        You will be prompted to set a new password on your first login.
-      </p>
-
-      <div style="background: #F6F7EE; border: 1px solid #D7D8CB; border-radius: 10px; overflow: hidden; margin: 0 0 24px;">
-        <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; border-bottom: 1px solid #D5D9DD;">
-          <span style="font-size: 13px; font-weight: 500; color: #959687;">Email</span>
-          <span style="font-size: 13px; font-weight: 600; color: #111;">${contactName}</span>
-        </div>
-        <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 16px;">
-          <span style="font-size: 13px; font-weight: 500; color: #959687;">Temporary password</span>
-          <span style="font-size: 15px; font-weight: 700; color: #111; font-family: monospace; letter-spacing: 0.08em;">${tempPassword}</span>
-        </div>
-      </div>
-
-      <a href="https://www.partna.io/dashboard/login"
-        style="display: inline-block; padding: 13px 28px; background: #111; color: #fff; font-size: 15px; font-weight: 600; text-decoration: none; border-radius: 10px; margin: 0 0 24px;">
-        Log in to your dashboard →
-      </a>
-
-      <p style="font-size: 13px; color: #959687; line-height: 1.6; margin: 0 0 8px;">
-        Or copy and paste this link into your browser:
-      </p>
-      <p style="font-size: 13px; color: #111; word-break: break-all; margin: 0 0 28px;">
-        https://www.partna.io/dashboard/login
-      </p>
-
-      <div style="border-top: 1px solid #D7D8CB; padding-top: 20px;">
-        <p style="font-size: 12px; color: #959687; margin: 0; line-height: 1.6;">
-          For security, you will be asked to change your password immediately after your first login.
-          If you did not expect this email, please contact
-          <a href="mailto:support@partna.io" style="color: #111; font-weight: 600;">support@partna.io</a>.
-        </p>
-      </div>
-
-      <p style="font-size: 13px; color: #959687; margin: 24px 0 0;">
-        Powered by <a href="https://www.partna.io" style="color: #111; font-weight: 600;">Partna</a>
-      </p>
-    </div>
-  `
 }
 
 // ── Sellin tokens ──────────────────────────────────────────────────────────
@@ -148,6 +79,8 @@ function SectionTitle({ title }) {
 // ── Main ──────────────────────────────────────────────────────────────────
 
 export default function OnboardBusiness() {
+  useEffect(() => { document.title = 'Onboard Business - Partna' }, [])
+
   const navigate = useNavigate()
 
   // Form fields
@@ -170,14 +103,14 @@ export default function OnboardBusiness() {
 
   // ── Validation ──────────────────────────────────────────────────────────
   function validate() {
-    if (!businessName.trim())  return 'Business name is required.'
-    if (!sector)               return 'Please select a sector.'
-    if (!contactName.trim())   return 'Contact name is required.'
-    if (!contactEmail.trim())  return 'Contact email is required.'
+    if (!businessName.trim())       return 'Business name is required.'
+    if (!sector)                    return 'Please select a sector.'
+    if (!contactName.trim())        return 'Contact name is required.'
+    if (!contactEmail.trim())       return 'Contact email is required.'
     if (!contactEmail.includes('@')) return 'Please enter a valid email address.'
-    if (!plan)                 return 'Please select a subscription plan.'
+    if (!plan)                      return 'Please select a subscription plan.'
     const days = parseInt(trialDays, 10)
-    if (isNaN(days) || days < 0) return 'Trial days must be a number of 0 or more.'
+    if (isNaN(days) || days < 0)   return 'Trial days must be a number of 0 or more.'
     return null
   }
 
@@ -194,84 +127,42 @@ export default function OnboardBusiness() {
       const inviteToken  = generateInviteToken()
       const trialDaysInt = parseInt(trialDays, 10)
       const trialEndsAt  = trialDaysInt > 0 ? addDays(now, trialDaysInt) : null
+      const subscriptionExpiresAt = trialEndsAt || addDays(now, billingCycle === 'annual' ? 365 : 30)
 
-      // ── 1. Create auth user ────────────────────────────────────────────
-      const { data: authData, error: authError } = await supabase.auth.admin.createUser({
-        email:         contactEmail.trim().toLowerCase(),
-        password:      tempPassword,
-        email_confirm: true,
+      // Single Edge Function call — handles all four steps server-side
+      const { data: { session } } = await supabase.auth.getSession()
+      const res  = await fetch(`${SUPABASE_URL}/functions/v1/create-business-user`, {
+        method:  'POST',
+        headers: {
+          'Content-Type':  'application/json',
+          'Authorization': `Bearer ${session?.access_token}`,
+        },
+        body: JSON.stringify({
+          email:                  contactEmail.trim().toLowerCase(),
+          password:               tempPassword,
+          businessName:           businessName.trim(),
+          sector,
+          phone:                  phone.trim() || null,
+          website:                website.trim() || null,
+          address:                address.trim() || null,
+          contactName:            contactName.trim(),
+          contactPhone:           contactPhone.trim() || null,
+          plan,
+          billingCycle,
+          trialEndsAt,
+          subscriptionExpiresAt,
+          inviteToken,
+        }),
       })
 
-      if (authError) {
-        if (authError.message?.includes('already registered')) {
-          setError('This email is already registered. Please use a different email address.')
-        } else {
-          setError(`Could not create user account: ${authError.message}`)
-        }
+      const data = await res.json()
+
+      if (!res.ok || data.error) {
+        setError(data.error || 'Something went wrong. Please try again.')
         setSubmitting(false); return
       }
 
-      const authUserId = authData.user.id
-
-      // ── 2. Create business record ──────────────────────────────────────
-      const { data: bizData, error: bizError } = await supabase
-        .from('businesses')
-        .insert({
-          name:                    businessName.trim(),
-          sector,
-          phone:                   phone.trim() || null,
-          website:                 website.trim() || null,
-          address:                 address.trim() || null,
-          admin_email:             contactEmail.trim().toLowerCase(),
-          subscription_package:    plan,
-          subscription_status:     'active',
-          subscription_expires_at: trialEndsAt || addDays(now, billingCycle === 'annual' ? 365 : 30),
-          trial_ends_at:           trialEndsAt,
-          kyb_status:              'not_submitted',
-          status:                  'active',
-        })
-        .select()
-        .single()
-
-      if (bizError || !bizData) {
-        await supabase.auth.admin.deleteUser(authUserId)
-        setError(`Could not create business record: ${bizError?.message || 'Unknown error'}`)
-        setSubmitting(false); return
-      }
-
-      // ── 3. Create business admin record ───────────────────────────────
-      const { error: adminError } = await supabase
-        .from('business_admins')
-        .insert({
-          business_id:  bizData.id,
-          auth_user_id: authUserId,
-          full_name:    contactName.trim(),
-          email:        contactEmail.trim().toLowerCase(),
-          phone:        contactPhone.trim() || null,
-          role:         'owner',
-          first_login:  true,
-          invite_token: inviteToken,
-        })
-
-      if (adminError) {
-        await supabase.from('businesses').delete().eq('id', bizData.id)
-        await supabase.auth.admin.deleteUser(authUserId)
-        setError(`Could not create admin record: ${adminError.message}`)
-        setSubmitting(false); return
-      }
-
-      // ── 4. Send welcome email with temporary password ──────────────────
-      await sendEmail(
-        contactEmail.trim().toLowerCase(),
-        `Welcome to Partna — your ${businessName.trim()} account is ready`,
-        welcomeEmail({
-          contactName:  contactName.trim(),
-          businessName: businessName.trim(),
-          tempPassword,
-        })
-      )
-
-      // ── 5. Show success ────────────────────────────────────────────────
+      // Show success
       setSuccess({
         businessName:  businessName.trim(),
         contactName:   contactName.trim(),

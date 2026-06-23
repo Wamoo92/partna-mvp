@@ -96,7 +96,10 @@ function ReceiveRow({ netAmount }) {
   )
 }
 
-export default function Withdraw({ customer }) {
+export default function Withdraw({
+ customer }) {
+  useEffect(() => { document.title = 'Withdraw - Partna' }, [])
+
   const brand    = useBrand()
   const navigate = useNavigate()
   const location = useLocation()

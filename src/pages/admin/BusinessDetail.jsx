@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../../supabase'
 
@@ -13,6 +13,15 @@ const UGANDA_BANKS = [
   'KCB Bank Uganda Limited','NCBA Bank Uganda Limited','Opportunity Bank','Post Bank Uganda',
   'Stanbic Bank Uganda','Standard Chartered Bank Uganda Limited','Tropical Bank Uganda',
   'United Bank for Africa Uganda Limited (UBA)',
+]
+
+const REGISTRATION_TYPES = [
+  'sole_proprietor',
+  'partnership',
+  'limited_company',
+  'ngo',
+  'cooperative',
+  'other',
 ]
 
 async function sendAdminEmail({ to, subject, html }) {
@@ -140,8 +149,11 @@ const td = (content, opts = {}) => (
 )
 
 export default function BusinessDetail() {
+  useEffect(() => { document.title = business ? `${business.name} - Partna` : 'Business - Partna' }, [business])
+
   const { id } = useParams()
   const navigate = useNavigate()
+  const fileInputRef = useRef(null)
 
   const [business, setBusiness]         = useState(null)
   const [admin, setAdmin]               = useState(null)
@@ -160,14 +172,22 @@ export default function BusinessDetail() {
   const [bankError, setBankError]           = useState('')
   const [bankSuccess, setBankSuccess]       = useState('')
 
+  // Legal & registration state
+  const [editingLegal, setEditingLegal]   = useState(false)
+  const [legalForm, setLegalForm]         = useState({ registration_type: '', legal_name: '', registration_number: '', tin: '' })
+  const [savingLegal, setSavingLegal]     = useState(false)
+  const [legalError, setLegalError]       = useState('')
+  const [legalSuccess, setLegalSuccess]   = useState('')
+
+  // KYB document upload state
+  const [uploadingDoc, setUploadingDoc]   = useState(false)
+  const [uploadError, setUploadError]     = useState('')
+  const [uploadSuccess, setUploadSuccess] = useState('')
+  const [docName, setDocName]             = useState('')
+
   const [newPlan, setNewPlan]           = useState('')
   const [savingPlan, setSavingPlan]     = useState(false)
   const [planSuccess, setPlanSuccess]   = useState(false)
-
-  const [kybAction, setKybAction]       = useState(null)
-  const [rejectReason, setRejectReason] = useState('')
-  const [savingKYB, setSavingKYB]       = useState(false)
-  const [kybSuccess, setKybSuccess]     = useState('')
 
   const [statusAction, setStatusAction]   = useState(null)
   const [savingStatus, setSavingStatus]   = useState(false)
@@ -193,6 +213,12 @@ export default function BusinessDetail() {
       setNewPlan(bizData.subscription_package || 'growth')
       setSubNewPlan(bizData.subscription_package || 'growth')
       setSubBillingCycle('monthly')
+      setLegalForm({
+        registration_type:   bizData.registration_type   || '',
+        legal_name:          bizData.legal_name          || '',
+        registration_number: bizData.registration_number || '',
+        tin:                 bizData.tin                 || '',
+      })
 
       const { data: adminData } = await supabase.from('business_admins').select('*').eq('business_id', id).eq('role', 'owner').maybeSingle()
       setAdmin(adminData)
@@ -213,7 +239,6 @@ export default function BusinessDetail() {
       const { data: files } = await supabase.storage.from('kyb-documents').list(id)
       setKybDocs(files || [])
 
-      // Fetch bank account
       const { data: bankData } = await supabase.from('business_bank_accounts').select('*').eq('business_id', id).maybeSingle()
       setBankAccount(bankData || null)
       if (bankData) {
@@ -229,7 +254,79 @@ export default function BusinessDetail() {
     setLoading(false)
   }
 
-  // ── Bank account save (admin can create or update) ─────────────────────
+  // ── Legal & registration save ──────────────────────────────────────────
+  async function handleSaveLegal() {
+    setLegalError('')
+    setSavingLegal(true)
+    try {
+      const { error } = await supabase
+        .from('businesses')
+        .update({
+          registration_type:   legalForm.registration_type   || null,
+          legal_name:          legalForm.legal_name.trim()   || null,
+          registration_number: legalForm.registration_number.trim() || null,
+          tin:                 legalForm.tin.trim()          || null,
+        })
+        .eq('id', id)
+      if (error) throw error
+      setBusiness(prev => ({ ...prev, ...legalForm }))
+      setEditingLegal(false)
+      setLegalSuccess('Legal details saved.')
+      setTimeout(() => setLegalSuccess(''), 3000)
+    } catch (e) {
+      console.error('Save legal error:', e)
+      setLegalError('Could not save legal details. Please try again.')
+    }
+    setSavingLegal(false)
+  }
+
+  // ── KYB document upload ────────────────────────────────────────────────
+  async function handleDocUpload(e) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setUploadError('')
+    setUploadSuccess('')
+
+    const maxSize = 10 * 1024 * 1024 // 10MB
+    if (file.size > maxSize) { setUploadError('File must be under 10MB.'); return }
+
+    const allowedTypes = ['application/pdf', 'image/jpeg', 'image/png', 'image/webp']
+    if (!allowedTypes.includes(file.type)) { setUploadError('Only PDF, JPG, PNG, or WEBP files are allowed.'); return }
+
+    // Use custom name if provided, otherwise use original filename
+    const ext      = file.name.split('.').pop()
+    const baseName = docName.trim() ? docName.trim().replace(/\s+/g, '_') : file.name.replace(/\.[^/.]+$/, '').replace(/\s+/g, '_')
+    const path     = `${id}/${baseName}.${ext}`
+
+    setUploadingDoc(true)
+    try {
+      const { error } = await supabase.storage
+        .from('kyb-documents')
+        .upload(path, file, { upsert: true })
+      if (error) throw error
+
+      // Refresh doc list
+      const { data: files } = await supabase.storage.from('kyb-documents').list(id)
+      setKybDocs(files || [])
+      setDocName('')
+      setUploadSuccess(`"${baseName}.${ext}" uploaded successfully.`)
+      setTimeout(() => setUploadSuccess(''), 4000)
+      if (fileInputRef.current) fileInputRef.current.value = ''
+    } catch (e) {
+      console.error('Doc upload error:', e)
+      setUploadError('Could not upload document. Please try again.')
+    }
+    setUploadingDoc(false)
+  }
+
+  async function handleDeleteDoc(filename) {
+    try {
+      await supabase.storage.from('kyb-documents').remove([`${id}/${filename}`])
+      setKybDocs(prev => prev.filter(d => d.name !== filename))
+    } catch (e) { console.error('Delete doc error:', e) }
+  }
+
+  // ── Bank account save ──────────────────────────────────────────────────
   async function handleSaveBankAccount() {
     setBankError('')
     if (!bankForm.bank_name)             { setBankError('Please select a bank.'); return }
@@ -258,22 +355,6 @@ export default function BusinessDetail() {
       setBankError('Could not save bank account. Please try again.')
     }
     setSavingBank(false)
-  }
-
-  // ── All other handlers — unchanged ────────────────────────────────────
-
-  async function handleKYBAction() {
-    if (!kybAction) return
-    if (kybAction === 'reject' && !rejectReason.trim()) return
-    setSavingKYB(true)
-    try {
-      const newStatus = kybAction === 'approve' ? 'verified' : 'rejected'
-      await supabase.from('businesses').update({ kyb_status: newStatus }).eq('id', id)
-      setBusiness(prev => ({ ...prev, kyb_status: newStatus }))
-      setKybSuccess(kybAction === 'approve' ? 'KYB approved successfully.' : 'KYB rejected. Business notified.')
-      setKybAction(null); setRejectReason('')
-    } catch (e) { console.error('KYB action error:', e) }
-    setSavingKYB(false)
   }
 
   async function handlePlanChange() {
@@ -430,9 +511,10 @@ export default function BusinessDetail() {
       </div>
 
       {/* Toasts */}
-      {kybSuccess    && <div style={{ background: C.bgGreen, border: `1px solid ${C.green}`, borderRadius: 8, padding: '12px 16px', fontSize: 13, fontWeight: 500, color: C.green }}>{kybSuccess}</div>}
-      {statusSuccess && <div style={{ background: C.bgGreen, border: `1px solid ${C.green}`, borderRadius: 8, padding: '12px 16px', fontSize: 13, fontWeight: 500, color: C.green }}>{statusSuccess}</div>}
-      {bankSuccess   && <div style={{ background: C.bgGreen, border: `1px solid ${C.green}`, borderRadius: 8, padding: '12px 16px', fontSize: 13, fontWeight: 500, color: C.green }}>{bankSuccess}</div>}
+      {statusSuccess  && <div style={{ background: C.bgGreen, border: `1px solid ${C.green}`, borderRadius: 8, padding: '12px 16px', fontSize: 13, fontWeight: 500, color: C.green }}>{statusSuccess}</div>}
+      {bankSuccess    && <div style={{ background: C.bgGreen, border: `1px solid ${C.green}`, borderRadius: 8, padding: '12px 16px', fontSize: 13, fontWeight: 500, color: C.green }}>{bankSuccess}</div>}
+      {legalSuccess   && <div style={{ background: C.bgGreen, border: `1px solid ${C.green}`, borderRadius: 8, padding: '12px 16px', fontSize: 13, fontWeight: 500, color: C.green }}>{legalSuccess}</div>}
+      {uploadSuccess  && <div style={{ background: C.bgGreen, border: `1px solid ${C.green}`, borderRadius: 8, padding: '12px 16px', fontSize: 13, fontWeight: 500, color: C.green }}>{uploadSuccess}</div>}
 
       {/* ── Tabs ── */}
       <div style={{ display: 'flex', gap: 4, background: C.white, border: `1px solid ${C.stroke}`, borderRadius: 10, padding: 4 }}>
@@ -470,11 +552,60 @@ export default function BusinessDetail() {
             <InfoRow label="Role"       value={admin?.role} last />
           </SectionCard>
 
-          <SectionCard title="Legal & registration">
-            <InfoRow label="Registration type"   value={business.registration_type?.replace(/_/g, ' ')} />
-            <InfoRow label="Legal name"          value={business.legal_name} />
-            <InfoRow label="Registration number" value={business.registration_number} mono />
-            <InfoRow label="TIN"                 value={business.tin} mono last />
+          {/* ── Legal & registration — editable ── */}
+          <SectionCard
+            title="Legal & registration"
+            action={
+              !editingLegal ? (
+                <button
+                  onClick={() => { setEditingLegal(true); setLegalError('') }}
+                  style={{ ...btnSecondary, padding: '5px 12px', fontSize: 12 }}
+                >
+                  Edit
+                </button>
+              ) : null
+            }
+          >
+            {editingLegal ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: C.black, marginBottom: 5 }}>Registration type</label>
+                  <select style={{ ...inputStyle, cursor: 'pointer' }} value={legalForm.registration_type} onChange={e => setLegalForm(p => ({ ...p, registration_type: e.target.value }))}
+                    onFocus={e => e.target.style.borderColor = C.black} onBlur={e => e.target.style.borderColor = C.grayLine}>
+                    <option value="">Select type</option>
+                    {REGISTRATION_TYPES.map(t => (
+                      <option key={t} value={t}>{t.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}</option>
+                    ))}
+                  </select>
+                </div>
+                {[
+                  { label: 'Legal name',          key: 'legal_name',          placeholder: 'Full registered legal name' },
+                  { label: 'Registration number', key: 'registration_number', placeholder: 'e.g. 80020001234567' },
+                  { label: 'TIN',                 key: 'tin',                 placeholder: 'Tax Identification Number' },
+                ].map(f => (
+                  <div key={f.key}>
+                    <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: C.black, marginBottom: 5 }}>{f.label}</label>
+                    <input type="text" style={inputStyle} placeholder={f.placeholder}
+                      value={legalForm[f.key]} onChange={e => setLegalForm(p => ({ ...p, [f.key]: e.target.value }))}
+                      onFocus={e => e.target.style.borderColor = C.black} onBlur={e => e.target.style.borderColor = C.grayLine} />
+                  </div>
+                ))}
+                {legalError && <div style={{ background: C.bgRed, border: `1px solid ${C.red}`, borderRadius: 8, padding: '9px 12px', fontSize: 12, fontWeight: 500, color: C.red }}>{legalError}</div>}
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button onClick={() => { setEditingLegal(false); setLegalError('') }} style={{ ...btnSecondary, flex: 1, justifyContent: 'center', padding: '8px' }}>Cancel</button>
+                  <button onClick={handleSaveLegal} disabled={savingLegal} style={{ ...btnPrimary, flex: 1, justifyContent: 'center', padding: '8px', opacity: savingLegal ? 0.7 : 1 }}>
+                    {savingLegal ? <><div className="spinner spinner-sm spinner-light" /> Saving…</> : 'Save'}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <>
+                <InfoRow label="Registration type"   value={business.registration_type?.replace(/_/g, ' ')} />
+                <InfoRow label="Legal name"          value={business.legal_name} />
+                <InfoRow label="Registration number" value={business.registration_number} mono />
+                <InfoRow label="TIN"                 value={business.tin} mono last />
+              </>
+            )}
           </SectionCard>
 
           <SectionCard title="Branding">
@@ -528,8 +659,8 @@ export default function BusinessDetail() {
                   </select>
                 </div>
                 {[
-                  { label: 'Account name *',    key: 'account_name',       placeholder: 'Name on account',            type: 'text' },
-                  { label: 'Account number *',  key: 'account_number',     placeholder: 'Bank account number',        type: 'text' },
+                  { label: 'Account name *',     key: 'account_name',       placeholder: 'Name on account',             type: 'text' },
+                  { label: 'Account number *',   key: 'account_number',     placeholder: 'Bank account number',         type: 'text' },
                   { label: 'Notification phone', key: 'notification_phone', placeholder: '+256 7XX XXX XXX (optional)', type: 'tel'  },
                 ].map(f => (
                   <div key={f.key}>
@@ -603,45 +734,68 @@ export default function BusinessDetail() {
       {/* ══════════════ KYB ══════════════ */}
       {activeTab === 'kyb' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+
+          {/* KYB status — read only, auto-verified on onboarding */}
           <SectionCard title="KYB status">
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
               <Badge value={business.kyb_status} />
-              {business.kyb_status === 'pending' && <span style={{ fontSize: 12, fontWeight: 500, color: C.secondary }}>Awaiting review</span>}
+              {business.kyb_status === 'verified' && (
+                <span style={{ fontSize: 12, fontWeight: 500, color: C.secondary }}>Verified on onboarding</span>
+              )}
             </div>
-            {business.kyb_status === 'verified' ? (
-              <div style={{ background: C.bgGreen, borderRadius: 8, padding: '12px 14px', fontSize: 13, fontWeight: 500, color: C.green }}>This business has been verified.</div>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                {kybAction === 'reject' && (
-                  <div>
-                    <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: C.black, marginBottom: 6 }}>Rejection reason *</label>
-                    <textarea value={rejectReason} onChange={e => setRejectReason(e.target.value)} rows={3}
-                      placeholder="Explain why the KYB submission is being rejected…"
-                      style={{ ...inputStyle, resize: 'vertical' }}
-                      onFocus={e => e.target.style.borderColor = C.black}
-                      onBlur={e => e.target.style.borderColor = C.grayLine} />
-                  </div>
-                )}
-                {kybAction ? (
-                  <div style={{ display: 'flex', gap: 10 }}>
-                    <button onClick={() => { setKybAction(null); setRejectReason('') }} style={{ ...btnSecondary, flex: 1, justifyContent: 'center' }}>Cancel</button>
-                    <button onClick={handleKYBAction} disabled={savingKYB || (kybAction === 'reject' && !rejectReason.trim())}
-                      style={{ ...(kybAction === 'approve' ? btnSuccess : btnDanger), flex: 1, justifyContent: 'center', opacity: (savingKYB || (kybAction === 'reject' && !rejectReason.trim())) ? 0.6 : 1 }}>
-                      {savingKYB ? <><div className="spinner spinner-sm spinner-light" /> Saving…</> : kybAction === 'approve' ? 'Confirm approval' : 'Confirm rejection'}
-                    </button>
-                  </div>
-                ) : (
-                  <div style={{ display: 'flex', gap: 10 }}>
-                    <button onClick={() => setKybAction('approve')} style={{ ...btnSuccess, flex: 1, justifyContent: 'center' }}>Approve KYB</button>
-                    <button onClick={() => setKybAction('reject')}  style={{ ...btnDanger,  flex: 1, justifyContent: 'center' }}>Reject KYB</button>
-                  </div>
-                )}
-              </div>
-            )}
           </SectionCard>
-          <SectionCard title={`Uploaded documents (${kybDocs.length})`}>
+
+          {/* KYB documents — upload + view */}
+          <SectionCard title={`KYB documents (${kybDocs.length})`}>
+
+            {/* Upload area */}
+            <div style={{ background: C.bg, border: `1px solid ${C.grayLine}`, borderRadius: 10, padding: '16px', marginBottom: kybDocs.length > 0 ? 16 : 0 }}>
+              <p style={{ fontSize: 13, fontWeight: 600, color: C.black, margin: '0 0 10px' }}>Upload document</p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: C.black, marginBottom: 5 }}>Document name (optional)</label>
+                  <input
+                    type="text"
+                    style={inputStyle}
+                    placeholder="e.g. Certificate of Incorporation"
+                    value={docName}
+                    onChange={e => setDocName(e.target.value)}
+                    onFocus={e => e.target.style.borderColor = C.black}
+                    onBlur={e => e.target.style.borderColor = C.grayLine}
+                  />
+                  <p style={{ fontSize: 11, fontWeight: 500, color: C.grayMid, margin: '4px 0 0' }}>
+                    If left blank the original filename is used. PDF, JPG, PNG or WEBP — max 10MB.
+                  </p>
+                </div>
+                <div>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".pdf,.jpg,.jpeg,.png,.webp"
+                    onChange={handleDocUpload}
+                    style={{ display: 'none' }}
+                    id="kyb-doc-upload"
+                  />
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={uploadingDoc}
+                    style={{ ...btnPrimary, opacity: uploadingDoc ? 0.7 : 1, cursor: uploadingDoc ? 'not-allowed' : 'pointer' }}
+                  >
+                    {uploadingDoc
+                      ? <><div className="spinner spinner-sm spinner-light" /> Uploading…</>
+                      : '↑ Choose file and upload'
+                    }
+                  </button>
+                </div>
+                {uploadError && <div style={{ background: C.bgRed, border: `1px solid ${C.red}`, borderRadius: 8, padding: '9px 12px', fontSize: 12, fontWeight: 500, color: C.red }}>{uploadError}</div>}
+              </div>
+            </div>
+
+            {/* Document list */}
             {kybDocs.length === 0 ? (
-              <div style={{ padding: '32px 0', textAlign: 'center', fontSize: 13, fontWeight: 500, color: C.secondary }}>No documents uploaded</div>
+              <div style={{ padding: '24px 0', textAlign: 'center', fontSize: 13, fontWeight: 500, color: C.secondary }}>
+                No documents uploaded yet
+              </div>
             ) : kybDocs.map((doc, i) => (
               <div key={doc.name} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 0', borderBottom: i < kybDocs.length - 1 ? `1px solid ${C.grayLine}` : 'none' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -652,7 +806,10 @@ export default function BusinessDetail() {
                   </div>
                   <span style={{ fontSize: 13, fontWeight: 500, color: C.black }}>{doc.name.replace(/_/g, ' ').replace(/\.[^/.]+$/, '')}</span>
                 </div>
-                <button onClick={() => getKybDocUrl(doc.name)} style={{ ...btnSecondary, padding: '5px 12px', fontSize: 12 }}>View →</button>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button onClick={() => getKybDocUrl(doc.name)} style={{ ...btnSecondary, padding: '5px 12px', fontSize: 12 }}>View →</button>
+                  <button onClick={() => handleDeleteDoc(doc.name)} style={{ padding: '5px 12px', fontSize: 12, fontWeight: 600, color: C.red, background: C.bgRed, border: `1px solid ${C.red}`, borderRadius: 8, cursor: 'pointer', fontFamily: 'Inter, system-ui, sans-serif' }}>Delete</button>
+                </div>
               </div>
             ))}
           </SectionCard>

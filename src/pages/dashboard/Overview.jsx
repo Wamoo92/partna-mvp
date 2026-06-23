@@ -109,7 +109,7 @@ function SetupChecklist({ business, hasCampaign, hasBankAccount, navigate }) {
       label:       'Set your portal URL',
       detail:      'The link you share with your customers',
       done:        !!business?.slug,
-      action:      () => navigate('/dashboard/settings', { state: { tab: 'security' } }),
+      action:      () => navigate('/dashboard/settings', { state: { tab: 'security', scrollTo: 'portal-url' } }),
       actionLabel: 'Set URL →',
     },
     {
@@ -174,7 +174,10 @@ function SetupChecklist({ business, hasCampaign, hasBankAccount, navigate }) {
 }
 
 // ── Main ───────────────────────────────────────────────────────────────────
-export default function Overview({ admin, business }) {
+export default function Overview({
+ admin, business }) {
+  useEffect(() => { document.title = 'Overview - Partna' }, [])
+
   const navigate = useNavigate()
   const [loading, setLoading]               = useState(true)
   const [stats, setStats]                   = useState({ totalSavings: 0, activeCustomers: 0, totalPayments: 0 })
@@ -432,11 +435,15 @@ export default function Overview({ admin, business }) {
         <StatCard label={isEducation ? 'Total fees received' : 'Total payments'} value={formatUGX(stats.totalPayments)} sub={isEducation ? 'From all students' : 'Completed payments'} accentColor={C.green} />
         <StatCard label="Active campaigns"      value={campaigns.length}                  sub={campaigns[0]?.name || 'No campaigns yet'} accentColor={C.red} onClick={() => navigate('/dashboard/campaigns')} />
 
-        <div style={{ background: C.black, border: `1px solid ${C.stroke}`, borderRadius: 12, padding: '16px 18px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+        {/* ── Business wallet card — white, consistent with other stat cards ── */}
+        <div style={{ background: C.white, border: `1px solid ${C.stroke}`, borderRadius: 12, padding: '16px 18px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
           <div>
-            <p style={{ fontSize: 11, fontWeight: 500, color: 'rgba(255,255,255,0.4)', margin: '0 0 8px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Business wallet</p>
-            <p style={{ fontSize: 22, fontWeight: 600, color: bizBalance > 0 ? C.green : 'rgba(255,255,255,0.2)', letterSpacing: '-0.8px', margin: '0 0 2px', lineHeight: 1 }}>{formatUGX(bizBalance)}</p>
-            <p style={{ fontSize: 11, fontWeight: 500, color: 'rgba(255,255,255,0.3)', margin: '0 0 14px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+              <p style={{ fontSize: 11, fontWeight: 500, color: C.secondary, margin: 0, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Business wallet</p>
+              <div style={{ width: 8, height: 8, borderRadius: '50%', background: C.blue }} />
+            </div>
+            <p style={{ fontSize: 22, fontWeight: 600, color: bizBalance > 0 ? C.green : C.grayLight, letterSpacing: '-0.8px', margin: '0 0 2px', lineHeight: 1 }}>{formatUGX(bizBalance)}</p>
+            <p style={{ fontSize: 11, fontWeight: 500, color: C.secondary, margin: '0 0 14px' }}>
               {!hasBankAccount ? 'Link a bank account to withdraw' : 'Available to withdraw'}
             </p>
           </div>
@@ -444,7 +451,7 @@ export default function Overview({ admin, business }) {
             onClick={() => { setShowWithdraw(true); setWithdrawSuccess(false); setWithdrawError('') }}
             disabled={!canWithdraw}
             title={!hasBankAccount ? 'Link a bank account in Settings before withdrawing' : bizBalance === 0 ? 'No funds to withdraw' : undefined}
-            style={{ width: '100%', padding: '8px', fontSize: 13, fontWeight: 600, color: canWithdraw ? C.black : 'rgba(255,255,255,0.2)', background: canWithdraw ? C.white : 'rgba(255,255,255,0.06)', border: `1px solid ${canWithdraw ? C.white : 'rgba(255,255,255,0.1)'}`, borderRadius: 8, cursor: canWithdraw ? 'pointer' : 'not-allowed', fontFamily: 'Inter, system-ui, sans-serif' }}
+            style={{ width: '100%', padding: '8px', fontSize: 13, fontWeight: 600, color: canWithdraw ? C.white : C.grayMid, background: canWithdraw ? C.black : C.grayLight, border: `1px solid ${canWithdraw ? C.black : C.grayLine}`, borderRadius: 8, cursor: canWithdraw ? 'pointer' : 'not-allowed', fontFamily: 'Inter, system-ui, sans-serif' }}
           >
             Withdraw
           </button>

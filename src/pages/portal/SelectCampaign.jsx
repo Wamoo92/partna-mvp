@@ -344,7 +344,10 @@ function CampaignDetailCard({ campaign, customer, brand, cardFlipped, setCardFli
 }
 
 // ── Main component ─────────────────────────────────────────────────────────
-export default function SelectCampaign({ customer, business }) {
+export default function SelectCampaign({
+ customer, business }) {
+  useEffect(() => { document.title = 'Select Campaign - Partna' }, [])
+
   const brand    = useBrand()
   const navigate = useNavigate()
 

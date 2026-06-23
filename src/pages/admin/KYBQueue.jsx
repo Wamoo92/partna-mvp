@@ -85,6 +85,8 @@ const btnDanger    = { ...btnPrimary, background: C.red,   borderColor: C.red   
 const inputStyle   = { display: 'block', width: '100%', padding: '9px 12px', fontSize: 13, fontWeight: 500, color: C.black, background: C.white, border: `1px solid ${C.grayLine}`, borderRadius: 8, outline: 'none', fontFamily: 'Inter, system-ui, sans-serif', resize: 'vertical', transition: 'border-color 0.15s' }
 
 export default function KYBQueue() {
+  useEffect(() => { document.title = 'KYB Queue - Partna' }, [])
+
   const navigate = useNavigate()
 
   const [businesses, setBusinesses]     = useState([])

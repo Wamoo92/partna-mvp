@@ -21,6 +21,8 @@ function scrollTo(ref) {
 }
 
 export default function Landing() {
+  useEffect(() => { document.title = 'Welcome - Partna' }, [])
+
   const brand    = useBrand()
   const navigate = useNavigate()
 

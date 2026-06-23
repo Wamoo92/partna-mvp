@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../supabase'
 
@@ -18,6 +18,8 @@ const C = {
 }
 
 export default function DashboardLogin() {
+  useEffect(() => { document.title = 'Login - Partna' }, [])
+
   const navigate = useNavigate()
 
   const [email, setEmail]       = useState('')

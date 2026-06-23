@@ -50,7 +50,10 @@ const C = {
 
 // ── Component ──────────────────────────────────────────────────────────────
 
-export default function Home({ customer, business, signOut }) {
+export default function Home({
+ customer, business, signOut }) {
+  useEffect(() => { document.title = 'Home - Partna' }, [])
+
   const brand    = useBrand()
   const navigate = useNavigate()
 

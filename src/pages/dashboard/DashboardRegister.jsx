@@ -30,6 +30,8 @@ const inputStyle = {
 }
 
 export default function DashboardRegister() {
+  useEffect(() => { document.title = 'Register - Partna' }, [])
+
   const navigate         = useNavigate()
   const [searchParams]   = useSearchParams()
   const token            = searchParams.get('token')

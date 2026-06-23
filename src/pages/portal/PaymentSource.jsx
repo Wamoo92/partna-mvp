@@ -1,9 +1,12 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../supabase'
 import { useBrand } from '../../lib/BrandContext'
 
-export default function PaymentSource({ customer, fromProfile = false }) {
+export default function PaymentSource({
+ customer, fromProfile = false }) {
+  useEffect(() => { document.title = 'Payment - Partna' }, [])
+
   const brand    = useBrand()
   const navigate = useNavigate()
 

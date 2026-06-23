@@ -19,6 +19,8 @@ const C = {
 }
 
 export default function PaymentSuccess() {
+  useEffect(() => { document.title = 'Payment Complete - Partna' }, [])
+
   const brand    = useBrand()
   const navigate = useNavigate()
   const [params] = useSearchParams()

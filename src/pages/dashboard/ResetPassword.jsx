@@ -18,6 +18,8 @@ const C = {
 }
 
 export default function ResetPassword() {
+  useEffect(() => { document.title = 'Reset password - Partna' }, [])
+
   const navigate = useNavigate()
 
   const [password, setPassword]               = useState('')

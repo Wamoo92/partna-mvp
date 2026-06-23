@@ -1,9 +1,11 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../supabase'
 import { useBrand } from '../../lib/BrandContext'
 
 export default function Login() {
+  useEffect(() => { document.title = 'Login - Partna' }, [])
+
   const brand = useBrand()
   const navigate = useNavigate()
   const [phone, setPhone] = useState('')

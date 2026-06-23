@@ -35,16 +35,6 @@ const TEMPLATES: Record<string, (vars: Record<string, string>) => string> = {
     `Ref: ${v.reference}. ` +
     `Funds have been sent to your registered mobile money number.`,
 
-  kyc_verified: (v) =>
-    `Partna: Your identity has been verified successfully, ${v.name}. ` +
-    `You now have full access to all Partna features. ` +
-    `Visit www.partna.io to continue saving.`,
-
-  kyc_failed: (_v) =>
-    `Partna: We could not verify your National ID. ` +
-    `Please check your NIN and try again at www.partna.io. ` +
-    `Contact support if you need help.`,
-
   campaign_enrolled: (v) =>
     `Partna: Welcome to ${v.campaign}! ` +
     `Your savings campaign is now active. ` +
@@ -65,13 +55,6 @@ const TEMPLATES: Record<string, (vars: Record<string, string>) => string> = {
     `Total paid to date: ${v.total_paid}. ` +
     `Ref: ${v.reference}. ` +
     `Visit www.partna.io to view your account.`,
-
-  fee_payment_received: (v) =>
-    `Partna: Payment of ${v.amount} received for student ${v.student_name} ` +
-    `(ID: ${v.student_id}). ` +
-    `Campaign: ${v.campaign}. ` +
-    `Ref: ${v.reference}. ` +
-    `Log in to your dashboard to view all payments.`,
 
   card_grace_day1: (v) =>
     `Partna: Hi ${v.name}, your ${v.business_name} card subscription could not be renewed. ` +

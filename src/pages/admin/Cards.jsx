@@ -166,6 +166,8 @@ function customerDispatchEmail({ customerName, businessName, collectionCode }) {
 // ── Main ──────────────────────────────────────────────────────────────────
 
 export default function Cards() {
+  useEffect(() => { document.title = 'Cards - Partna' }, [])
+
   const [tab, setTab] = useState('subscriptions')
 
   // Subscriptions tab

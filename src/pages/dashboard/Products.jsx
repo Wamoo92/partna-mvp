@@ -53,7 +53,10 @@ function Modal({ title, onClose, footer, children, wide }) {
   )
 }
 
-export default function Products({ admin, business }) {
+export default function Products({
+ admin, business }) {
+  useEffect(() => { document.title = 'Products - Partna' }, [])
+
   const [products, setProducts]           = useState([])
   const [loading, setLoading]             = useState(true)
   const [showAddModal, setShowAddModal]   = useState(false)

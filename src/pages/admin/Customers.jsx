@@ -38,6 +38,8 @@ const selectStyle = {
 }
 
 export default function Customers() {
+  useEffect(() => { document.title = 'Customers - Partna' }, [])
+
   const navigate = useNavigate()
 
   const [customers, setCustomers]         = useState([])

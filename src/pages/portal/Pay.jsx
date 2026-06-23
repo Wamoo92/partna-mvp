@@ -111,7 +111,10 @@ function RegistrationProgress({ totalPaid, minRegAmount }) {
 
 // ─────────────────────────────────────────────────────────────────────────
 
-export default function Pay({ customer }) {
+export default function Pay({
+ customer }) {
+  useEffect(() => { document.title = 'Pay - Partna' }, [])
+
   const brand    = useBrand()
   const navigate = useNavigate()
   const location = useLocation()

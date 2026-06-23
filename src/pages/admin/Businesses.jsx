@@ -59,6 +59,8 @@ const selectStyle = {
 }
 
 export default function Businesses() {
+  useEffect(() => { document.title = 'Businesses - Partna' }, [])
+
   const navigate = useNavigate()
 
   const [businesses, setBusinesses]     = useState([])

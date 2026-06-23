@@ -92,7 +92,10 @@ function ImportResultModal({ result, onClose }) {
 }
 
 // ── Main ───────────────────────────────────────────────────────────────────
-export default function Students({ admin, business }) {
+export default function Students({
+ admin, business }) {
+  useEffect(() => { document.title = 'Students - Partna' }, [])
+
   const [students, setStudents]         = useState([])
   const [loading, setLoading]           = useState(true)
   const [search, setSearch]             = useState('')

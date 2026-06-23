@@ -71,7 +71,10 @@ function StatCard({ label, value, accentColor }) {
   )
 }
 
-export default function Sales({ admin, business }) {
+export default function Sales({
+ admin, business }) {
+  useEffect(() => { document.title = 'Sales - Partna' }, [])
+
   const isEducation = business?.sector === 'Education' || business?.sector === 'education'
 
   const [sales, setSales]               = useState([])

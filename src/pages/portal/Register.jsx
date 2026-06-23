@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../supabase'
 import { useBrand } from '../../lib/BrandContext'
@@ -7,6 +7,8 @@ const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY
 
 export default function Register() {
+  useEffect(() => { document.title = 'Register - Partna' }, [])
+
   const brand = useBrand()
   const navigate = useNavigate()
   const [step, setStep] = useState(1)

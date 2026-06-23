@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../supabase'
 
@@ -100,7 +100,10 @@ async function sendAccountReadyEmail({ adminEmail, adminName, businessName }) {
 }
 
 // ── Main ──────────────────────────────────────────────────────────────────
-export default function FirstLogin({ admin, business, clearFirstLogin }) {
+export default function FirstLogin({
+ admin, business, clearFirstLogin }) {
+  useEffect(() => { document.title = 'Set up your account - Partna' }, [])
+
   const navigate = useNavigate()
 
   const [newPassword, setNewPassword]         = useState('')

@@ -64,6 +64,8 @@ function InfoRow({ label, value, last, green, red, mono }) {
 }
 
 export default function CustomerDetail() {
+  useEffect(() => { document.title = 'Customer - Partna' }, [])
+
   const { id } = useParams()
   const navigate = useNavigate()
 

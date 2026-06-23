@@ -153,7 +153,10 @@ function CampaignCard({ campaign, status, onDelete, onRestart }) {
 }
 
 // ── Main ───────────────────────────────────────────────────────────────────
-export default function Campaigns({ admin, business }) {
+export default function Campaigns({
+ admin, business }) {
+  useEffect(() => { document.title = 'Campaigns - Partna' }, [])
+
   const navigate = useNavigate()
 
   const [campaigns, setCampaigns]   = useState([])

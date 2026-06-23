@@ -60,6 +60,8 @@ function Flash({ show, msg = 'Saved.' }) {
 }
 
 export default function AdminSettings() {
+  useEffect(() => { document.title = 'Settings - Partna' }, [])
+
   const [loading, setLoading]     = useState(true)
   const [settings, setSettings]   = useState({})
   const [packages, setPackages]   = useState(PACKAGE_DEFAULTS)

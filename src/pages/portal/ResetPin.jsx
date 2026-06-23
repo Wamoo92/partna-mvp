@@ -20,6 +20,8 @@ const C = {
 }
 
 export default function ResetPin() {
+  useEffect(() => { document.title = 'Reset PIN - Partna' }, [])
+
   const brand    = useBrand()
   const navigate = useNavigate()
 

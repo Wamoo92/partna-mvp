@@ -45,6 +45,8 @@ function FormPanel({ title, onClose, children }) {
 }
 
 export default function Rewards() {
+  useEffect(() => { document.title = 'Rewards - Partna' }, [])
+
   const [activeTab, setActiveTab] = useState('merchants')
   const [loading, setLoading]     = useState(true)
   const [success, setSuccess]     = useState('')

@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
+import { useLocation } from 'react-router-dom'
 import { supabase } from '../../supabase'
 
 // ── Constants ──────────────────────────────────────────────────────────────
@@ -123,9 +124,9 @@ const btnDanger    = { ...btnPrimary, background: C.red,   borderColor: C.red   
 const btnSuccess   = { ...btnPrimary, background: C.green, borderColor: C.green }
 
 // ── Shared primitives ──────────────────────────────────────────────────────
-function SectionCard({ title, badge, children, noPad }) {
+function SectionCard({ id, title, badge, children, noPad }) {
   return (
-    <div style={{ background: C.white, border: `1px solid ${C.stroke}`, borderRadius: 12, overflow: 'hidden' }}>
+    <div id={id} style={{ background: C.white, border: `1px solid ${C.stroke}`, borderRadius: 12, overflow: 'hidden' }}>
       {title && (
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 18px', borderBottom: `1px solid ${C.grayLine}` }}>
           <p style={{ fontSize: 14, fontWeight: 600, color: C.black, margin: 0, letterSpacing: '-0.4px' }}>{title}</p>
@@ -167,11 +168,28 @@ function ReadOnlyBadge() {
 }
 
 // ── Main ───────────────────────────────────────────────────────────────────
-export default function Settings({ admin, business }) {
-  const [tab, setTab]         = useState('profile')
+export default function Settings({
+ admin, business }) {
+  useEffect(() => { document.title = 'Settings - Partna' }, [])
+
+  const location = useLocation()
+  const portalUrlRef = useRef(null)
+
+  // Read tab from navigation state (e.g. from setup checklist)
+  const [tab, setTab]         = useState(location.state?.tab || 'profile')
   const [saving, setSaving]   = useState(false)
   const [success, setSuccess] = useState('')
   const [error, setError]     = useState('')
+
+  // Scroll to portal URL section if navigated with scrollTo state
+  useEffect(() => {
+    if (location.state?.scrollTo === 'portal-url' && tab === 'security') {
+      setTimeout(() => {
+        const el = document.getElementById('portal-url')
+        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      }, 100)
+    }
+  }, [tab, location.state?.scrollTo])
 
   // Branding
   const [primaryColor, setPrimaryColor]     = useState(business?.primary_color   || '#1B4F72')
@@ -270,7 +288,7 @@ export default function Settings({ admin, business }) {
 
   async function handleSaveBankAccount() {
     setBankFormError('')
-    if (!bankForm.bank_name)      { setBankFormError('Please select a bank.'); return }
+    if (!bankForm.bank_name)             { setBankFormError('Please select a bank.'); return }
     if (!bankForm.account_name.trim())   { setBankFormError('Account name is required.'); return }
     if (!bankForm.account_number.trim()) { setBankFormError('Account number is required.'); return }
     setSavingBank(true)
@@ -320,6 +338,7 @@ export default function Settings({ admin, business }) {
     if (!currentPassword || !newPassword || !confirmPassword) { flash('Please fill in all fields.', true); return }
     if (newPassword.length < 8)         { flash('New password must be at least 8 characters.', true); return }
     if (newPassword !== confirmPassword) { flash('Passwords do not match.', true); return }
+    if (newPassword === currentPassword) { flash('New password must be different from your current password.', true); return }
     setChangingPw(true)
     try {
       const { error: signInError } = await supabase.auth.signInWithPassword({ email: admin.email, password: currentPassword })
@@ -539,7 +558,6 @@ export default function Settings({ admin, business }) {
             {bankLoading ? (
               <div style={{ display: 'flex', justifyContent: 'center', padding: 60 }}><div className="spinner spinner-lg" /></div>
             ) : bankAccount ? (
-              // ── Linked account — read only ──
               <>
                 <SectionCard title="Linked bank account" badge={<ReadOnlyBadge />} noPad>
                   {[
@@ -560,7 +578,6 @@ export default function Settings({ admin, business }) {
                     </p>
                   </div>
                 </SectionCard>
-
                 <div style={{ background: C.bgGreen, border: `1px solid ${C.green}`, borderRadius: 10, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 10 }}>
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={C.green} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
                     <path d="M20 6L9 17l-5-5" />
@@ -571,7 +588,6 @@ export default function Settings({ admin, business }) {
                 </div>
               </>
             ) : (
-              // ── No account linked — show form ──
               <>
                 <div style={{ background: C.bgOrange, border: `1px solid ${C.orange}`, borderRadius: 10, padding: '14px 16px', display: 'flex', alignItems: 'flex-start', gap: 12 }}>
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={C.orange} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, marginTop: 1 }}>
@@ -581,89 +597,42 @@ export default function Settings({ admin, business }) {
                     No bank account linked yet. You must link a bank account before you can withdraw funds from your business wallet.
                   </p>
                 </div>
-
                 <SectionCard title="Link bank account">
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
                     <div>
                       <label style={labelStyle}>Bank *</label>
-                      <select
-                        style={{ ...inputStyle, cursor: 'pointer' }}
-                        value={bankForm.bank_name}
-                        onChange={e => setBankForm(p => ({ ...p, bank_name: e.target.value }))}
-                        onFocus={e => e.target.style.borderColor = C.black}
-                        onBlur={e => e.target.style.borderColor = C.grayLine}
-                      >
+                      <select style={{ ...inputStyle, cursor: 'pointer' }} value={bankForm.bank_name} onChange={e => setBankForm(p => ({ ...p, bank_name: e.target.value }))} onFocus={e => e.target.style.borderColor = C.black} onBlur={e => e.target.style.borderColor = C.grayLine}>
                         <option value="">Select bank</option>
                         {UGANDA_BANKS.map(b => <option key={b} value={b}>{b}</option>)}
                       </select>
                     </div>
-
                     <div>
                       <label style={labelStyle}>Account name *</label>
-                      <input
-                        type="text" style={inputStyle}
-                        placeholder="Name as it appears on the account"
-                        value={bankForm.account_name}
-                        onChange={e => setBankForm(p => ({ ...p, account_name: e.target.value }))}
-                        onFocus={e => e.target.style.borderColor = C.black}
-                        onBlur={e => e.target.style.borderColor = C.grayLine}
-                      />
+                      <input type="text" style={inputStyle} placeholder="Name as it appears on the account" value={bankForm.account_name} onChange={e => setBankForm(p => ({ ...p, account_name: e.target.value }))} onFocus={e => e.target.style.borderColor = C.black} onBlur={e => e.target.style.borderColor = C.grayLine} />
                     </div>
-
                     <div>
                       <label style={labelStyle}>Account number *</label>
-                      <input
-                        type="text" style={inputStyle}
-                        placeholder="Bank account number"
-                        value={bankForm.account_number}
-                        onChange={e => setBankForm(p => ({ ...p, account_number: e.target.value }))}
-                        onFocus={e => e.target.style.borderColor = C.black}
-                        onBlur={e => e.target.style.borderColor = C.grayLine}
-                      />
+                      <input type="text" style={inputStyle} placeholder="Bank account number" value={bankForm.account_number} onChange={e => setBankForm(p => ({ ...p, account_number: e.target.value }))} onFocus={e => e.target.style.borderColor = C.black} onBlur={e => e.target.style.borderColor = C.grayLine} />
                     </div>
-
                     <div>
                       <label style={labelStyle}>Currency *</label>
-                      <select
-                        style={{ ...inputStyle, cursor: 'pointer' }}
-                        value={bankForm.currency}
-                        onChange={e => setBankForm(p => ({ ...p, currency: e.target.value }))}
-                        onFocus={e => e.target.style.borderColor = C.black}
-                        onBlur={e => e.target.style.borderColor = C.grayLine}
-                      >
+                      <select style={{ ...inputStyle, cursor: 'pointer' }} value={bankForm.currency} onChange={e => setBankForm(p => ({ ...p, currency: e.target.value }))} onFocus={e => e.target.style.borderColor = C.black} onBlur={e => e.target.style.borderColor = C.grayLine}>
                         <option value="UGX">UGX — Ugandan Shilling</option>
                       </select>
                       <p style={hintStyle}>Additional currencies will be available in future.</p>
                     </div>
-
                     <div>
                       <label style={labelStyle}>Notification phone <span style={{ fontWeight: 400, color: C.grayMid }}>(optional)</span></label>
-                      <input
-                        type="tel" style={inputStyle}
-                        placeholder="e.g. +256 700 000000"
-                        value={bankForm.notification_phone}
-                        onChange={e => setBankForm(p => ({ ...p, notification_phone: e.target.value }))}
-                        onFocus={e => e.target.style.borderColor = C.black}
-                        onBlur={e => e.target.style.borderColor = C.grayLine}
-                      />
+                      <input type="tel" style={inputStyle} placeholder="e.g. +256 700 000000" value={bankForm.notification_phone} onChange={e => setBankForm(p => ({ ...p, notification_phone: e.target.value }))} onFocus={e => e.target.style.borderColor = C.black} onBlur={e => e.target.style.borderColor = C.grayLine} />
                       <p style={hintStyle}>Phone number to receive SMS notifications when a withdrawal is processed.</p>
                     </div>
-
                     {bankFormError && (
-                      <div style={{ background: C.bgRed, border: `1px solid ${C.red}`, borderRadius: 8, padding: '10px 14px', fontSize: 13, fontWeight: 500, color: C.red }}>
-                        {bankFormError}
-                      </div>
+                      <div style={{ background: C.bgRed, border: `1px solid ${C.red}`, borderRadius: 8, padding: '10px 14px', fontSize: 13, fontWeight: 500, color: C.red }}>{bankFormError}</div>
                     )}
-
                     <div style={{ background: C.bg, border: `1px solid ${C.grayLine}`, borderRadius: 8, padding: '10px 14px', fontSize: 12, fontWeight: 500, color: C.secondary, lineHeight: '150%' }}>
                       Once saved, your bank account details can only be changed by contacting {supportLink}. Please double-check all details before saving.
                     </div>
-
-                    <button
-                      onClick={handleSaveBankAccount}
-                      disabled={savingBank}
-                      style={{ ...btnPrimary, alignSelf: 'flex-start', opacity: savingBank ? 0.75 : 1 }}
-                    >
+                    <button onClick={handleSaveBankAccount} disabled={savingBank} style={{ ...btnPrimary, alignSelf: 'flex-start', opacity: savingBank ? 0.75 : 1 }}>
                       {savingBank ? <><div className="spinner spinner-sm spinner-light" /> Saving…</> : 'Link bank account'}
                     </button>
                   </div>
@@ -689,7 +658,6 @@ export default function Settings({ admin, business }) {
                 </div>
               )
             })()}
-
             <SectionCard title="Legal business details" badge={<ReadOnlyBadge />} noPad>
               {[
                 { label: 'Registration type',               value: business?.registration_type ? REG_TYPES.find(r => r.value === business.registration_type)?.label : 'Not provided' },
@@ -701,7 +669,6 @@ export default function Settings({ admin, business }) {
                 Legal details cannot be edited after submission. Contact {supportLink} to make changes.
               </div>
             </SectionCard>
-
             <div style={{ background: C.bg, border: `1px solid ${C.grayLine}`, borderRadius: 10, padding: '16px 18px', display: 'flex', alignItems: 'flex-start', gap: 12 }}>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={C.grayMid} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, marginTop: 1 }}>
                 <circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" />
@@ -783,7 +750,6 @@ export default function Settings({ admin, business }) {
                 </p>
               )}
             </SectionCard>
-
             <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
               <span style={{ fontSize: 12, fontWeight: 500, color: C.secondary }}>View pricing:</span>
               <div style={{ display: 'flex', gap: 4, background: C.white, border: `1px solid ${C.stroke}`, borderRadius: 10, padding: 4 }}>
@@ -794,7 +760,6 @@ export default function Settings({ admin, business }) {
                 ))}
               </div>
             </div>
-
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
               {PACKAGES.map(p => {
                 const isCurrent = (business?.subscription_package || 'starter') === p.id
@@ -864,7 +829,8 @@ export default function Settings({ admin, business }) {
               </div>
             </SectionCard>
 
-            <SectionCard title="Customer portal URL">
+            {/* ── Portal URL — id for scroll-to from setup checklist ── */}
+            <SectionCard id="portal-url" title="Customer portal URL">
               <p style={{ fontSize: 13, fontWeight: 500, color: C.secondary, margin: '0 0 16px', lineHeight: '140%' }}>
                 Set a custom subdomain for your branded customer portal. Once set, share the URL with your customers.
               </p>
