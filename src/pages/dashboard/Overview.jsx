@@ -174,8 +174,7 @@ function SetupChecklist({ business, hasCampaign, hasBankAccount, navigate }) {
 }
 
 // ── Main ───────────────────────────────────────────────────────────────────
-export default function Overview({
- admin, business }) {
+export default function Overview({ admin, business }) {
   useEffect(() => { document.title = 'Overview - Partna' }, [])
 
   const navigate = useNavigate()
@@ -185,6 +184,7 @@ export default function Overview({
   const [bankAccount, setBankAccount]       = useState(null)
   const [recentActivity, setRecentActivity] = useState([])
   const [campaigns, setCampaigns]           = useState([])
+  const [campaignStats, setCampaignStats]   = useState({}) // keyed by campaign id
   const [chartData, setChartData]           = useState([])
   const [chartFilter, setChartFilter]       = useState(7)
   const [chartType, setChartType]           = useState('bar')
@@ -206,8 +206,50 @@ export default function Overview({
       const customerIds = customers?.map(c => c.id) || []
       let totalSavings = 0
       if (customerIds.length > 0) { const { data: wallets } = await supabase.from('wallets').select('balance').in('customer_id', customerIds); totalSavings = wallets?.reduce((s, w) => s + Number(w.balance), 0) || 0 }
-      const { data: campaignData } = await supabase.from('campaigns').select('*').eq('business_id', business.id)
+
+      const { data: campaignData } = await supabase.from('campaigns').select('*').eq('business_id', business.id).eq('status', 'active')
       setCampaigns(campaignData || [])
+
+      // ── Load per-campaign stats ───────────────────────────────────────
+      if (campaignData && campaignData.length > 0) {
+        const statsMap = {}
+        await Promise.all(campaignData.map(async (campaign) => {
+          try {
+            const { data: enrollments } = await supabase
+              .from('customer_campaigns')
+              .select('customer_id')
+              .eq('campaign_id', campaign.id)
+              .eq('status', 'active')
+
+            const enrolled    = enrollments?.length || 0
+            const enrolledIds = enrollments?.map(e => e.customer_id) || []
+
+            let amountSaved = 0
+            let amountPaid  = 0
+
+            if (enrolledIds.length > 0) {
+              const { data: wallets } = await supabase
+                .from('wallets')
+                .select('balance')
+                .in('customer_id', enrolledIds)
+              amountSaved = wallets?.reduce((s, w) => s + Number(w.balance), 0) || 0
+
+              const { data: payments } = await supabase
+                .from('transactions')
+                .select('amount')
+                .in('customer_id', enrolledIds)
+                .eq('type', 'payment')
+              amountPaid = payments?.reduce((s, p) => s + Number(p.amount), 0) || 0
+            }
+
+            statsMap[campaign.id] = { enrolled, amountSaved, amountPaid }
+          } catch (e) {
+            statsMap[campaign.id] = { enrolled: 0, amountSaved: 0, amountPaid: 0 }
+          }
+        }))
+        setCampaignStats(statsMap)
+      }
+
       let totalPayments = 0; let txns = []
       if (customerIds.length > 0) {
         const { data: payments } = await supabase.from('transactions').select('amount').in('customer_id', customerIds).eq('type', 'payment')
@@ -266,15 +308,11 @@ export default function Overview({
       await supabase.from('business_wallets').update({ balance: balance - amount }).eq('business_id', business.id)
       setBusinessWallet(prev => ({ ...prev, balance: balance - amount }))
 
-      // ── Fire-and-forget confirmation email to business ──────────────────
       const amountStr    = formatUGXFull(amount)
       const accountNum   = bankAccount.account_number || ''
       const last4        = accountNum.length >= 4 ? accountNum.slice(-4) : accountNum
-      const accountLabel = last4
-        ? `${bankAccount.bank_name} account ending in ${last4}`
-        : bankAccount.bank_name
-
-      const recipients = [business.admin_email, business.contact_email].filter(Boolean)
+      const accountLabel = last4 ? `${bankAccount.bank_name} account ending in ${last4}` : bankAccount.bank_name
+      const recipients   = [business.admin_email, business.contact_email].filter(Boolean)
 
       const emailHtml = `<div style="font-family: Inter, system-ui, sans-serif; max-width: 520px; margin: 0 auto; padding: 32px 24px; color: #111;">
         <img src="https://www.partna.io/partna-logo.png" alt="Partna" style="height: 28px; margin-bottom: 24px;" />
@@ -287,33 +325,14 @@ export default function Overview({
         </p>
         <div style="background: #F6F7EE; border: 1px solid #D7D8CB; border-radius: 10px; padding: 16px 18px; margin: 0 0 20px;">
           <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
-            <tr>
-              <td style="padding: 6px 0; color: #959687; font-weight: 500; width: 140px;">Amount</td>
-              <td style="padding: 6px 0; font-weight: 600; color: #111;">${amountStr}</td>
-            </tr>
-            <tr>
-              <td style="padding: 6px 0; color: #959687; font-weight: 500;">Bank</td>
-              <td style="padding: 6px 0; font-weight: 600; color: #111;">${bankAccount.bank_name}</td>
-            </tr>
-            <tr>
-              <td style="padding: 6px 0; color: #959687; font-weight: 500;">Account name</td>
-              <td style="padding: 6px 0; font-weight: 600; color: #111;">${bankAccount.account_name}</td>
-            </tr>
-            <tr>
-              <td style="padding: 6px 0; color: #959687; font-weight: 500;">Account number</td>
-              <td style="padding: 6px 0; font-weight: 600; color: #111; font-family: monospace;">${accountNum}</td>
-            </tr>
-            <tr>
-              <td style="padding: 6px 0; color: #959687; font-weight: 500;">Status</td>
-              <td style="padding: 6px 0; font-weight: 600; color: #EF8354;">Pending processing</td>
-            </tr>
+            <tr><td style="padding: 6px 0; color: #959687; font-weight: 500; width: 140px;">Amount</td><td style="padding: 6px 0; font-weight: 600; color: #111;">${amountStr}</td></tr>
+            <tr><td style="padding: 6px 0; color: #959687; font-weight: 500;">Bank</td><td style="padding: 6px 0; font-weight: 600; color: #111;">${bankAccount.bank_name}</td></tr>
+            <tr><td style="padding: 6px 0; color: #959687; font-weight: 500;">Account name</td><td style="padding: 6px 0; font-weight: 600; color: #111;">${bankAccount.account_name}</td></tr>
+            <tr><td style="padding: 6px 0; color: #959687; font-weight: 500;">Account number</td><td style="padding: 6px 0; font-weight: 600; color: #111; font-family: monospace;">${accountNum}</td></tr>
+            <tr><td style="padding: 6px 0; color: #959687; font-weight: 500;">Status</td><td style="padding: 6px 0; font-weight: 600; color: #EF8354;">Pending processing</td></tr>
           </table>
         </div>
-        <p style="font-size: 14px; color: #444; line-height: 1.6; margin: 0 0 20px;">
-          You will receive another email once the transfer has been processed.
-          If you have any questions, contact us at
-          <a href="mailto:billing@partna.io" style="color: #111; font-weight: 600; text-decoration: underline;">billing@partna.io</a>.
-        </p>
+        <p style="font-size: 14px; color: #444; line-height: 1.6; margin: 0 0 20px;">You will receive another email once the transfer has been processed. If you have any questions, contact us at <a href="mailto:billing@partna.io" style="color: #111; font-weight: 600; text-decoration: underline;">billing@partna.io</a>.</p>
         <p style="font-size: 13px; color: #959687; margin: 0;">Powered by <a href="https://www.partna.io" style="color: #111; font-weight: 600; text-decoration: none;">Partna</a></p>
       </div>`
 
@@ -382,7 +401,6 @@ export default function Overview({
                 </div>
                 <p style={{ fontSize: 11, fontWeight: 500, color: C.grayMid, margin: '4px 0 0' }}>Minimum UGX 1,000 · Available: {formatUGXFull(bizBalance)}</p>
               </div>
-
               <div>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
                   <label style={{ ...labelStyle, marginBottom: 0 }}>Sending to</label>
@@ -401,17 +419,12 @@ export default function Overview({
                     </div>
                   ))}
                 </div>
-                <p style={{ fontSize: 11, fontWeight: 500, color: C.grayMid, margin: '5px 0 0', lineHeight: '140%' }}>
-                  To change your bank account details, go to Settings → Bank Account.
-                </p>
+                <p style={{ fontSize: 11, fontWeight: 500, color: C.grayMid, margin: '5px 0 0', lineHeight: '140%' }}>To change your bank account details, go to Settings → Bank Account.</p>
               </div>
-
               {withdrawError && <div style={{ background: C.bgRed, borderRadius: 8, padding: '10px 14px', fontSize: 13, fontWeight: 500, color: C.red }}>{withdrawError}</div>}
-
               <div style={{ background: C.bg, border: `1px solid ${C.grayLine}`, borderRadius: 8, padding: '10px 14px', fontSize: 13, fontWeight: 500, color: C.secondary, lineHeight: '140%' }}>
                 Withdrawals are processed within 1–2 business days by the Partna team.
               </div>
-
               <button onClick={handleWithdraw} disabled={withdrawLoading} style={{ ...btnPrimary, width: '100%', justifyContent: 'center', opacity: withdrawLoading ? 0.75 : 1 }}>
                 {withdrawLoading ? <><div className="spinner spinner-sm spinner-light" /> Submitting…</> : `Request ${withdrawAmount ? 'UGX ' + withdrawAmount : 'withdrawal'}`}
               </button>
@@ -435,7 +448,6 @@ export default function Overview({
         <StatCard label={isEducation ? 'Total fees received' : 'Total payments'} value={formatUGX(stats.totalPayments)} sub={isEducation ? 'From all students' : 'Completed payments'} accentColor={C.green} />
         <StatCard label="Active campaigns"      value={campaigns.length}                  sub={campaigns[0]?.name || 'No campaigns yet'} accentColor={C.red} onClick={() => navigate('/dashboard/campaigns')} />
 
-        {/* ── Business wallet card — white, consistent with other stat cards ── */}
         <div style={{ background: C.white, border: `1px solid ${C.stroke}`, borderRadius: 12, padding: '16px 18px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
           <div>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
@@ -460,7 +472,6 @@ export default function Overview({
 
       {/* ── CHART + ACTIVITY ── */}
       <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 16 }}>
-
         <div style={{ background: C.white, border: `1px solid ${C.stroke}`, borderRadius: 12, padding: '18px 20px' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
             <p style={{ fontSize: 14, fontWeight: 600, color: C.black, margin: 0, letterSpacing: '-0.4px' }}>Deposits & Withdrawals</p>
@@ -573,20 +584,58 @@ export default function Overview({
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
             {campaigns.slice(0, 3).map(c => {
-              const progress = Math.min((stats.totalSavings / Number(c.target_amount)) * 100, 100)
-              const daysLeft = Math.max(Math.ceil((new Date(c.target_date).getTime() - Date.now()) / 86400000), 0)
-              const barColor = progress >= 75 ? C.green : progress >= 50 ? C.orange : C.blue
+              const s               = campaignStats[c.id] || { enrolled: 0, amountSaved: 0, amountPaid: 0 }
+              const collectionTarget = Number(c.target_amount) * s.enrolled
+              const savedPct         = collectionTarget > 0 ? Math.min((s.amountSaved / collectionTarget) * 100, 100) : 0
+              const paidPct          = collectionTarget > 0 ? Math.min((s.amountPaid  / collectionTarget) * 100, 100) : 0
+              const daysLeft         = Math.max(Math.ceil((new Date(c.target_date).getTime() - Date.now()) / 86400000), 0)
               return (
-                <div key={c.id} style={{ background: C.bg, border: `1px solid ${C.grayLine}`, borderRadius: 10, padding: '14px 16px' }}>
-                  <p style={{ fontSize: 13, fontWeight: 600, color: C.black, margin: '0 0 2px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.name}</p>
-                  <p style={{ fontSize: 11, fontWeight: 500, color: C.secondary, margin: '0 0 10px' }}>Target: {formatUGXFull(c.target_amount)}</p>
-                  <div style={{ height: 5, background: C.grayLine, borderRadius: 999, overflow: 'hidden', marginBottom: 8 }}>
-                    <div style={{ height: '100%', width: `${progress}%`, background: barColor, borderRadius: 999, transition: 'width 0.4s' }} />
+                <div key={c.id} style={{ background: C.bg, border: `1px solid ${C.grayLine}`, borderRadius: 10, padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  {/* Name & deadline */}
+                  <div>
+                    <p style={{ fontSize: 13, fontWeight: 600, color: C.black, margin: '0 0 2px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.name}</p>
+                    <p style={{ fontSize: 11, fontWeight: 500, color: C.secondary, margin: 0 }}>{daysLeft} days left · Target: {formatUGX(Number(c.target_amount))}/person</p>
                   </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span style={{ fontSize: 11, fontWeight: 600, color: C.secondary }}>{progress.toFixed(0)}% saved</span>
-                    <span style={{ fontSize: 11, fontWeight: 600, color: C.secondary }}>{daysLeft} days left</span>
+                  {/* Enrollment & collection target */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: C.white, border: `1px solid ${C.grayLine}`, borderRadius: 8, padding: '8px 10px' }}>
+                    <div>
+                      <p style={{ fontSize: 16, fontWeight: 600, color: C.black, margin: 0, lineHeight: 1 }}>{s.enrolled}</p>
+                      <p style={{ fontSize: 10, fontWeight: 500, color: C.secondary, margin: '2px 0 0' }}>enrolled</p>
+                    </div>
+                    <div style={{ textAlign: 'right' }}>
+                      <p style={{ fontSize: 11, fontWeight: 500, color: C.secondary, margin: '0 0 1px' }}>Collection target</p>
+                      <p style={{ fontSize: 12, fontWeight: 600, color: C.black, margin: 0 }}>{s.enrolled > 0 ? formatUGX(collectionTarget) : '—'}</p>
+                    </div>
                   </div>
+                  {/* Progress bars */}
+                  {s.enrolled > 0 ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      {/* Saved bar */}
+                      <div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
+                          <span style={{ fontSize: 10, fontWeight: 500, color: C.secondary }}>Saved</span>
+                          <span style={{ fontSize: 10, fontWeight: 600, color: C.black }}>{savedPct.toFixed(0)}%</span>
+                        </div>
+                        <div style={{ height: 4, background: C.grayLight, borderRadius: 999, overflow: 'hidden' }}>
+                          <div style={{ height: '100%', width: `${savedPct}%`, background: C.blue, borderRadius: 999, transition: 'width 0.4s' }} />
+                        </div>
+                        <p style={{ fontSize: 10, fontWeight: 500, color: C.grayMid, margin: '2px 0 0' }}>{formatUGX(s.amountSaved)} of {formatUGX(collectionTarget)}</p>
+                      </div>
+                      {/* Paid bar */}
+                      <div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
+                          <span style={{ fontSize: 10, fontWeight: 500, color: C.secondary }}>Paid</span>
+                          <span style={{ fontSize: 10, fontWeight: 600, color: C.black }}>{paidPct.toFixed(0)}%</span>
+                        </div>
+                        <div style={{ height: 4, background: C.grayLight, borderRadius: 999, overflow: 'hidden' }}>
+                          <div style={{ height: '100%', width: `${paidPct}%`, background: C.green, borderRadius: 999, transition: 'width 0.4s' }} />
+                        </div>
+                        <p style={{ fontSize: 10, fontWeight: 500, color: C.grayMid, margin: '2px 0 0' }}>{formatUGX(s.amountPaid)} of {formatUGX(collectionTarget)}</p>
+                      </div>
+                    </div>
+                  ) : (
+                    <p style={{ fontSize: 11, fontWeight: 500, color: C.grayMid, margin: 0, fontStyle: 'italic' }}>No customers enrolled yet</p>
+                  )}
                 </div>
               )
             })}
