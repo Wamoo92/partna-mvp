@@ -3,22 +3,29 @@ import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../supabase'
 import { getEffectiveStatus, getDeletionMsRemaining, formatCountdown } from '../../lib/campaignUtils'
 
-// ── Helpers — unchanged ────────────────────────────────────────────────────
+// ── Helpers ────────────────────────────────────────────────────────────────
 function formatUGX(n) { return 'UGX ' + Number(n).toLocaleString('en-UG', { maximumFractionDigits: 0 }) }
+function formatUGXShort(n) {
+  if (n >= 1000000) return 'UGX ' + (n / 1000000).toFixed(1) + 'M'
+  if (n >= 1000)    return 'UGX ' + (n / 1000).toFixed(0) + 'K'
+  return 'UGX ' + Number(n).toLocaleString('en-UG', { maximumFractionDigits: 0 })
+}
 function formatAmountInput(val) { return val.replace(/\D/g, '').replace(/\B(?=(\d{3})+(?!\d))/g, ',') }
 function daysLeft(campaign) { return Math.max(Math.ceil((new Date(campaign.target_date).getTime() - Date.now()) / 86400000), 0) }
 
 const FEE_TYPES = [
-  { value: 'tuition',       label: 'Tuition fees'       },
-  { value: 'functional',    label: 'Functional fees'    },
-  { value: 'building_fund', label: 'Building fund'      },
-  { value: 'exam',          label: 'Exam fees'          },
-  { value: 'pta',           label: 'PTA contribution'   },
-  { value: 'other',         label: 'Other'              },
+  { value: 'tuition',       label: 'Tuition fees'    },
+  { value: 'functional',    label: 'Functional fees'  },
+  { value: 'building_fund', label: 'Building fund'    },
+  { value: 'exam',          label: 'Exam fees'        },
+  { value: 'pta',           label: 'PTA contribution' },
+  { value: 'other',         label: 'Other'            },
 ]
-const WIZARD_STEPS_GENERAL = ['Campaign type','Basic info','Target & dates','Payment schedule','Vouchers & prizes','Review & launch']
-const WIZARD_STEPS_EDU     = ['Campaign type','Basic info','Target & fees','Payment schedule','Vouchers & prizes','Review & launch']
-const WIZARD_STEPS_RETAIL  = ['Product','Payment schedule','Vouchers & prizes','Review & launch']
+
+// ── Vouchers & prizes step REMOVED — wizard is now 5 steps (non-retail) ──
+const WIZARD_STEPS_GENERAL = ['Campaign type', 'Basic info', 'Target & dates', 'Payment schedule', 'Review & launch']
+const WIZARD_STEPS_EDU     = ['Campaign type', 'Basic info', 'Target & fees', 'Payment schedule', 'Review & launch']
+const WIZARD_STEPS_RETAIL  = ['Product', 'Payment schedule', 'Review & launch']
 
 // ── Sellin tokens ──────────────────────────────────────────────────────────
 const C = {
@@ -41,9 +48,9 @@ const C = {
   blue:     '#85A0C5',
 }
 
-const inputStyle = { display: 'block', width: '100%', padding: '9px 12px', fontSize: 13, fontWeight: 500, color: C.black, background: C.white, border: `1px solid ${C.grayLine}`, borderRadius: 8, outline: 'none', fontFamily: 'Inter, system-ui, sans-serif', transition: 'border-color 0.15s' }
-const labelStyle = { display: 'block', fontSize: 13, fontWeight: 600, color: C.black, marginBottom: 5 }
-const hintStyle  = { fontSize: 11, fontWeight: 500, color: C.grayMid, marginTop: 4 }
+const inputStyle   = { display: 'block', width: '100%', padding: '9px 12px', fontSize: 13, fontWeight: 500, color: C.black, background: C.white, border: `1px solid ${C.grayLine}`, borderRadius: 8, outline: 'none', fontFamily: 'Inter, system-ui, sans-serif', transition: 'border-color 0.15s' }
+const labelStyle   = { display: 'block', fontSize: 13, fontWeight: 600, color: C.black, marginBottom: 5 }
+const hintStyle    = { fontSize: 11, fontWeight: 500, color: C.grayMid, marginTop: 4 }
 const btnPrimary   = { padding: '9px 16px', fontSize: 13, fontWeight: 600, color: C.white, background: C.black, border: `1px solid ${C.black}`, borderRadius: 8, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 7, fontFamily: 'Inter, system-ui, sans-serif' }
 const btnSecondary = { ...btnPrimary, color: C.black, background: C.white, border: `1px solid ${C.grayLine}` }
 const btnDanger    = { ...btnPrimary, background: C.red,   borderColor: C.red   }
@@ -90,14 +97,40 @@ function CountdownTimer({ campaign }) {
   return <span style={{ fontFamily: 'monospace', fontWeight: 600 }}>{display}</span>
 }
 
-function CampaignCard({ campaign, status, onDelete, onRestart }) {
+// ── Progress bar component ─────────────────────────────────────────────────
+function ProgressBar({ label, amount, target, color, bgColor }) {
+  const pct = target > 0 ? Math.min((amount / target) * 100, 100) : 0
+  return (
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+        <span style={{ fontSize: 11, fontWeight: 500, color: C.secondary }}>{label}</span>
+        <span style={{ fontSize: 11, fontWeight: 600, color: C.black }}>{pct.toFixed(0)}%</span>
+      </div>
+      <div style={{ height: 5, background: C.grayLight, borderRadius: 999, overflow: 'hidden' }}>
+        <div style={{ height: '100%', width: `${pct}%`, background: color, borderRadius: 999, transition: 'width 0.4s' }} />
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 3 }}>
+        <span style={{ fontSize: 10, fontWeight: 500, color: C.grayMid }}>{formatUGXShort(amount)}</span>
+        <span style={{ fontSize: 10, fontWeight: 500, color: C.grayMid }}>of {formatUGXShort(target)}</span>
+      </div>
+    </div>
+  )
+}
+
+// ── Campaign card ──────────────────────────────────────────────────────────
+function CampaignCard({ campaign, status, stats, onDelete, onRestart }) {
   const isActive  = status === 'active'
   const isPaused  = status === 'paused'
   const isDeleted = status === 'deleted'
   const isEdu     = campaign.campaign_type === 'education_fees'
-  const feeTypeLabel = FEE_TYPES.find(f => f.value === campaign.fee_type)?.label || campaign.fee_type || '—'
-  const scheduleLabel = !campaign.allow_partial_payments ? 'Disabled' : campaign.payment_discount_percentage > 0 ? `Fixed — ${campaign.payment_discount_percentage}% minimum` : 'Flexible'
-  const statusCfg = isActive ? { bg: C.bgGreen, color: C.green, label: 'Active' } : isPaused ? { bg: C.bgOrange, color: C.orange, label: 'Paused' } : { bg: C.grayLight, color: C.grayMid, label: 'Deleted' }
+  const feeTypeLabel    = FEE_TYPES.find(f => f.value === campaign.fee_type)?.label || campaign.fee_type || '—'
+  const scheduleLabel   = !campaign.allow_partial_payments ? 'Disabled' : campaign.payment_discount_percentage > 0 ? `Fixed — ${campaign.payment_discount_percentage}% minimum` : 'Flexible'
+  const statusCfg       = isActive ? { bg: C.bgGreen, color: C.green, label: 'Active' } : isPaused ? { bg: C.bgOrange, color: C.orange, label: 'Paused' } : { bg: C.grayLight, color: C.grayMid, label: 'Deleted' }
+
+  const enrolled         = stats?.enrolled || 0
+  const amountSaved      = stats?.amountSaved || 0
+  const amountPaid       = stats?.amountPaid || 0
+  const collectionTarget = Number(campaign.target_amount) * enrolled
 
   return (
     <div style={{ background: C.white, border: `1px solid ${isPaused ? C.orange : C.stroke}`, borderRadius: 12, padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 12, opacity: isDeleted ? 0.55 : isPaused ? 0.9 : 1, fontFamily: 'Inter, system-ui, sans-serif' }}>
@@ -113,6 +146,7 @@ function CampaignCard({ campaign, status, onDelete, onRestart }) {
         </div>
         <span style={{ fontSize: 11, fontWeight: 600, color: statusCfg.color, background: statusCfg.bg, borderRadius: 6, padding: '3px 8px', flexShrink: 0 }}>{statusCfg.label}</span>
       </div>
+
       {isPaused && (
         <div style={{ background: C.bgOrange, border: `1px solid ${C.orange}`, borderRadius: 8, padding: '10px 14px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 4 }}>
@@ -123,10 +157,12 @@ function CampaignCard({ campaign, status, onDelete, onRestart }) {
           <p style={{ fontSize: 11, fontWeight: 500, color: C.orange, margin: 0, opacity: 0.8 }}>Time remaining to cancel</p>
         </div>
       )}
+
+      {/* ── Core campaign details ── */}
       <div style={{ background: C.bg, border: `1px solid ${C.grayLine}`, borderRadius: 8, overflow: 'hidden' }}>
         {[
-          { label: 'Target',           value: formatUGX(campaign.target_amount) },
-          { label: 'Deadline',         value: new Date(campaign.target_date).toLocaleDateString('en-UG', { day: 'numeric', month: 'long', year: 'numeric' }) },
+          { label: 'Target per person',  value: formatUGX(campaign.target_amount) },
+          { label: 'Deadline',           value: new Date(campaign.target_date).toLocaleDateString('en-UG', { day: 'numeric', month: 'long', year: 'numeric' }) },
           ...(isActive ? [{ label: 'Days remaining', value: daysLeft(campaign) + ' days' }] : []),
           ...(isEdu && campaign.minimum_payment > 0 ? [{ label: 'Min. payment', value: formatUGX(campaign.minimum_payment) }] : []),
           ...(isEdu && campaign.minimum_registration_amount > 0 ? [{ label: 'Registration threshold', value: formatUGX(campaign.minimum_registration_amount) }] : []),
@@ -138,6 +174,40 @@ function CampaignCard({ campaign, status, onDelete, onRestart }) {
           </div>
         ))}
       </div>
+
+      {/* ── Enrollment & progress ── */}
+      <div style={{ background: C.bg, border: `1px solid ${C.grayLine}`, borderRadius: 8, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div>
+            <p style={{ fontSize: 18, fontWeight: 600, color: C.black, margin: '0 0 1px', letterSpacing: '-0.5px', lineHeight: 1 }}>{enrolled}</p>
+            <p style={{ fontSize: 11, fontWeight: 500, color: C.secondary, margin: 0 }}>enrolled</p>
+          </div>
+          <div style={{ textAlign: 'right' }}>
+            <p style={{ fontSize: 12, fontWeight: 600, color: C.secondary, margin: '0 0 1px' }}>Collection target</p>
+            <p style={{ fontSize: 13, fontWeight: 600, color: C.black, margin: 0 }}>{enrolled > 0 ? formatUGXShort(collectionTarget) : '—'}</p>
+          </div>
+        </div>
+        {enrolled > 0 && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, borderTop: `1px solid ${C.grayLine}`, paddingTop: 10 }}>
+            <ProgressBar
+              label="Saved"
+              amount={amountSaved}
+              target={collectionTarget}
+              color={C.blue}
+            />
+            <ProgressBar
+              label="Paid"
+              amount={amountPaid}
+              target={collectionTarget}
+              color={C.green}
+            />
+          </div>
+        )}
+        {enrolled === 0 && (
+          <p style={{ fontSize: 12, fontWeight: 500, color: C.grayMid, margin: 0, fontStyle: 'italic' }}>No customers enrolled yet</p>
+        )}
+      </div>
+
       {isActive && onDelete && (
         <button onClick={onDelete} style={{ ...btnDanger, width: '100%', justifyContent: 'center', padding: '8px' }}>Delete campaign</button>
       )}
@@ -153,18 +223,18 @@ function CampaignCard({ campaign, status, onDelete, onRestart }) {
 }
 
 // ── Main ───────────────────────────────────────────────────────────────────
-export default function Campaigns({
- admin, business }) {
+export default function Campaigns({ admin, business }) {
   useEffect(() => { document.title = 'Campaigns - Partna' }, [])
 
   const navigate = useNavigate()
 
-  const [campaigns, setCampaigns]   = useState([])
-  const [loading, setLoading]       = useState(true)
-  const [showWizard, setShowWizard] = useState(false)
-  const [wizardStep, setWizardStep] = useState(0)
-  const [saving, setSaving]         = useState(false)
-  const [error, setError]           = useState('')
+  const [campaigns, setCampaigns]         = useState([])
+  const [campaignStats, setCampaignStats] = useState({}) // keyed by campaign id
+  const [loading, setLoading]             = useState(true)
+  const [showWizard, setShowWizard]       = useState(false)
+  const [wizardStep, setWizardStep]       = useState(0)
+  const [saving, setSaving]               = useState(false)
+  const [error, setError]                 = useState('')
 
   const [showDeleteModal, setShowDeleteModal] = useState(null)
   const [deletePassword, setDeletePassword]   = useState('')
@@ -174,17 +244,15 @@ export default function Campaigns({
   const [showRestartModal, setShowRestartModal] = useState(null)
   const [restarting, setRestarting]             = useState(false)
 
-  const [campaignType, setCampaignType]   = useState('general')
-  const [name, setName]                   = useState('')
-  const [description, setDescription]     = useState('')
-  const [targetAmount, setTargetAmount]   = useState('')
-  const [startDate, setStartDate]         = useState('')
-  const [endDate, setEndDate]             = useState('')
+  const [campaignType, setCampaignType]     = useState('general')
+  const [name, setName]                     = useState('')
+  const [description, setDescription]       = useState('')
+  const [targetAmount, setTargetAmount]     = useState('')
+  const [startDate, setStartDate]           = useState('')
+  const [endDate, setEndDate]               = useState('')
   const [enableSchedule, setEnableSchedule] = useState(false)
-  const [scheduleType, setScheduleType]   = useState('flexible')
-  const [fixedPct, setFixedPct]           = useState(25)
-  const [enableVouchers, setEnableVouchers] = useState(false)
-  const [enablePrize, setEnablePrize]     = useState(false)
+  const [scheduleType, setScheduleType]     = useState('flexible')
+  const [fixedPct, setFixedPct]             = useState(25)
 
   const [productCode, setProductCode]                 = useState('')
   const [productLookupResult, setProductLookupResult] = useState(null)
@@ -197,13 +265,13 @@ export default function Campaigns({
   const [minimumPayment, setMinimumPayment]                       = useState('')
   const [minimumRegistrationAmount, setMinimumRegistrationAmount] = useState('')
 
-  const isRetail = business?.sector === 'Retail'
-  const isEdu    = !isRetail && campaignType === 'education_fees'
+  const isRetail    = business?.sector === 'Retail'
+  const isEdu       = !isRetail && campaignType === 'education_fees'
   const kybVerified = business?.kyb_status === 'verified'
   const displaySteps = isRetail ? WIZARD_STEPS_RETAIL : isEdu ? WIZARD_STEPS_EDU : WIZARD_STEPS_GENERAL
 
   function displayStep() {
-    if (isRetail) { if (wizardStep === 0) return 0; if (wizardStep === 2) return 1; if (wizardStep === 3) return 2; if (wizardStep === 4) return 3; return wizardStep }
+    if (isRetail) { if (wizardStep === 0) return 0; if (wizardStep === 2) return 1; if (wizardStep === 3) return 2; return wizardStep }
     return wizardStep
   }
 
@@ -214,8 +282,58 @@ export default function Campaigns({
   async function loadCampaigns() {
     setLoading(true)
     try {
-      const { data } = await supabase.from('campaigns').select('*').eq('business_id', business.id).order('created_at', { ascending: false })
+      const { data } = await supabase
+        .from('campaigns')
+        .select('*')
+        .eq('business_id', business.id)
+        .order('created_at', { ascending: false })
       setCampaigns(data || [])
+
+      // ── Load stats for each campaign ──────────────────────────────────
+      if (data && data.length > 0) {
+        const statsMap = {}
+        await Promise.all(data.map(async (campaign) => {
+          try {
+            // Get enrolled customer_campaigns
+            const { data: enrollments } = await supabase
+              .from('customer_campaigns')
+              .select('customer_id, status')
+              .eq('campaign_id', campaign.id)
+              .eq('status', 'active')
+
+            const enrolled    = enrollments?.length || 0
+            const customerIds = enrollments?.map(e => e.customer_id) || []
+
+            let amountSaved = 0
+            let amountPaid  = 0
+
+            if (customerIds.length > 0) {
+              // Sum wallet balances for enrolled customers
+              const { data: wallets } = await supabase
+                .from('wallets')
+                .select('balance')
+                .in('customer_id', customerIds)
+
+              amountSaved = wallets?.reduce((s, w) => s + Number(w.balance), 0) || 0
+
+              // Sum payments (deposits) for enrolled customers in this campaign
+              const { data: payments } = await supabase
+                .from('transactions')
+                .select('amount')
+                .in('customer_id', customerIds)
+                .eq('type', 'payment')
+
+              amountPaid = payments?.reduce((s, p) => s + Number(p.amount), 0) || 0
+            }
+
+            statsMap[campaign.id] = { enrolled, amountSaved, amountPaid }
+          } catch (e) {
+            console.error('Stats load error for campaign', campaign.id, e)
+            statsMap[campaign.id] = { enrolled: 0, amountSaved: 0, amountPaid: 0 }
+          }
+        }))
+        setCampaignStats(statsMap)
+      }
     } catch (e) { console.error(e) }
     setLoading(false)
   }
@@ -248,7 +366,13 @@ export default function Campaigns({
       if (customers?.length) {
         const ids = customers.map(c => c.id)
         const { data: wallets } = await supabase.from('wallets').select('*').in('customer_id', ids).gt('balance', 0)
-        if (wallets?.length) { for (const wallet of wallets) { const amt = Number(wallet.balance); if (amt <= 0) continue; await supabase.from('transactions').insert({ customer_id: wallet.customer_id, wallet_id: wallet.id, campaign_id: campaign.id, type: 'withdrawal', amount: amt, status: 'pending', notes: 'Campaign cancelled — automatic refund to payment source' }); await supabase.from('wallets').update({ balance: 0 }).eq('id', wallet.id) } }
+        if (wallets?.length) {
+          for (const wallet of wallets) {
+            const amt = Number(wallet.balance); if (amt <= 0) continue
+            await supabase.from('transactions').insert({ customer_id: wallet.customer_id, wallet_id: wallet.id, campaign_id: campaign.id, type: 'withdrawal', amount: amt, status: 'pending', notes: 'Campaign cancelled — automatic refund to payment source' })
+            await supabase.from('wallets').update({ balance: 0 }).eq('id', wallet.id)
+          }
+        }
         await supabase.from('customers').update({ campaign_id: null }).in('id', ids)
       }
       await loadCampaigns()
@@ -261,8 +385,12 @@ export default function Campaigns({
     if (upper.length < 7) return; setLookingUp(true)
     try {
       const { data } = await supabase.from('products').select('*').eq('business_id', business.id).eq('product_code', upper).eq('is_active', true).maybeSingle()
-      if (data) { setProductLookupResult(data); setName(data.name); setDescription(data.description || ''); setTargetAmount(String(data.price).replace(/\B(?=(\d{3})+(?!\d))/g, ',')); const today = new Date(); setStartDate(today.toISOString().split('T')[0]); const dl = new Date(today); dl.setFullYear(dl.getFullYear() + 1); setEndDate(dl.toISOString().split('T')[0]) }
-      else { setProductLookupError('Product code not found. Check your Products page and try again.') }
+      if (data) {
+        setProductLookupResult(data); setName(data.name); setDescription(data.description || '')
+        setTargetAmount(String(data.price).replace(/\B(?=(\d{3})+(?!\d))/g, ','))
+        const today = new Date(); setStartDate(today.toISOString().split('T')[0])
+        const dl = new Date(today); dl.setFullYear(dl.getFullYear() + 1); setEndDate(dl.toISOString().split('T')[0])
+      } else { setProductLookupError('Product code not found. Check your Products page and try again.') }
     } catch (e) { setProductLookupError('Could not look up product code. Please try again.') }
     setLookingUp(false)
   }
@@ -290,13 +418,31 @@ export default function Campaigns({
   function nextStep() { if (!validateStep(wizardStep)) return; if (isRetail && wizardStep === 0) { setWizardStep(2); return }; setWizardStep(s => s + 1) }
   function prevStep() { if (isRetail && wizardStep === 2) { setWizardStep(0); return }; setWizardStep(s => s - 1) }
 
-  const maxStep = isRetail ? 4 : 5
+  // maxStep is now 4 for non-retail (was 5), 3 for retail (was 4)
+  const maxStep = isRetail ? 3 : 4
 
   async function handleLaunch() {
     setError(''); setSaving(true)
     try {
       const minDeposit = enableSchedule && scheduleType === 'fixed' ? fixedMinDeposit() : 0
-      const payload = { business_id: business.id, name, description: description || null, target_amount: parsedTarget(), target_date: new Date(endDate).toISOString(), status: 'active', campaign_type: isRetail ? 'general' : campaignType, minimum_deposit: minDeposit, allow_partial_payments: enableSchedule, minimum_payment: isEdu ? parsedMinPay() : minDeposit, payment_discount_percentage: enableSchedule && scheduleType === 'fixed' ? fixedPct : 0, product_code: productLookupResult?.product_code || null, fee_type: isEdu ? feeType : null, academic_year: isEdu && academicYear ? academicYear : null, term_or_semester: isEdu && termOrSemester ? termOrSemester : null, minimum_registration_amount: isEdu ? parsedMinReg() : 0 }
+      const payload = {
+        business_id:                  business.id,
+        name,
+        description:                  description || null,
+        target_amount:                parsedTarget(),
+        target_date:                  new Date(endDate).toISOString(),
+        status:                       'active',
+        campaign_type:                isRetail ? 'general' : campaignType,
+        minimum_deposit:              minDeposit,
+        allow_partial_payments:       enableSchedule,
+        minimum_payment:              isEdu ? parsedMinPay() : minDeposit,
+        payment_discount_percentage:  enableSchedule && scheduleType === 'fixed' ? fixedPct : 0,
+        product_code:                 productLookupResult?.product_code || null,
+        fee_type:                     isEdu ? feeType : null,
+        academic_year:                isEdu && academicYear ? academicYear : null,
+        term_or_semester:             isEdu && termOrSemester ? termOrSemester : null,
+        minimum_registration_amount:  isEdu ? parsedMinReg() : 0,
+      }
       const { error: campaignError } = await supabase.from('campaigns').insert(payload)
       if (campaignError) throw campaignError
       await loadCampaigns(); setShowWizard(false); resetWizard()
@@ -306,8 +452,8 @@ export default function Campaigns({
 
   function resetWizard() {
     setWizardStep(0); setCampaignType('general'); setName(''); setDescription(''); setTargetAmount(''); setStartDate(''); setEndDate('')
-    setProductCode(''); setProductLookupResult(null); setProductLookupError(''); setEnableSchedule(false); setScheduleType('flexible'); setFixedPct(25)
-    setEnableVouchers(false); setEnablePrize(false); setError('')
+    setProductCode(''); setProductLookupResult(null); setProductLookupError('')
+    setEnableSchedule(false); setScheduleType('flexible'); setFixedPct(25); setError('')
     setFeeType('tuition'); setAcademicYear(''); setTermOrSemester(''); setMinimumPayment(''); setMinimumRegistrationAmount('')
   }
 
@@ -329,15 +475,10 @@ export default function Campaigns({
             </div>
             <div>
               <p style={{ fontSize: 14, fontWeight: 600, color: C.orange, margin: '0 0 2px' }}>KYB verification required to create campaigns</p>
-              <p style={{ fontSize: 13, fontWeight: 500, color: C.orange, margin: 0, opacity: 0.85 }}>
-                Complete your business verification before launching campaigns to customers.
-              </p>
+              <p style={{ fontSize: 13, fontWeight: 500, color: C.orange, margin: 0, opacity: 0.85 }}>Complete your business verification before launching campaigns to customers.</p>
             </div>
           </div>
-          <button
-            onClick={() => navigate('/dashboard/settings')}
-            style={{ padding: '9px 16px', fontSize: 13, fontWeight: 600, color: C.white, background: C.orange, border: `1px solid ${C.orange}`, borderRadius: 8, cursor: 'pointer', fontFamily: 'Inter, system-ui, sans-serif', whiteSpace: 'nowrap', flexShrink: 0 }}
-          >
+          <button onClick={() => navigate('/dashboard/settings')} style={{ padding: '9px 16px', fontSize: 13, fontWeight: 600, color: C.white, background: C.orange, border: `1px solid ${C.orange}`, borderRadius: 8, cursor: 'pointer', fontFamily: 'Inter, system-ui, sans-serif', whiteSpace: 'nowrap', flexShrink: 0 }}>
             Complete KYB →
           </button>
         </div>
@@ -387,11 +528,7 @@ export default function Campaigns({
         {kybVerified ? (
           <button onClick={() => { resetWizard(); setShowWizard(true) }} style={btnPrimary}>+ New campaign</button>
         ) : (
-          <button
-            disabled
-            title="Complete KYB verification to create campaigns"
-            style={{ ...btnPrimary, opacity: 0.4, cursor: 'not-allowed', gap: 6 }}
-          >
+          <button disabled title="Complete KYB verification to create campaigns" style={{ ...btnPrimary, opacity: 0.4, cursor: 'not-allowed', gap: 6 }}>
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
               <rect x="3" y="11" width="18" height="11" rx="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" />
             </svg>
@@ -419,7 +556,7 @@ export default function Campaigns({
           {activeCampaigns.length > 0 && (
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
               {activeCampaigns.map(c => (
-                <CampaignCard key={c.id} campaign={c} status="active" onDelete={() => { setShowDeleteModal(c); setDeletePassword(''); setDeleteError('') }} />
+                <CampaignCard key={c.id} campaign={c} status="active" stats={campaignStats[c.id]} onDelete={() => { setShowDeleteModal(c); setDeletePassword(''); setDeleteError('') }} />
               ))}
             </div>
           )}
@@ -430,7 +567,7 @@ export default function Campaigns({
                 <p style={{ fontSize: 11, fontWeight: 600, color: C.orange, margin: 0, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Deletion in progress</p>
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-                {pausedCampaigns.map(c => <CampaignCard key={c.id} campaign={c} status="paused" onRestart={() => setShowRestartModal(c)} />)}
+                {pausedCampaigns.map(c => <CampaignCard key={c.id} campaign={c} status="paused" stats={campaignStats[c.id]} onRestart={() => setShowRestartModal(c)} />)}
               </div>
             </div>
           )}
@@ -438,14 +575,14 @@ export default function Campaigns({
             <div>
               <p style={{ fontSize: 11, fontWeight: 600, color: C.secondary, margin: '0 0 12px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Deleted campaigns</p>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-                {deletedCampaigns.map(c => <CampaignCard key={c.id} campaign={c} status="deleted" />)}
+                {deletedCampaigns.map(c => <CampaignCard key={c.id} campaign={c} status="deleted" stats={campaignStats[c.id]} />)}
               </div>
             </div>
           )}
         </div>
       )}
 
-      {/* ── WIZARD MODAL — only opens when KYB verified ── */}
+      {/* ── WIZARD MODAL ── */}
       {showWizard && kybVerified && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(17,17,17,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20, zIndex: 500, backdropFilter: 'blur(4px)' }}>
           <div style={{ background: C.white, border: `1px solid ${C.stroke}`, borderRadius: 16, width: '100%', maxWidth: 600, maxHeight: '90vh', display: 'flex', flexDirection: 'column', boxShadow: '0 8px 40px rgba(17,17,17,0.14)', overflow: 'hidden' }}>
@@ -469,6 +606,7 @@ export default function Campaigns({
 
             <div style={{ padding: '20px 22px', display: 'flex', flexDirection: 'column', gap: 16, overflowY: 'auto', flex: 1 }}>
 
+              {/* ── Step 0 (Retail): Product lookup ── */}
               {isRetail && wizardStep === 0 && (
                 <>
                   <div>
@@ -494,23 +632,20 @@ export default function Campaigns({
                       {[{ label: 'Campaign name', value: name }, { label: 'Description', value: description || '—' }, { label: 'Target amount', value: formatUGX(parsedTarget()) }, { label: 'Start date', value: startDate }, { label: 'Deadline', value: endDate + ' (12 months)' }].map((row, i, arr) => (
                         <SummaryRow key={i} label={row.label} value={row.value} i={i} last={i === arr.length - 1} />
                       ))}
-                      <div style={{ padding: '7px 14px', background: C.bg, display: 'flex', alignItems: 'center', gap: 7, borderTop: `1px solid ${C.grayLine}` }}>
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={C.grayMid} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></svg>
-                        <span style={{ fontSize: 11, fontWeight: 500, color: C.secondary }}>These fields are set from the product and cannot be edited.</span>
-                      </div>
                     </div>
                   )}
                 </>
               )}
 
+              {/* ── Step 0 (Non-retail): Campaign type ── */}
               {!isRetail && wizardStep === 0 && (
                 <>
                   <p style={{ fontSize: 13, fontWeight: 500, color: C.secondary, margin: 0, lineHeight: '140%' }}>
-                    Choose the type of campaign you want to create. This determines which fields are available and how payments are processed.
+                    Choose the type of campaign you want to create.
                   </p>
                   {[
-                    { value: 'general', label: 'General savings campaign', sub: 'A flexible savings campaign toward any goal. Customers save toward a target amount and deadline. Suitable for any business type.' },
-                    { value: 'education_fees', label: 'Education fees campaign', sub: 'A campaign designed for school fee collection. Includes fee type, academic year, minimum payment enforcement, and a registration threshold indicator for parents.' },
+                    { value: 'general',        label: 'General savings campaign',  sub: 'A flexible savings campaign toward any goal. Customers save toward a target amount and deadline.' },
+                    { value: 'education_fees', label: 'Education fees campaign',   sub: 'For school fee collection. Includes fee type, academic year, minimum payment enforcement, and registration threshold.' },
                   ].map(opt => {
                     const sel = campaignType === opt.value
                     return (
@@ -533,6 +668,7 @@ export default function Campaigns({
                 </>
               )}
 
+              {/* ── Step 1 (Non-retail): Basic info ── */}
               {!isRetail && wizardStep === 1 && (
                 <>
                   <div>
@@ -571,6 +707,7 @@ export default function Campaigns({
                 </>
               )}
 
+              {/* ── Step 2 (Non-retail): Target & dates ── */}
               {!isRetail && wizardStep === 2 && (
                 <>
                   <div>
@@ -621,6 +758,7 @@ export default function Campaigns({
                 </>
               )}
 
+              {/* ── Step 3 (Non-retail) / Step 2 (Retail): Payment schedule ── */}
               {((isRetail && wizardStep === 2) || (!isRetail && wizardStep === 3)) && (
                 <>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px', background: C.bg, border: `1px solid ${C.grayLine}`, borderRadius: 10 }}>
@@ -665,24 +803,8 @@ export default function Campaigns({
                 </>
               )}
 
+              {/* ── Step 4 (Non-retail) / Step 3 (Retail): Review & launch ── */}
               {((isRetail && wizardStep === 3) || (!isRetail && wizardStep === 4)) && (
-                <>
-                  {[
-                    { label: 'Enable vouchers',  sub: 'Add and manage vouchers from Vouchers & Prizes after launch.', val: enableVouchers, set: setEnableVouchers },
-                    { label: 'Enable prize draw', sub: 'Set up prize draws from Vouchers & Prizes after launch.',     val: enablePrize,    set: setEnablePrize   },
-                  ].map((item, i) => (
-                    <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px', background: C.bg, border: `1px solid ${C.grayLine}`, borderRadius: 10 }}>
-                      <div>
-                        <p style={{ fontSize: 14, fontWeight: 600, color: C.black, margin: '0 0 2px' }}>{item.label}</p>
-                        <p style={{ fontSize: 12, fontWeight: 500, color: C.secondary, margin: 0 }}>{item.sub}</p>
-                      </div>
-                      <Toggle value={item.val} onChange={item.set} />
-                    </div>
-                  ))}
-                </>
-              )}
-
-              {((isRetail && wizardStep === 4) || (!isRetail && wizardStep === 5)) && (
                 <>
                   <div style={{ background: C.white, border: `1px solid ${C.stroke}`, borderRadius: 10, overflow: 'hidden' }}>
                     <div style={{ padding: '8px 14px', background: C.black }}>
@@ -701,8 +823,6 @@ export default function Campaigns({
                       ...(isEdu && parsedMinPay() > 0 ? [{ label: 'Min. payment', value: formatUGX(parsedMinPay()) }] : []),
                       ...(isEdu && parsedMinReg() > 0 ? [{ label: 'Registration threshold (info only)', value: formatUGX(parsedMinReg()) }] : []),
                       ...(!isEdu ? [{ label: 'Payment schedule', value: !enableSchedule ? 'Disabled' : scheduleType === 'flexible' ? 'Flexible' : `Fixed — ${fixedPct}% (${formatUGX(fixedMinDeposit())})` }] : []),
-                      { label: 'Vouchers',  value: enableVouchers ? 'Enabled' : 'Disabled' },
-                      { label: 'Prize draw', value: enablePrize ? 'Enabled' : 'Disabled' },
                     ].filter(Boolean).map((row, i, arr) => (
                       <SummaryRow key={i} label={row.label} value={row.value} i={i} last={i === arr.length - 1} />
                     ))}
