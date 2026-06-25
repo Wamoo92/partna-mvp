@@ -107,7 +107,9 @@ export default function DashboardLayout({ admin, business, signOut, children }) 
   const [collapsed, setCollapsed]       = useState(false)
   const [studentCount, setStudentCount] = useState(null) // null = not yet fetched
 
-  const kybPending    = business?.kyb_status !== 'verified'
+  // Only treat KYB as pending once business has actually loaded — otherwise the
+  // banner flashes during the initial load when business is still null/undefined.
+  const kybPending    = !!business && business.kyb_status !== 'verified'
   const sector        = business?.sector || ''
   const isEducation   = sector === 'Education'
   const showStudentAlert = isEducation && studentCount === 0

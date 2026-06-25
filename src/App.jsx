@@ -180,7 +180,7 @@ function PortalInactivityWrapper({ customer, enrollments, loading, business, sig
 
 // ── Main portal + dashboard component ─────────────────────────────────────
 function PortalAndDashboard() {
-  const { customer, business, subdomainBusiness, enrollments, loading, signOut, refetch } = useAuth()
+  const { customer, business, subdomainBusiness, subdomainResolved, enrollments, loading, signOut, refetch } = useAuth()
 
   const isSubdomain = (
     window.location.hostname !== 'localhost' &&
@@ -189,7 +189,18 @@ function PortalAndDashboard() {
     window.location.hostname !== 'partna.io' &&
     window.location.hostname.endsWith('.partna.io')
   )
-  if (isSubdomain && !loading && !subdomainBusiness) {
+  // While the subdomain lookup is still in flight, show a neutral loading screen —
+  // never the "Portal not found" page (that black flash was appearing before the
+  // lookup had a chance to resolve).
+  if (isSubdomain && !subdomainResolved) {
+    return (
+      <div className="loading-screen">
+        <div className="spinner spinner-lg spinner-purple" />
+      </div>
+    )
+  }
+  // Only after the lookup has definitively completed and returned no business.
+  if (isSubdomain && subdomainResolved && !subdomainBusiness) {
     return <PortalNotFound />
   }
 

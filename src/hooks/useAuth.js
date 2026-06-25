@@ -31,6 +31,10 @@ export function useAuth() {
   const [customer, setCustomer]           = useState(null)
   const [business, setBusiness]           = useState(null)
   const [subdomainBusiness, setSubdomainBusiness] = useState(null)
+  // false until the subdomain lookup has DEFINITIVELY completed. App.jsx must only
+  // render "Portal not found" once this is true and no business was found — never
+  // while the lookup is still in flight (which caused a black flash).
+  const [subdomainResolved, setSubdomainResolved] = useState(false)
   const [enrollments, setEnrollments]     = useState([])
   const [loading, setLoading]             = useState(true)
 
@@ -41,7 +45,7 @@ export function useAuth() {
 
   async function loadSubdomainBusiness() {
     const slug = detectSubdomainSlug()
-    if (!slug) return // localhost or www — skip
+    if (!slug) { setSubdomainResolved(true); return } // localhost or www — nothing to resolve
 
     try {
       const { data } = await supabase
@@ -56,6 +60,8 @@ export function useAuth() {
       // App.jsx will handle showing a "not found" state
     } catch (e) {
       console.error('Subdomain business lookup error:', e)
+    } finally {
+      setSubdomainResolved(true)
     }
   }
 
@@ -163,6 +169,7 @@ export function useAuth() {
     // On localhost/www: falls back to the customer's business as before.
     business: subdomainBusiness || business,
     subdomainBusiness,
+    subdomainResolved,
     enrollments,
     loading,
     signOut,

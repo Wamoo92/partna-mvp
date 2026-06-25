@@ -1,0 +1,21 @@
+-- Fix: customer enrollment query always failed with PostgREST PGRST201
+-- ("Could not embed because more than one relationship was found between
+-- 'customer_campaigns' and 'wallets'"), so the portal's global enrollments were
+-- always empty and HomeGuard bounced /portal/home back to /portal/select-campaign.
+--
+-- There are two FK relationships between the tables:
+--   * customer_campaigns.wallet_id        -> wallets.id            (many-to-one)
+--   * wallets.customer_campaign_id        -> customer_campaigns.id (one-to-many)
+-- so `customer_campaigns.select('*, campaigns(*), wallets(*)')` (used in useAuth,
+-- Home, Pay, Withdraw, Profile, Transactions, AddMoney and the close-account Edge
+-- Function) is ambiguous and errors out entirely.
+--
+-- The app treats the embedded `wallets` as a SINGLE OBJECT (e.wallets.balance), i.e.
+-- the wallet pointed to by customer_campaigns.wallet_id (the canonical link set by
+-- enroll-campaign). Dropping the redundant reverse FK leaves only the wallet_id
+-- relationship, so the embed resolves unambiguously as a single object — with no
+-- code changes across the 8 call sites or the deployed close-account function.
+-- The wallets.customer_campaign_id COLUMN and its data are kept; only the redundant
+-- FK constraint is removed.
+
+alter table public.wallets drop constraint if exists wallets_customer_campaign_id_fkey;

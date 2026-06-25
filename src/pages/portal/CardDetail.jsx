@@ -268,12 +268,19 @@ export default function CardDetail({
         .maybeSingle()
       setSubscription(subData || null)
 
-      const { data: walletData } = await supabase
-        .from('wallets')
-        .select('balance')
-        .eq('customer_id', customer.id)
-        .maybeSingle()
-      setWalletBalance(Number(walletData?.balance || 0))
+      // A customer can now have multiple wallets (one per enrollment), so scope to
+      // the active enrollment's wallet rather than .maybeSingle() on customer_id
+      // (which would throw when more than one wallet exists).
+      let bal = 0
+      if (enrollData?.wallet_id) {
+        const { data: walletData } = await supabase
+          .from('wallets')
+          .select('balance')
+          .eq('id', enrollData.wallet_id)
+          .maybeSingle()
+        bal = Number(walletData?.balance || 0)
+      }
+      setWalletBalance(bal)
 
     } catch (e) {
       console.error('CardDetail load error:', e)
