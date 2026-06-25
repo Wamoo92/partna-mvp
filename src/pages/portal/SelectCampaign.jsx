@@ -357,7 +357,7 @@ function CampaignDetailCard({ campaign, customer, brand, cardFlipped, setCardFli
 
 // ── Main component ─────────────────────────────────────────────────────────
 export default function SelectCampaign({
- customer, business }) {
+ customer, business, refetch }) {
   useEffect(() => { document.title = 'Select Campaign - Partna' }, [])
 
   const brand    = useBrand()
@@ -435,6 +435,9 @@ export default function SelectCampaign({
       })
       const data = await res.json()
       if (!res.ok || !data.success) { console.error('Enrollment error:', data.error); setSaving(false); return }
+      // Refresh the global enrollments (used by HomeGuard) before navigating, so
+      // the new enrollment is visible and /portal/home does not bounce back here.
+      if (refetch) await refetch()
       if (data.firstEnrollment) { navigate('/portal/kyc', { replace: true }) } else { navigate('/portal/home', { replace: true }) }
     } catch (e) { console.error('Campaign selection error:', e) }
     setSaving(false)
@@ -472,7 +475,7 @@ export default function SelectCampaign({
           }
         </div>
         {hasEnrollments && (
-          <button onClick={() => navigate('/portal/home')} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 14, fontWeight: 500, color: C.secondary, padding: 0, fontFamily: 'Inter, system-ui, sans-serif' }}>
+          <button onClick={async () => { if (refetch) await refetch(); navigate('/portal/home') }} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 14, fontWeight: 500, color: C.secondary, padding: 0, fontFamily: 'Inter, system-ui, sans-serif' }}>
             ← Back
           </button>
         )}
@@ -570,7 +573,7 @@ export default function SelectCampaign({
                   </div>
                   <p style={{ fontSize: 15, fontWeight: 600, color: C.black, margin: 0 }}>You're enrolled in all available campaigns</p>
                   <p style={{ fontSize: 13, fontWeight: 500, color: C.secondary, margin: 0 }}>There are no additional campaigns to join right now.</p>
-                  <button onClick={() => navigate('/portal/home')} style={{ ...btnPrimary, marginTop: 4 }}>Back to home</button>
+                  <button onClick={async () => { if (refetch) await refetch(); navigate('/portal/home') }} style={{ ...btnPrimary, marginTop: 4 }}>Back to home</button>
                 </div>
               )}
 

@@ -180,7 +180,7 @@ function PortalInactivityWrapper({ customer, enrollments, loading, business, sig
 
 // ── Main portal + dashboard component ─────────────────────────────────────
 function PortalAndDashboard() {
-  const { customer, business, subdomainBusiness, enrollments, loading, signOut } = useAuth()
+  const { customer, business, subdomainBusiness, enrollments, loading, signOut, refetch } = useAuth()
 
   const isSubdomain = (
     window.location.hostname !== 'localhost' &&
@@ -229,7 +229,7 @@ function PortalAndDashboard() {
                 } />
                 <Route path="/select-campaign" element={
                   <PortalGuard customer={customer} loading={loading}>
-                    <SelectCampaign customer={customer} business={business} />
+                    <SelectCampaign customer={customer} business={business} refetch={refetch} />
                   </PortalGuard>
                 } />
                 <Route path="/payment-success" element={
