@@ -38,41 +38,18 @@ export default function Register() {
     if (!email.includes('@') || !email.includes('.')) { setError('Please enter a valid email address.'); return }
     setLoading(true)
     try {
-      const cleanPhone = phone.replace(/\s+/g, '')
-      const cleanEmail = email.toLowerCase().trim()
-      const { data: bizData } = await supabase.from('businesses').select('id').eq('kyb_status', 'verified').limit(1).maybeSingle()
-      const resolvedBusinessId = bizData?.id || null
-      const { data: existingPhone } = await supabase.from('customers').select('id').eq('phone', cleanPhone).eq('business_id', resolvedBusinessId).maybeSingle()
-      if (existingPhone) { setError('This phone number is already registered. Please log in.'); setLoading(false); return }
-      const { data: existingEmail } = await supabase.from('customers').select('id').eq('email', cleanEmail).maybeSingle()
-      if (existingEmail) { setError('This email address is already registered. Please log in.'); setLoading(false); return }
-      let partnaIdentityId = null
-      const { data: existingIdentity } = await supabase.from('partna_identities').select('id').eq('phone', cleanPhone).maybeSingle()
-      if (existingIdentity) {
-        partnaIdentityId = existingIdentity.id
-      } else {
-        const { data: newIdentity, error: identityError } = await supabase.from('partna_identities').insert({ phone: cleanPhone, first_name: firstName, last_name: lastName }).select().single()
-        if (!identityError && newIdentity) partnaIdentityId = newIdentity.id
-      }
-      const { data: customer, error: customerError } = await supabase.from('customers').insert({
-        business_id: resolvedBusinessId, partna_identity_id: partnaIdentityId,
-        full_name: `${firstName} ${lastName}`, first_name: firstName, last_name: lastName,
-        other_names: otherNames || null, phone: cleanPhone, email: cleanEmail,
-        kyc_status: 'pending', registration_status: 'phone_unverified',
-      }).select().single()
-      if (customerError) { console.error('Customer insert error:', customerError); setError('Could not create account. Please try again.'); setLoading(false); return }
-      setCustomerId(customer.id)
-      const otpCode   = Math.floor(10000 + Math.random() * 90000).toString()
-      const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString()
-      const { data: otpRecord, error: otpError } = await supabase.from('otp_verifications').insert({ phone: cleanPhone, otp_code: otpCode, status: 'pending', expires_at: expiresAt }).select().single()
-      if (otpError) { console.error('OTP insert error:', otpError); setError('Could not send OTP. Please try again.'); setLoading(false); return }
-      setOtpId(otpRecord.id)
-      const smsRes = await fetch(`${SUPABASE_URL}/functions/v1/send-otp-sms`, {
+      // All duplicate checks, identity/customer creation, OTP generation and SMS
+      // happen server-side (service role) so no customer/identity/OTP data is
+      // exposed through the public anon key.
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/register-customer-start`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${SUPABASE_ANON_KEY}` },
-        body: JSON.stringify({ phone: cleanPhone, otp: otpCode }),
+        body: JSON.stringify({ firstName, lastName, otherNames, phone, email }),
       })
-      if (!smsRes.ok) { console.error('SMS send failed:', await smsRes.text()); setError('OTP SMS could not be sent. Please check your phone number and try again.'); setLoading(false); return }
+      const data = await res.json()
+      if (!res.ok || data.error) { setError(data.error || 'Could not start registration. Please try again.'); setLoading(false); return }
+      setCustomerId(data.customerId)
+      setOtpId(data.otpId)
       setStep(2)
     } catch (err) {
       console.error('Unexpected error:', err)
@@ -87,12 +64,14 @@ export default function Register() {
     if (!otp || otp.length !== 5) { setError('Please enter the 5-digit OTP.'); return }
     setLoading(true)
     try {
-      const { data: otpRecord, error: fetchError } = await supabase.from('otp_verifications').select('*').eq('id', otpId).single()
-      if (fetchError || !otpRecord) { setError('OTP not found. Please go back and try again.'); setLoading(false); return }
-      if (new Date(otpRecord.expires_at) < new Date()) { setError('OTP has expired. Please go back and request a new one.'); setLoading(false); return }
-      if (otpRecord.otp_code !== otp) { setError('Incorrect OTP. Please check and try again.'); setLoading(false); return }
-      await supabase.from('otp_verifications').update({ status: 'verified' }).eq('id', otpId)
-      await supabase.from('customers').update({ registration_status: 'pin_pending' }).eq('id', customerId)
+      // OTP is verified server-side; the code is never sent to the browser.
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/verify-otp`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${SUPABASE_ANON_KEY}` },
+        body: JSON.stringify({ otpId, code: otp, customerId }),
+      })
+      const data = await res.json()
+      if (!res.ok || data.error) { setError(data.error || 'Could not verify code. Please try again.'); setLoading(false); return }
       setStep(3)
     } catch (err) {
       console.error('OTP verify error:', err)

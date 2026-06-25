@@ -3,6 +3,9 @@ import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../supabase'
 import { useBrand } from '../../lib/BrandContext'
 
+const SUPABASE_URL      = import.meta.env.VITE_SUPABASE_URL
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY
+
 export default function Login() {
   useEffect(() => { document.title = 'Login - Partna' }, [])
 
@@ -29,13 +32,15 @@ export default function Login() {
     setLoading(true)
     try {
       const cleanPhone = phone.replace(/\s+/g, '')
-      const { data: customers } = await supabase
-        .from('customers')
-        .select('email, registration_status')
-        .eq('phone', cleanPhone)
-      if (!customers || customers.length === 0) { setError('Phone number not found. Please check and try again.'); setLoading(false); return }
-      const customer = customers[0]
-      if (!customer.email) { setError('Account not fully set up. Please register again.'); setLoading(false); return }
+      // Resolve the auth email server-side — the customers table is no longer
+      // readable with the public anon key.
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/lookup-login-email`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${SUPABASE_ANON_KEY}` },
+        body: JSON.stringify({ phone: cleanPhone }),
+      })
+      const customer = await res.json()
+      if (!customer.found || !customer.email) { setError('Phone number not found. Please check and try again.'); setLoading(false); return }
       if (customer.registration_status !== 'complete') { setError('Account registration is incomplete. Please complete registration.'); setLoading(false); return }
       const password = `pin-${pin}-${cleanPhone}`
       const { error: signInError } = await supabase.auth.signInWithPassword({ email: customer.email, password })
@@ -55,10 +60,14 @@ export default function Login() {
     if (!cleanPhone) { setForgotError('Please enter your phone number.'); return }
     setForgotLoading(true)
     try {
-      const { data: customers } = await supabase.from('customers').select('email').eq('phone', cleanPhone)
-      if (!customers || customers.length === 0) { setForgotError('No account found with that phone number.'); setForgotLoading(false); return }
-      const customerEmail = customers[0].email
-      if (!customerEmail) { setForgotError('No email address found for this account.'); setForgotLoading(false); return }
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/lookup-login-email`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${SUPABASE_ANON_KEY}` },
+        body: JSON.stringify({ phone: cleanPhone }),
+      })
+      const lookup = await res.json()
+      if (!lookup.found || !lookup.email) { setForgotError('No account found with that phone number.'); setForgotLoading(false); return }
+      const customerEmail = lookup.email
       const { error: resetError } = await supabase.auth.resetPasswordForEmail(customerEmail, { redirectTo: `${window.location.origin}/portal/reset-pin` })
       if (resetError) { setForgotError('Could not send reset email. Please try again.'); setForgotLoading(false); return }
       const [local, domain] = customerEmail.split('@')
