@@ -97,7 +97,7 @@ function ReceiveRow({ netAmount }) {
 }
 
 export default function Withdraw({
- customer }) {
+ customer, refetch }) {
   useEffect(() => { document.title = 'Withdraw - Partna' }, [])
 
   const brand    = useBrand()
@@ -155,6 +155,7 @@ export default function Withdraw({
       const data = await res.json()
       if (!res.ok || !data.success) { setError(data.error || 'Could not process withdrawal. Please try again.'); setLoading(false); return }
       setTxnReference(data.reference)
+      if (refetch) await refetch()
       setStep(3)
     } catch (e) { console.error('Unexpected error:', e); setError('Something went wrong. Please try again.') }
     setLoading(false)

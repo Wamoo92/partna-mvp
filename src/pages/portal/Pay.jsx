@@ -112,7 +112,7 @@ function RegistrationProgress({ totalPaid, minRegAmount }) {
 // ─────────────────────────────────────────────────────────────────────────
 
 export default function Pay({
- customer }) {
+ customer, refetch }) {
   useEffect(() => { document.title = 'Pay - Partna' }, [])
 
   const brand    = useBrand()
@@ -230,6 +230,7 @@ export default function Pay({
       if (!data.success) { setError(data.error || 'Payment failed. Please try again.'); setPaying(false); return }
       setTxnReference(data.reference); setTotalPaidToDate(data.totalPaidToDate || totalPaidToDate + parsedAmount)
       if (data.newParentBalance !== undefined) setWallet(w => ({ ...w, balance: data.newParentBalance }))
+      if (refetch) await refetch()
       setStep(successStep)
     } catch (e) { console.error('Education pay error:', e); setError('Something went wrong. Please try again.') }
     setPaying(false)
@@ -252,6 +253,7 @@ export default function Pay({
       setTxnReference(data.reference)
       if (data.isFullPayment) setIsFullPayment(true)
       if (data.newBalance !== undefined) setWallet(w => ({ ...w, balance: data.newBalance }))
+      if (refetch) await refetch()
       setStep(successStep)
     } catch (e) { console.error('Unexpected error:', e); setError('Something went wrong. Please try again.') }
     setPaying(false)

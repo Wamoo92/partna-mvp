@@ -264,12 +264,12 @@ function PortalAndDashboard() {
                 } />
                 <Route path="/pay" element={
                   <HomeGuard customer={customer} enrollments={enrollments} loading={loading}>
-                    <Pay customer={customer} />
+                    <Pay customer={customer} refetch={refetch} />
                   </HomeGuard>
                 } />
                 <Route path="/withdraw" element={
                   <HomeGuard customer={customer} enrollments={enrollments} loading={loading}>
-                    <Withdraw customer={customer} />
+                    <Withdraw customer={customer} refetch={refetch} />
                   </HomeGuard>
                 } />
               </Routes>
