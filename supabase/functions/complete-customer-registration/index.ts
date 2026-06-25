@@ -50,10 +50,10 @@ Deno.serve(async (req) => {
     const cleanEmail = email.toLowerCase().trim()
     const password   = `pin-${pin}-${cleanPhone}`
 
-    // ── 1. Verify customer record exists by ID only ───────────────────────
+    // ── 1. Verify customer record exists ──────────────────────────────────
     const { data: customer, error: customerFetchError } = await supabase
       .from('customers')
-      .select('id, email, registration_status, auth_user_id')
+      .select('id, email, phone, registration_status, auth_user_id')
       .eq('id', customerId)
       .maybeSingle()
 
@@ -64,6 +64,41 @@ Deno.serve(async (req) => {
     // ── 2. Already complete — return success so client can sign in ────────
     if (customer.registration_status === 'complete' && customer.auth_user_id) {
       return ok({ success: true, alreadyComplete: true }, req)
+    }
+
+    // ── 2a. Authorization gates (E-5 fix — prevent account takeover) ──────
+    // The customer must have passed OTP verification (verify-otp sets
+    // 'pin_pending') and must not already have an auth user attached.
+    if (customer.registration_status !== 'pin_pending' || customer.auth_user_id) {
+      return err('Phone not verified. Please verify your phone number before setting a PIN.', req, 403)
+    }
+
+    // The supplied email must match the record — blocks ID-substitution where an
+    // attacker supplies a valid customerId but their own email.
+    if (!customer.email || customer.email.toLowerCase().trim() !== cleanEmail) {
+      return err('Email does not match our records.', req, 403)
+    }
+
+    // The supplied phone must match the record (the auth password is derived from it).
+    const recordPhone = String(customer.phone || '').replace(/\s+/g, '')
+    if (!recordPhone || recordPhone !== cleanPhone) {
+      return err('Phone does not match our records.', req, 403)
+    }
+
+    // A verified OTP for this phone must exist and be recent (last 30 minutes).
+    // (otp_verifications has no updated_at column; created_at is the freshness key.)
+    const cutoff = new Date(Date.now() - 30 * 60 * 1000).toISOString()
+    const { data: recentOtp } = await supabase
+      .from('otp_verifications')
+      .select('id')
+      .eq('phone', recordPhone)
+      .eq('status', 'verified')
+      .gte('created_at', cutoff)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    if (!recentOtp) {
+      return err('Your phone verification has expired. Please restart registration.', req, 403)
     }
 
     // ── 3. Create auth user ───────────────────────────────────────────────

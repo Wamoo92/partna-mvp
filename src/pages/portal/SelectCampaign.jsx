@@ -130,9 +130,16 @@ function StudentIdLookup({ businessId, enrolledStudentIds, onStudentConfirmed, c
     if (!val) { setLookupError('Please enter a student ID.'); return }
     setLookingUp(true); setLookupError('')
     try {
-      const { data, error } = await supabase.from('students').select('id, first_name, last_name, partna_student_id, school_student_id, year_group').eq('business_id', businessId).eq('is_active', true).or(`partna_student_id.eq.${val.toUpperCase()},school_student_id.eq.${val}`).maybeSingle()
-      if (error || !data) { setLookupError("No student found with that ID. Please check the ID and try again, or use \"I don't know the Student ID number\" below."); setLookingUp(false); return }
-      const err = checkAndConfirm(data)
+      // RLS on `students` only lets a customer read a student they are already
+      // enrolled with, so the pre-enrolment lookup runs server-side (service role).
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/lookup-student`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${SUPABASE_ANON_KEY}` },
+        body: JSON.stringify({ businessId, mode: 'id', studentId: val }),
+      })
+      const data = await res.json()
+      if (!res.ok || !data.found || !data.student) { setLookupError("No student found with that ID. Please check the ID and try again, or use \"I don't know the Student ID number\" below."); setLookingUp(false); return }
+      const err = checkAndConfirm(data.student)
       if (err) setLookupError(err)
     } catch (e) { console.error('Student ID lookup error:', e); setLookupError('Something went wrong. Please try again.') }
     setLookingUp(false)
@@ -145,9 +152,14 @@ function StudentIdLookup({ businessId, enrolledStudentIds, onStudentConfirmed, c
     if (!year)  { setNameSearchError('Please enter the year group or class.'); return }
     setNameSearching(true); setNameSearchError('')
     try {
-      const { data, error } = await supabase.from('students').select('id, first_name, last_name, partna_student_id, school_student_id, year_group').eq('business_id', businessId).eq('is_active', true).ilike('first_name', first).ilike('last_name', last).ilike('year_group', year).maybeSingle()
-      if (error || !data) { setNameSearchError('No student found with those details. Please check the spelling and year group, and try again. If the problem continues, contact your school office.'); setNameSearching(false); return }
-      const err = checkAndConfirm(data)
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/lookup-student`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${SUPABASE_ANON_KEY}` },
+        body: JSON.stringify({ businessId, mode: 'name', firstName: first, lastName: last, yearGroup: year }),
+      })
+      const data = await res.json()
+      if (!res.ok || !data.found || !data.student) { setNameSearchError('No student found with those details. Please check the spelling and year group, and try again. If the problem continues, contact your school office.'); setNameSearching(false); return }
+      const err = checkAndConfirm(data.student)
       if (err) setNameSearchError(err)
     } catch (e) { console.error('Student name lookup error:', e); setNameSearchError('Something went wrong. Please try again.') }
     setNameSearching(false)

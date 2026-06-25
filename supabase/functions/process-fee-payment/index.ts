@@ -83,6 +83,51 @@ serve(async (req) => {
       })
     }
 
+    // ── Authenticate the caller (E-3 fix) ─────────────────────────────────
+    // The request must carry the paying customer's own access token, not the
+    // anon key. We validate it and confirm the caller owns BOTH the customerId
+    // and the walletId before any money moves.
+    const authHeader = req.headers.get('Authorization') || ''
+    const jwt        = authHeader.replace(/^Bearer\s+/i, '').trim()
+    if (!jwt) {
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+        status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
+
+    const { data: userData, error: userErr } = await supabase.auth.getUser(jwt)
+    const authUser = userData?.user
+    if (userErr || !authUser) {
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+        status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
+
+    // The customerId must map to a customers row owned by this auth user.
+    const { data: ownerRow } = await supabase
+      .from('customers')
+      .select('id, auth_user_id')
+      .eq('id', customerId)
+      .maybeSingle()
+    if (!ownerRow || ownerRow.auth_user_id !== authUser.id) {
+      return new Response(JSON.stringify({ error: 'Forbidden' }), {
+        status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
+
+    // The walletId must belong to that same customer.
+    const { data: ownedWallet } = await supabase
+      .from('wallets')
+      .select('id')
+      .eq('id', walletId)
+      .eq('customer_id', customerId)
+      .maybeSingle()
+    if (!ownedWallet) {
+      return new Response(JSON.stringify({ error: 'Forbidden' }), {
+        status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
+
     // ── Rate limit ───────────────────────────────────────────────────────
     if (isRateLimited(customerId)) {
       return new Response(JSON.stringify({ error: 'Too many payment attempts. Please try again later.' }), {
@@ -100,6 +145,18 @@ serve(async (req) => {
     if (campErr || !campaign) {
       return new Response(JSON.stringify({ error: 'Campaign not found' }), {
         status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
+
+    // ── Maximum payment guard (E-3 sanity check) ─────────────────────────
+    // A single fee payment can never exceed the campaign's total fees.
+    const campaignTarget = Number(campaign.target_amount || 0)
+    if (campaignTarget > 0 && paymentAmount > campaignTarget) {
+      return new Response(JSON.stringify({
+        error: `Payment exceeds the total fees of ${formatUGX(campaignTarget)}.`,
+        blocked: true,
+      }), {
+        status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
     }
 

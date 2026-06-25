@@ -10,6 +10,7 @@ const PESAPAL_BASE    = IS_LIVE
 
 const APP_BASE     = Deno.env.get('APP_BASE_URL') || 'https://www.partna.io'
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
+const SERVICE_KEY  = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 
 async function getPesapalToken(): Promise<string> {
   const res = await fetch(`${PESAPAL_BASE}/api/Auth/RequestToken`, {
@@ -40,7 +41,7 @@ async function sendSMS(customerId: string, phone: string, event: string, vars: R
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
+        'Authorization': `Bearer ${SERVICE_KEY}`,
       },
       body: JSON.stringify({ event, phone, customerId, vars }),
     })
@@ -53,82 +54,95 @@ serve(async (req) => {
   const url             = new URL(req.url)
   const params          = url.searchParams
   const orderTrackingId = params.get('OrderTrackingId')
-  const walletId        = params.get('walletId')
-  const amount          = params.get('amount')
   const reference       = params.get('reference')
-  const customerId      = params.get('customerId')
-  const campaignId      = params.get('campaignId') || null
-  const enrollmentId    = params.get('enrollmentId') || null
+  // enrollmentId is a UI hint for the success page only — never used for crediting.
+  const enrollmentId    = params.get('enrollmentId') || ''
 
-  if (!orderTrackingId || !walletId || !amount || !customerId) {
+  // SECURITY: walletId / amount / customerId from the URL are intentionally IGNORED.
+  // The amount credited is the server-stored transaction amount, verified against
+  // Pesapal's GetTransactionStatus and applied atomically by process_pesapal_credit.
+  if (!orderTrackingId || !reference) {
     return Response.redirect(`${APP_BASE}/portal/home?deposit=failed`, 302)
   }
 
   try {
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
-    )
+    const supabase = createClient(SUPABASE_URL, SERVICE_KEY)
 
     const token  = await getPesapalToken()
     const status = await getTransactionStatus(token, orderTrackingId)
 
-    if (status.payment_status_description === 'Completed') {
+    // Guard against an OrderTrackingId being paired with a different order's
+    // reference: the verified merchant reference must match the one we were given.
+    if (status.merchant_reference && reference && status.merchant_reference !== reference) {
+      console.error('pesapal-callback: merchant_reference mismatch', {
+        orderTrackingId, reference, verified: status.merchant_reference,
+      })
+      return Response.redirect(`${APP_BASE}/portal/home?deposit=failed`, 302)
+    }
 
-      // Credit the wallet
-      const { data: wallet } = await supabase
-        .from('wallets').select('balance').eq('id', walletId).maybeSingle()
-
-      let newBalance = 0
-      if (wallet) {
-        newBalance = Number(wallet.balance) + Number(amount)
-        await supabase.from('wallets').update({ balance: newBalance }).eq('id', walletId)
-      }
-
-      // Mark transaction completed and get campaign name
+    if (status.payment_status_description !== 'Completed') {
+      // Only fail a still-pending row (don't clobber an already-completed one).
       await supabase.from('transactions')
-        .update({
-          status: 'completed',
-          notes:  `Pesapal confirmed. order_tracking_id: ${orderTrackingId}`,
-        })
+        .update({ status: 'failed', notes: `Pesapal status: ${status.payment_status_description}` })
         .eq('reference', reference)
+        .eq('status', 'pending')
+      return Response.redirect(`${APP_BASE}/portal/home?deposit=failed`, 302)
+    }
 
-      // Fetch customer phone and campaign name for SMS
+    // Atomic + idempotent + amount-verified credit (see migration RPC).
+    const verifiedAmount = Number(status.amount)
+    const { data: result, error: rpcError } = await supabase.rpc('process_pesapal_credit', {
+      p_reference:         reference,
+      p_order_tracking_id: orderTrackingId,
+      p_verified_amount:   isNaN(verifiedAmount) ? null : verifiedAmount,
+    })
+
+    if (rpcError) {
+      console.error('pesapal-callback: process_pesapal_credit failed', rpcError)
+      return Response.redirect(`${APP_BASE}/portal/home?deposit=error`, 302)
+    }
+
+    const outcome = result?.result
+
+    if (outcome === 'credited') {
+      // Send the deposit-confirmed SMS using the server-stored txn values.
+      const creditedAmount = Number(result.amount)
       const { data: customer } = await supabase
-        .from('customers')
-        .select('phone, first_name')
-        .eq('id', customerId)
-        .maybeSingle()
+        .from('customers').select('phone, first_name').eq('id', result.customer_id).maybeSingle()
 
       let campaignName = 'your campaign'
-      if (campaignId) {
+      if (result.campaign_id) {
         const { data: campaign } = await supabase
-          .from('campaigns').select('name').eq('id', campaignId).maybeSingle()
+          .from('campaigns').select('name').eq('id', result.campaign_id).maybeSingle()
         if (campaign) campaignName = campaign.name
       }
 
-      // Send deposit confirmed SMS
       if (customer?.phone) {
-        await sendSMS(customerId, customer.phone, 'deposit_confirmed', {
-          amount:    formatUGX(Number(amount)),
-          balance:   formatUGX(newBalance),
+        await sendSMS(result.customer_id, customer.phone, 'deposit_confirmed', {
+          amount:    formatUGX(creditedAmount),
+          balance:   formatUGX(Number(result.new_balance)),
           campaign:  campaignName,
           reference: reference || '',
         })
       }
 
       return Response.redirect(
-        `${APP_BASE}/portal/payment-success?reference=${reference}&amount=${amount}&enrollmentId=${enrollmentId || ''}`,
+        `${APP_BASE}/portal/payment-success?reference=${reference}&amount=${creditedAmount}&enrollmentId=${enrollmentId}`,
         302
       )
-
-    } else {
-      await supabase.from('transactions')
-        .update({ status: 'failed', notes: `Pesapal status: ${status.payment_status_description}` })
-        .eq('reference', reference)
-
-      return Response.redirect(`${APP_BASE}/portal/home?deposit=failed`, 302)
     }
+
+    if (outcome === 'already_processed') {
+      // Idempotent success — the IPN (or an earlier callback) already credited it.
+      return Response.redirect(
+        `${APP_BASE}/portal/payment-success?reference=${reference}&amount=${verifiedAmount}&enrollmentId=${enrollmentId}`,
+        302
+      )
+    }
+
+    // not_found / amount_mismatch
+    console.error('pesapal-callback: credit not applied', { reference, outcome, result })
+    return Response.redirect(`${APP_BASE}/portal/home?deposit=failed`, 302)
 
   } catch (err) {
     console.error('pesapal-callback error:', err)

@@ -218,8 +218,12 @@ export default function Pay({
   async function handleEducationPay() {
     setError(''); setPaying(true)
     try {
+      // Send the customer's own access token — process-fee-payment now verifies
+      // the caller owns this customerId/walletId before moving money.
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) { setError('Your session has expired. Please log in again.'); setPaying(false); return }
       const res = await fetch(`${SUPABASE_URL}/functions/v1/process-fee-payment`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${SUPABASE_ANON_KEY}` },
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
         body: JSON.stringify({ customerId: customer.id, walletId: wallet.id, campaignId: enrollment.campaign_id, studentId: enrollment.student_id, amount: parsedAmount }),
       })
       const data = await res.json()
