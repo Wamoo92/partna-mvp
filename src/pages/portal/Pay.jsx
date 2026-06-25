@@ -239,22 +239,19 @@ export default function Pay({
     setError(''); setPaying(true)
     try {
       if (!wallet) { setError('Could not find wallet.'); setPaying(false); return }
-      const newBalance = Number(wallet.balance) - parsedAmount
-      if (newBalance < 0) { setError('Insufficient balance.'); setPaying(false); return }
-      const reference = generateReference(); setTxnReference(reference)
-      const fullPayment = parsedAmount >= remaining
-      const { data: txnData, error: txnError } = await supabase.from('transactions').insert({ customer_id: customer.id, wallet_id: wallet.id, campaign_id: enrollment?.campaign_id || null, type: 'payment', amount: parsedAmount, status: 'completed', reference, notes: discount ? `Discount prize applied: ${discountPct}% (${formatUGX(discountAmount)} saved)` : null }).select()
-      if (txnError) { setError('Could not record transaction.'); setPaying(false); return }
-      const txnId = txnData?.[0]?.id
-      if (txnId) { const partnaFee = Math.round(parsedAmount * 0.01); await supabase.from('transaction_fees').insert({ transaction_id: txnId, customer_id: customer.id, fee_type: 'payment', charged_to: 'business', partna_fee: partnaFee, carrier_fee: 0, tax: 0, total_fees: partnaFee, net_amount: parsedAmount - partnaFee }) }
-      await supabase.from('wallets').update({ balance: newBalance }).eq('id', wallet.id)
-      if (fullPayment) {
-        const { data: escrowWallet } = await supabase.from('escrow_wallets').select('*').eq('business_id', customer.business_id).maybeSingle()
-        if (escrowWallet) { await supabase.from('escrow_wallets').update({ balance: Number(escrowWallet.balance) + parsedAmount }).eq('id', escrowWallet.id) } else { await supabase.from('escrow_wallets').insert({ business_id: customer.business_id, balance: parsedAmount }) }
-        await supabase.from('sales').insert({ business_id: customer.business_id, customer_id: customer.id, campaign_id: enrollment?.campaign_id || null, transaction_id: txnId, amount: parsedAmount, type: 'retail', status: 'pending', is_prize: false, notes: discount ? `Discount prize applied: ${discountPct}% off` : null })
-        setIsFullPayment(true)
-      }
-      if (discount) await supabase.from('customer_discounts').update({ is_used: true }).eq('id', discount.id)
+      // Balance debit, ledger, escrow and sale now happen server-side (service
+      // role). The server recomputes remaining/discount/full-vs-partial itself.
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) { setError('Your session has expired. Please log in again.'); setPaying(false); return }
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/process-general-payment`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+        body: JSON.stringify({ enrollmentId: enrollment.id, amount: parsedAmount }),
+      })
+      const data = await res.json()
+      if (!res.ok || !data.success) { setError(data.error || 'Could not process payment. Please try again.'); setPaying(false); return }
+      setTxnReference(data.reference)
+      if (data.isFullPayment) setIsFullPayment(true)
+      if (data.newBalance !== undefined) setWallet(w => ({ ...w, balance: data.newBalance }))
       setStep(successStep)
     } catch (e) { console.error('Unexpected error:', e); setError('Something went wrong. Please try again.') }
     setPaying(false)

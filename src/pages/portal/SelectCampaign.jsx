@@ -424,15 +424,18 @@ export default function SelectCampaign({
     if (isEduCampaign && !confirmedStudent) return
     setSaving(true)
     try {
-      const drawCode = generateDrawCode()
-      const enrollPayload = { customer_id: customer.id, campaign_id: campaign.id, business_id: business.id, draw_code: drawCode, status: 'active', ...(isEduCampaign && confirmedStudent ? { student_id: confirmedStudent.id } : {}) }
-      const { data: enrollment, error: enrollError } = await supabase.from('customer_campaigns').insert(enrollPayload).select().single()
-      if (enrollError) { console.error('Enrollment error:', enrollError); setSaving(false); return }
-      const { data: wallet, error: walletError } = await supabase.from('wallets').insert({ customer_id: customer.id, customer_campaign_id: enrollment.id, balance: 0 }).select().single()
-      if (walletError) { console.error('Wallet creation error:', walletError); setSaving(false); return }
-      await supabase.from('customer_campaigns').update({ wallet_id: wallet.id }).eq('id', enrollment.id)
-      if (customer?.phone) sendSMS(customer.id, customer.phone, 'campaign_enrolled', { campaign: campaign.name, draw_code: drawCode })
-      if (enrolledCampaignIds.length === 0) { navigate('/portal/kyc', { replace: true }) } else { navigate('/portal/home', { replace: true }) }
+      // Enrollment + wallet creation now happen server-side (service role) so the
+      // customer/business/student IDs are verified and the wallet can't be forged.
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) { console.error('No active session'); setSaving(false); return }
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/enroll-campaign`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+        body: JSON.stringify({ campaignId: campaign.id, ...(isEduCampaign && confirmedStudent ? { studentId: confirmedStudent.id } : {}) }),
+      })
+      const data = await res.json()
+      if (!res.ok || !data.success) { console.error('Enrollment error:', data.error); setSaving(false); return }
+      if (data.firstEnrollment) { navigate('/portal/kyc', { replace: true }) } else { navigate('/portal/home', { replace: true }) }
     } catch (e) { console.error('Campaign selection error:', e) }
     setSaving(false)
   }

@@ -310,13 +310,15 @@ export default function Profile({
     if (!showLeave) return
     setLeaveLoading(true)
     try {
-      const wallet = showLeave.wallets; const balance = Number(wallet?.balance || 0); const { fee, refund } = calcRefund(balance)
-      await supabase.from('customer_campaigns').update({ status: 'left', left_at: new Date().toISOString() }).eq('id', showLeave.id)
-      if (wallet) await supabase.from('wallets').update({ balance: 0 }).eq('id', wallet.id)
-      if (balance > 0) {
-        await supabase.from('transactions').insert({ customer_id: customer.id, wallet_id: wallet?.id || null, campaign_id: showLeave.campaign_id, type: 'withdrawal', amount: balance, status: 'pending', notes: `Campaign left — refund pending. Fee deducted: UGX ${fee.toLocaleString()}. Net refund: UGX ${refund.toLocaleString()}` })
-        await supabase.from('transaction_fees').insert({ customer_id: customer.id, fee_type: 'leave_campaign', charged_to: 'user', partna_fee: fee, carrier_fee: 0, tax: 0, total_fees: fee, net_amount: refund })
-      }
+      // Enrollment exit + wallet zero-out + refund record now happen server-side.
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) { console.error('No active session'); setLeaveLoading(false); return }
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/leave-campaign`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+        body: JSON.stringify({ enrollmentId: showLeave.id }),
+      })
+      const data = await res.json()
+      if (!res.ok || !data.success) { console.error('Leave campaign error:', data.error); setLeaveLoading(false); return }
       setLeaveSuccess(true); await loadData()
     } catch (e) { console.error('Leave campaign error:', e) }
     setLeaveLoading(false)
@@ -325,17 +327,16 @@ export default function Profile({
   async function handleDeleteAccount() {
     setDeleteLoading(true)
     try {
-      for (const enrollment of enrollments) {
-        const wallet = enrollment.wallets; const balance = Number(wallet?.balance || 0); const { fee, refund } = calcRefund(balance)
-        await supabase.from('customer_campaigns').update({ status: 'left', left_at: new Date().toISOString() }).eq('id', enrollment.id)
-        if (wallet) await supabase.from('wallets').update({ balance: 0 }).eq('id', wallet.id)
-        if (balance > 0) {
-          await supabase.from('transactions').insert({ customer_id: customer.id, wallet_id: wallet?.id || null, campaign_id: enrollment.campaign_id, type: 'withdrawal', amount: balance, status: 'pending', notes: `Account deleted — refund pending. Fee: UGX ${fee.toLocaleString()}. Net: UGX ${refund.toLocaleString()}` })
-          await supabase.from('transaction_fees').insert({ customer_id: customer.id, fee_type: 'delete_account', charged_to: 'user', partna_fee: fee, carrier_fee: 0, tax: 0, total_fees: fee, net_amount: refund })
-        }
-      }
-      await supabase.from('customers').update({ registration_status: 'deleted' }).eq('id', customer.id)
-      if (customer?.phone) await sendSMS(customer.id, customer.phone, 'account_deleted', {})
+      // Account closure (leave all campaigns, zero wallets, refunds, deactivate)
+      // now happens server-side (service role) under an ownership check.
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) { console.error('No active session'); setDeleteLoading(false); return }
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/close-account`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+        body: JSON.stringify({}),
+      })
+      const data = await res.json()
+      if (!res.ok || !data.success) { console.error('Delete account error:', data.error); setDeleteLoading(false); return }
       await supabase.auth.signOut(); setDeleteSuccess(true)
     } catch (e) { console.error('Delete account error:', e) }
     setDeleteLoading(false)

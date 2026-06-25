@@ -144,19 +144,17 @@ export default function Withdraw({
     if (!wallet) { setError('Could not find wallet. Please go back and try again.'); return }
     setLoading(true)
     try {
-      const newBalance = Number(wallet.balance) - parsedAmount
-      if (newBalance < 0) { setError('Insufficient balance.'); setLoading(false); return }
-      const reference = generateReference(); setTxnReference(reference)
-      const openFloatNetwork = toOpenFloatNetwork(network)
-      const cleanPhone = momoPhone.replace(/\s/g, '')
-      const { data: txnData, error: txnError } = await supabase.from('transactions').insert({ customer_id: customer.id, wallet_id: wallet.id, campaign_id: enrollment?.campaign_id || null, type: 'withdrawal', amount: parsedAmount, status: 'pending', network: openFloatNetwork, withdrawal_network: openFloatNetwork, withdrawal_phone: cleanPhone, reference, notes: `${networkLabel}: ${momoPhone}` }).select()
-      if (txnError) { setError('Could not record transaction. Please try again.'); setLoading(false); return }
-      const txnId = txnData?.[0]?.id
-      if (txnId) { await supabase.from('transaction_fees').insert({ transaction_id: txnId, customer_id: customer.id, network: openFloatNetwork, fee_type: 'withdrawal', charged_to: 'user', partna_fee: fees.partnaFee, carrier_fee: fees.carrierFee, tax: 0, total_fees: fees.totalFees, net_amount: fees.netAmount }) }
-      const { error: balanceError } = await supabase.from('wallets').update({ balance: newBalance }).eq('id', wallet.id)
-      if (balanceError) { setError('Could not update balance. Please try again.'); setLoading(false); return }
-      const smsPhone = customer?.phone || momoPhone
-      sendSMS(customer.id, smsPhone, 'withdrawal_requested', { amount: formatUGX(parsedAmount), reference })
+      // Balance debit, withdrawal record, fees and SMS now happen server-side
+      // (service role) with an ownership check and optimistic balance lock.
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) { setError('Your session has expired. Please log in again.'); setLoading(false); return }
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/process-withdrawal`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+        body: JSON.stringify({ enrollmentId: enrollment.id, amount: parsedAmount, network, momoPhone }),
+      })
+      const data = await res.json()
+      if (!res.ok || !data.success) { setError(data.error || 'Could not process withdrawal. Please try again.'); setLoading(false); return }
+      setTxnReference(data.reference)
       setStep(3)
     } catch (e) { console.error('Unexpected error:', e); setError('Something went wrong. Please try again.') }
     setLoading(false)
