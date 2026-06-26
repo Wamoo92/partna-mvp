@@ -84,15 +84,18 @@ export default function AddMoney({
     if (!wallet) { setError('Could not find wallet. Please go back and try again.'); return }
     setLoading(true)
     try {
+      // pesapal-initiate now derives the customer from the caller's JWT and
+      // verifies wallet ownership, so send the user's access token.
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) { setError('Your session has expired. Please log in again.'); setLoading(false); return }
       const res = await fetch(`${SUPABASE_URL}/functions/v1/pesapal-initiate`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+          'Authorization': `Bearer ${session.access_token}`,
         },
         body: JSON.stringify({
           amount: parsedAmount, currency: 'UGX',
-          customer: { id: customer.id, email: customer.email, phone: customer.phone, first_name: customer.first_name, last_name: customer.last_name },
           walletId: wallet.id, campaignId: enrollment?.campaign_id || null, enrollmentId: enrollmentId || null,
         }),
       })

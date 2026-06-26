@@ -235,7 +235,7 @@ function PortalAndDashboard() {
                 } />
                 <Route path="/payment-source" element={
                   <PortalGuard customer={customer} loading={loading}>
-                    <PaymentSource customer={customer} />
+                    <PaymentSource customer={customer} refetch={refetch} />
                   </PortalGuard>
                 } />
                 <Route path="/select-campaign" element={

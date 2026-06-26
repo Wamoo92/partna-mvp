@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { supabase } from '../../supabase'
 import { useBrand } from '../../lib/BrandContext'
 
 const SUPABASE_URL      = import.meta.env.VITE_SUPABASE_URL
@@ -24,18 +25,19 @@ export default function KYC({
     setError('')
     setLoading(true)
     try {
+      // smileid-verify now derives the customer from the caller's JWT, so send the
+      // user's access token (not the anon key) and only the NIN/dob.
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) { setError('Your session has expired. Please log in again.'); setLoading(false); return }
       const res = await fetch(`${SUPABASE_URL}/functions/v1/smileid-verify`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+          'Authorization': `Bearer ${session.access_token}`,
         },
         body: JSON.stringify({
-          customerId: customer.id,
-          nin:        nin.toUpperCase().trim(),
-          firstName:  customer.first_name  || '',
-          lastName:   customer.last_name   || '',
-          dob:        customer.dob         || '',
+          nin: nin.toUpperCase().trim(),
+          dob: customer.dob || '',
         }),
       })
       const data = await res.json()

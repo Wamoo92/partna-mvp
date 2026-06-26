@@ -4,7 +4,7 @@ import { supabase } from '../../supabase'
 import { useBrand } from '../../lib/BrandContext'
 
 export default function PaymentSource({
- customer, fromProfile = false }) {
+ customer, fromProfile = false, refetch }) {
   useEffect(() => { document.title = 'Payment - Partna' }, [])
 
   const brand    = useBrand()
@@ -35,6 +35,9 @@ export default function PaymentSource({
         setLoading(false)
         return
       }
+      // Refresh the global customer so the saved payment source is reflected
+      // immediately (Profile/Home read it from useAuth, which is otherwise stale).
+      if (refetch) await refetch()
       if (fromProfile) navigate('/portal/profile')
       else navigate('/portal/home', { replace: true })
     } catch (e) {

@@ -9,13 +9,24 @@ const PESAPAL_BASE    = IS_LIVE
   : 'https://cybqa.pesapal.com/pesapalv3'
 
 const SUPABASE_URL  = Deno.env.get('SUPABASE_URL')!
+const SERVICE_KEY   = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 const IPN_URL       = `${SUPABASE_URL}/functions/v1/pesapal-ipn`
 const CALLBACK_URL  = `${SUPABASE_URL}/functions/v1/pesapal-callback`
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': 'https://www.partna.io',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+function getCorsHeaders(req: Request) {
+  const origin  = req.headers.get('origin') || ''
+  const allowed = (
+    origin === 'https://www.partna.io' ||
+    origin === 'https://partna.io'     ||
+    origin.endsWith('.partna.io')      ||
+    origin === 'http://localhost:5173' ||
+    origin === 'http://localhost:3000'
+  )
+  return {
+    'Access-Control-Allow-Origin':  allowed ? origin : 'https://www.partna.io',
+    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  }
 }
 
 // ── Simple in-memory rate limiter ──
@@ -71,6 +82,7 @@ async function getOrRegisterIPN(token: string): Promise<string> {
 }
 
 serve(async (req) => {
+  const corsHeaders = getCorsHeaders(req)
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
   // Rate limiting
@@ -83,7 +95,7 @@ serve(async (req) => {
 
   try {
     const body = await req.json()
-    const { amount, currency = 'UGX', customer, walletId, campaignId, enrollmentId } = body
+    const { amount, currency = 'UGX', walletId, campaignId, enrollmentId } = body
 
     // Input validation
     if (!amount || typeof amount !== 'number' || amount < 1000 || amount > 50000000) {
@@ -91,9 +103,42 @@ serve(async (req) => {
         status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
     }
-    if (!customer?.id || !walletId) {
+    if (!walletId) {
       return new Response(JSON.stringify({ error: 'Missing required fields' }), {
         status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
+
+    const supabase = createClient(SUPABASE_URL, SERVICE_KEY)
+
+    // ── Authenticate the caller and derive the customer from the JWT ──────
+    // (Don't trust a client-supplied customer object / walletId.)
+    const jwt = (req.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '').trim()
+    if (!jwt) {
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+        status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
+    const { data: userData, error: userErr } = await supabase.auth.getUser(jwt)
+    const authUser = userData?.user
+    if (userErr || !authUser) {
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+        status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
+    const { data: customer } = await supabase
+      .from('customers').select('id, email, phone, first_name, last_name').eq('auth_user_id', authUser.id).maybeSingle()
+    if (!customer) {
+      return new Response(JSON.stringify({ error: 'Forbidden' }), {
+        status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
+    // The wallet must belong to this customer.
+    const { data: ownedWallet } = await supabase
+      .from('wallets').select('id').eq('id', walletId).eq('customer_id', customer.id).maybeSingle()
+    if (!ownedWallet) {
+      return new Response(JSON.stringify({ error: 'Forbidden' }), {
+        status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
     }
 
@@ -132,11 +177,6 @@ serve(async (req) => {
     if (!orderData.redirect_url) {
       throw new Error(`Pesapal order failed: ${JSON.stringify(orderData)}`)
     }
-
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
-    )
 
     await supabase.from('transactions').insert({
       customer_id: customer.id,

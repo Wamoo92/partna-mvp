@@ -11,10 +11,20 @@ const SMILEID_URL  = IS_LIVE
   ? 'https://api.smileidentity.com/v1/id_verification'
   : 'https://testapi.smileidentity.com/v1/id_verification'
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': 'https://www.partna.io',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+function getCorsHeaders(req: Request) {
+  const origin  = req.headers.get('origin') || ''
+  const allowed = (
+    origin === 'https://www.partna.io' ||
+    origin === 'https://partna.io'     ||
+    origin.endsWith('.partna.io')      ||
+    origin === 'http://localhost:5173' ||
+    origin === 'http://localhost:3000'
+  )
+  return {
+    'Access-Control-Allow-Origin':  allowed ? origin : 'https://www.partna.io',
+    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  }
 }
 
 // Rate limiter — 5 KYC attempts per customer per hour
@@ -65,16 +75,48 @@ async function sendSMS(customerId: string, phone: string, event: string, vars: R
 }
 
 serve(async (req) => {
+  const corsHeaders = getCorsHeaders(req)
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
   try {
-    const { customerId, nin, firstName, lastName, dob } = await req.json()
+    const { nin, dob } = await req.json()
 
-    if (!customerId || !nin) {
+    if (!nin) {
       return new Response(JSON.stringify({ error: 'Missing required fields' }), {
         status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
     }
+
+    // ── Authenticate the caller and derive the customer from the JWT ──────
+    // (Never trust a client-supplied customerId — that was an IDOR allowing KYC
+    // to be run against any account.)
+    const supabaseAuth = createClient(
+      Deno.env.get('SUPABASE_URL')!,
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
+    )
+    const jwt = (req.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '').trim()
+    if (!jwt) {
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+        status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
+    const { data: userData, error: userErr } = await supabaseAuth.auth.getUser(jwt)
+    const authUser = userData?.user
+    if (userErr || !authUser) {
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+        status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
+    const { data: owner } = await supabaseAuth
+      .from('customers').select('id, first_name, last_name, phone').eq('auth_user_id', authUser.id).maybeSingle()
+    if (!owner) {
+      return new Response(JSON.stringify({ error: 'Forbidden' }), {
+        status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
+    const customerId = owner.id
+    const firstName  = owner.first_name || ''
+    const lastName   = owner.last_name  || ''
 
     const cleanNIN = nin.toUpperCase().trim()
 
