@@ -610,20 +610,6 @@ export default function CardDetail({
               Get access to your virtual card, cashback rewards, and the option to order a physical card.
             </p>
           </div>
-          <div style={{ background: C.white, border: `1px solid ${C.stroke}`, borderRadius: 12, padding: '16px 20px', width: '100%', maxWidth: 320, display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {[
-              { type: 'Virtual card',  price: 'UGX 5,000 / month',                              icon: '💳' },
-              { type: 'Physical card', price: 'UGX 10,000 / month + UGX 20,000 issuing fee',    icon: '🪪' },
-            ].map((item, i) => (
-              <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
-                <span style={{ fontSize: 20 }}>{item.icon}</span>
-                <div>
-                  <p style={{ fontSize: 13, fontWeight: 600, color: C.black, margin: '0 0 2px' }}>{item.type}</p>
-                  <p style={{ fontSize: 12, fontWeight: 500, color: C.secondary, margin: 0 }}>{item.price}</p>
-                </div>
-              </div>
-            ))}
-          </div>
           <button onClick={() => setShowActivateModal(true)} style={{ padding: '14px 36px', fontSize: 15, fontWeight: 600, color: C.white, background: C.black, border: 'none', borderRadius: 12, cursor: 'pointer', width: '100%', maxWidth: 320 }}>
             Activate virtual card
           </button>

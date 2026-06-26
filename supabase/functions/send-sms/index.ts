@@ -5,10 +5,20 @@ const AT_API_KEY   = Deno.env.get('AT_API_KEY')!
 const AT_SENDER_ID = Deno.env.get('AT_SENDER_ID') || ''
 const AT_SMS_URL   = 'https://api.africastalking.com/version1/messaging'
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': 'https://www.partna.io',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+function getCorsHeaders(req: Request) {
+  const origin  = req.headers.get('origin') || ''
+  const allowed = (
+    origin === 'https://www.partna.io' ||
+    origin === 'https://partna.io'     ||
+    origin.endsWith('.partna.io')      ||
+    origin === 'http://localhost:5173' ||
+    origin === 'http://localhost:3000'
+  )
+  return {
+    'Access-Control-Allow-Origin':  allowed ? origin : 'https://www.partna.io',
+    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  }
 }
 
 // ── SMS Templates ──────────────────────────────────────────────────────────
@@ -178,6 +188,7 @@ async function logSMS(supabase: any, {
 
 // ── Main handler ───────────────────────────────────────────────────────────
 Deno.serve(async (req) => {
+  const corsHeaders = getCorsHeaders(req)
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
   try {

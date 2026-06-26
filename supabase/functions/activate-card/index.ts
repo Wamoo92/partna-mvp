@@ -3,9 +3,20 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 const SUPABASE_URL      = Deno.env.get('SUPABASE_URL')!
 const SUPABASE_SERVICE  = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 const VIRTUAL_FEE       = 5000
-const CORS = {
-  'Access-Control-Allow-Origin':  '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+function getCorsHeaders(req: Request) {
+  const origin  = req.headers.get('origin') || ''
+  const allowed = (
+    origin === 'https://www.partna.io' ||
+    origin === 'https://partna.io'     ||
+    origin.endsWith('.partna.io')      ||
+    origin === 'http://localhost:5173' ||
+    origin === 'http://localhost:3000'
+  )
+  return {
+    'Access-Control-Allow-Origin':  allowed ? origin : 'https://www.partna.io',
+    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  }
 }
 
 function generateReference(): string {
@@ -14,6 +25,7 @@ function generateReference(): string {
 }
 
 Deno.serve(async (req) => {
+  const CORS = getCorsHeaders(req)
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS })
 
   try {
@@ -57,11 +69,27 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ error: 'Customer already has an active card subscription' }), { status: 409, headers: CORS })
     }
 
-    // ── Get wallet ────────────────────────────────────────────────────────
+    // ── Get wallet (scoped to the customer's active enrollment) ───────────
+    // A customer can now have multiple wallets (one per enrollment), so look the
+    // wallet up via the active enrollment instead of .maybeSingle() on
+    // customer_id (which errors when more than one wallet exists).
+    const { data: enrollment } = await supabase
+      .from('customer_campaigns')
+      .select('wallet_id')
+      .eq('customer_id', customer.id)
+      .eq('status', 'active')
+      .order('enrolled_at', { ascending: true })
+      .limit(1)
+      .maybeSingle()
+
+    if (!enrollment?.wallet_id) {
+      return new Response(JSON.stringify({ error: 'No active savings wallet found. Please join a campaign first.' }), { status: 404, headers: CORS })
+    }
+
     const { data: wallet, error: walletError } = await supabase
       .from('wallets')
       .select('id, balance')
-      .eq('customer_id', customer.id)
+      .eq('id', enrollment.wallet_id)
       .maybeSingle()
 
     if (walletError || !wallet) {

@@ -56,14 +56,11 @@ serve(async (req) => {
 
   try {
     const supabase = createClient(SUPABASE_URL, SERVICE_KEY)
-    const { enrollmentId, amount, network, momoPhone } = await req.json()
-    if (!enrollmentId || amount == null || !momoPhone) return json({ error: 'Missing required fields' }, req, 400)
+    const { enrollmentId, amount } = await req.json()
+    if (!enrollmentId || amount == null) return json({ error: 'Missing required fields' }, req, 400)
 
     const amt = Math.floor(Number(amount))
     if (isNaN(amt) || amt < 5000) return json({ error: 'Minimum withdrawal is UGX 5,000.' }, req, 400)
-
-    const cleanPhone = String(momoPhone).replace(/\s/g, '')
-    if (cleanPhone.length < 10) return json({ error: 'Please enter a valid phone number.' }, req, 400)
 
     // ── Authenticate + ownership ──────────────────────────────────────────
     const jwt = (req.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '').trim()
@@ -73,8 +70,13 @@ serve(async (req) => {
     if (userErr || !authUser) return json({ error: 'Unauthorized' }, req, 401)
 
     const { data: customer } = await supabase
-      .from('customers').select('id, phone').eq('auth_user_id', authUser.id).maybeSingle()
+      .from('customers').select('id, phone, payment_network, payment_number').eq('auth_user_id', authUser.id).maybeSingle()
     if (!customer) return json({ error: 'Customer not found' }, req, 403)
+
+    // Withdrawals always go to the customer's SAVED payment source (set in Profile).
+    if (!customer.payment_network || !customer.payment_number) {
+      return json({ error: 'Please add a mobile money payment source in your profile before withdrawing.' }, req, 400)
+    }
 
     const { data: enrollment } = await supabase
       .from('customer_campaigns').select('id, customer_id, campaign_id, wallet_id, status')
@@ -88,11 +90,13 @@ serve(async (req) => {
     const balance = Number(wallet.balance)
     if (balance < amt) return json({ error: `Insufficient balance. Your wallet has ${formatUGX(balance)}.` }, req, 400)
 
-    const openFloatNetwork = toOpenFloatNetwork(String(network || ''))
-    const networkLabel     = network === 'mtn' ? 'MTN MoMo' : network === 'airtel' ? 'Airtel Money' : openFloatNetwork
+    const savedNetwork     = String(customer.payment_network)
+    const openFloatNetwork = toOpenFloatNetwork(savedNetwork)
+    const networkLabel     = savedNetwork === 'mtn' ? 'MTN MoMo' : savedNetwork === 'airtel' ? 'Airtel Money' : openFloatNetwork
+    const payoutPhone      = String(customer.payment_number).replace(/\s/g, '')
     const partnaFee  = Math.round(amt * 0.02)
     const totalFees  = partnaFee + CARRIER_FEE
-    const netAmount  = Math.max(0, amt - totalFees)
+    const netAmount  = Math.max(0, amt - totalFees)   // amount actually disbursed to mobile money
     const reference  = generateReference()
 
     // ── Debit wallet with an optimistic lock ──────────────────────────────
@@ -106,8 +110,11 @@ serve(async (req) => {
     const { data: txnRows, error: txnErr } = await supabase.from('transactions').insert({
       customer_id: customer.id, wallet_id: wallet.id, campaign_id: enrollment.campaign_id,
       type: 'withdrawal', amount: amt, status: 'pending',
-      network: openFloatNetwork, withdrawal_network: openFloatNetwork, withdrawal_phone: cleanPhone,
-      reference, notes: `${networkLabel}: ${momoPhone}`,
+      network: openFloatNetwork, withdrawal_network: openFloatNetwork, withdrawal_phone: payoutPhone,
+      reference,
+      // amt = gross debited from the wallet; the NET (after fees) is what is paid out
+      // to the customer's mobile money, recorded here and in transaction_fees.net_amount.
+      notes: `Payout UGX ${netAmount.toLocaleString()} to ${networkLabel} ${payoutPhone} (gross UGX ${amt.toLocaleString()} − fees UGX ${totalFees.toLocaleString()})`,
     }).select('id')
     if (txnErr) {
       // Restore the balance — the withdrawal record could not be created.
@@ -124,10 +131,10 @@ serve(async (req) => {
       })
     }
 
-    const smsPhone = customer.phone || cleanPhone
+    const smsPhone = customer.phone || payoutPhone
     await sendSMS(customer.id, smsPhone, 'withdrawal_requested', { amount: formatUGX(amt), reference })
 
-    return json({ success: true, reference, newBalance: balance - amt }, req)
+    return json({ success: true, reference, newBalance: balance - amt, netAmount }, req)
 
   } catch (e) {
     console.error('process-withdrawal error:', e)

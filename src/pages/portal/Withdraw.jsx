@@ -121,7 +121,11 @@ export default function Withdraw({
   const balance      = wallet ? Number(wallet.balance) : 0
   const validAmount  = !isNaN(parsedAmount) && parsedAmount >= 5000 && parsedAmount <= balance
   const fees         = getFees(parsedAmount)
-  const networkLabel = network === 'mtn' ? 'MTN MoMo' : 'Airtel Money'
+  // Withdrawals go to the customer's saved payment source — not chosen here.
+  const hasPaymentSource = !!(customer?.payment_network && customer?.payment_number)
+  const savedNumber      = customer?.payment_number || ''
+  const networkLabel     = customer?.payment_network === 'mtn' ? 'MTN MoMo' : customer?.payment_network === 'airtel' ? 'Airtel Money' : (customer?.payment_network || '—')
+  const networkLogo      = customer?.payment_network === 'mtn' ? '/mtn-logo.svg' : customer?.payment_network === 'airtel' ? '/airtel-logo.svg' : null
 
   useEffect(() => { if (customer) loadEnrollment() }, [customer, enrollmentId])
 
@@ -140,17 +144,18 @@ export default function Withdraw({
 
   async function handleWithdraw() {
     setError('')
-    if (momoPhone.replace(/\s/g, '').length < 10) { setError('Please enter a valid phone number.'); return }
+    if (!hasPaymentSource) { setError('Please add a mobile money payment source in your profile first.'); return }
     if (!wallet) { setError('Could not find wallet. Please go back and try again.'); return }
     setLoading(true)
     try {
-      // Balance debit, withdrawal record, fees and SMS now happen server-side
-      // (service role) with an ownership check and optimistic balance lock.
+      // Balance debit, withdrawal record, fees and SMS happen server-side (service
+      // role). The payout destination is the customer's SAVED payment source — the
+      // server reads it, so the client no longer sends network/phone.
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) { setError('Your session has expired. Please log in again.'); setLoading(false); return }
       const res = await fetch(`${SUPABASE_URL}/functions/v1/process-withdrawal`, {
         method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
-        body: JSON.stringify({ enrollmentId: enrollment.id, amount: parsedAmount, network, momoPhone }),
+        body: JSON.stringify({ enrollmentId: enrollment.id, amount: parsedAmount }),
       })
       const data = await res.json()
       if (!res.ok || !data.success) { setError(data.error || 'Could not process withdrawal. Please try again.'); setLoading(false); return }
@@ -319,31 +324,26 @@ export default function Withdraw({
           {step === 2 && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
 
-              {/* Network selector */}
-              <div style={{ background: C.white, border: `1px solid ${C.stroke}`, borderRadius: 12, padding: 20, display: 'flex', flexDirection: 'column', gap: 14 }}>
-                <label style={{ fontSize: 14, fontWeight: 600, color: C.black, letterSpacing: '-0.4px' }}>Select network</label>
-                <div style={{ display: 'flex', gap: 12 }}>
-                  {[
-                    { id: 'mtn',    logo: '/mtn-logo.svg',    label: 'MTN MoMo'     },
-                    { id: 'airtel', logo: '/airtel-logo.svg', label: 'Airtel Money' },
-                  ].map(net => (
-                    <button key={net.id} onClick={() => setNetwork(net.id)} style={{ flex: 1, padding: '14px 10px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, background: network === net.id ? C.black : C.white, border: `1px solid ${network === net.id ? C.black : C.grayLine}`, borderRadius: 10, cursor: 'pointer', transition: 'all 0.15s' }}>
-                      <img src={net.logo} alt={net.label} style={{ width: 38, height: 38, objectFit: 'contain' }} />
-                      <span style={{ fontSize: 12, fontWeight: 600, color: network === net.id ? C.white : C.black, letterSpacing: '-0.2px' }}>{net.label}</span>
-                    </button>
-                  ))}
-                </div>
-
-                {/* Phone number */}
-                <div>
-                  <label style={{ display: 'block', fontSize: 14, fontWeight: 600, color: C.black, letterSpacing: '-0.4px', marginBottom: 6 }}>Mobile money number</label>
-                  <input
-                    style={inputStyle} type="tel" placeholder="+256 7XX XXX XXX"
-                    value={momoPhone} onChange={e => setMomoPhone(e.target.value)}
-                    onFocus={e => e.target.style.borderColor = C.black}
-                    onBlur={e => e.target.style.borderColor = C.grayLine}
-                  />
-                </div>
+              {/* Saved payment source — read-only (set in Profile) */}
+              <div style={{ background: C.white, border: `1px solid ${C.stroke}`, borderRadius: 12, padding: 20, display: 'flex', flexDirection: 'column', gap: 12 }}>
+                <label style={{ fontSize: 14, fontWeight: 600, color: C.black, letterSpacing: '-0.4px' }}>Withdrawing to</label>
+                {hasPaymentSource ? (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, background: C.bg, border: `1px solid ${C.grayLine}`, borderRadius: 10, padding: '12px 14px' }}>
+                    {networkLogo && <img src={networkLogo} alt={networkLabel} style={{ width: 38, height: 38, objectFit: 'contain' }} />}
+                    <div>
+                      <p style={{ fontSize: 13, fontWeight: 600, color: C.black, margin: '0 0 2px' }}>{networkLabel}</p>
+                      <p style={{ fontSize: 13, fontWeight: 500, color: C.secondary, margin: 0, fontFamily: 'monospace' }}>{savedNumber}</p>
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{ background: C.bgRed, borderRadius: 10, padding: '12px 14px', fontSize: 13, fontWeight: 500, color: C.red }}>
+                    No payment source on file. Add your mobile money number in your profile to withdraw.
+                  </div>
+                )}
+                <p style={{ fontSize: 12, fontWeight: 500, color: C.grayMid, margin: 0, lineHeight: '140%' }}>
+                  Withdrawals are sent to your saved payment source. To change it, update your{' '}
+                  <button onClick={() => navigate('/portal/payment-source')} style={{ background: 'none', border: 'none', padding: 0, color: C.black, fontWeight: 600, textDecoration: 'underline', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12 }}>payment source</button>.
+                </p>
               </div>
 
               {/* Summary */}
@@ -356,7 +356,7 @@ export default function Withdraw({
                     { label: 'Partna service fee (2%)',    value: '− ' + formatUGX(fees.partnaFee),  color: C.red },
                     { label: 'Mobile money fee (flat)',    value: '− ' + formatUGX(fees.carrierFee), color: C.red },
                     { label: 'Network',                    value: networkLabel },
-                    { label: 'Number',                     value: momoPhone || '—' },
+                    { label: 'Number',                     value: savedNumber || '—' },
                     { label: 'Date & time',                value: nowDisplay() },
                   ]} />
                   <ReceiveRow netAmount={fees.netAmount} />
@@ -366,8 +366,8 @@ export default function Withdraw({
               {error && <div style={{ background: C.bgRed, borderRadius: 8, padding: '12px 14px', fontSize: 14, fontWeight: 500, color: C.red, lineHeight: '140%' }}>{error}</div>}
 
               <button
-                style={{ ...btnPrimary, background: C.orange, borderColor: C.orange, opacity: loading ? 0.75 : 1, cursor: loading ? 'not-allowed' : 'pointer' }}
-                onClick={handleWithdraw} disabled={loading}
+                style={{ ...btnPrimary, background: C.orange, borderColor: C.orange, opacity: loading || !hasPaymentSource ? 0.6 : 1, cursor: loading || !hasPaymentSource ? 'not-allowed' : 'pointer' }}
+                onClick={handleWithdraw} disabled={loading || !hasPaymentSource}
                 onMouseEnter={e => { if (!loading) e.currentTarget.style.opacity = '0.85' }}
                 onMouseLeave={e => { if (!loading) e.currentTarget.style.opacity = '1' }}
               >

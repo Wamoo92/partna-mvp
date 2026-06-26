@@ -192,15 +192,6 @@ export default function PaymentSource({
               </p>
             </div>
 
-            {/* Info notice */}
-            <div style={{
-              background: '#F6F7EE', border: '1px solid #D5D9DD',
-              borderRadius: 8, padding: '12px 14px',
-              fontSize: 13, fontWeight: 500, color: '#959687', lineHeight: '140%',
-            }}>
-              In the full version, your mobile money number will be verified against your identity to ensure only your number can transact on your account.
-            </div>
-
             {/* Error */}
             {error && (
               <div style={{ background: '#F8E4E4', borderRadius: 8, padding: '12px 14px', fontSize: 14, fontWeight: 500, color: '#CC3939', lineHeight: '140%' }}>

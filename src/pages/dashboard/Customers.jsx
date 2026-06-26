@@ -174,7 +174,6 @@ export default function Customers({
                                 <span style={{ fontSize: 13, fontWeight: 600, color: C.black }}>{c.first_name} {c.last_name}</span>
                                 {atRisk && <span style={{ fontSize: 10, fontWeight: 600, color: C.red, background: C.bgRed, borderRadius: 5, padding: '2px 6px' }}>At risk</span>}
                               </div>
-                              <p style={{ fontSize: 10, fontWeight: 500, color: C.secondary, fontFamily: 'monospace', margin: '1px 0 0' }}>{c.draw_code || '—'}</p>
                             </div>
                           </div>
                         </td>
@@ -235,7 +234,6 @@ export default function Customers({
             {[
               { label: 'Email',           value: selected.email },
               { label: 'NIN',             value: selected.nin ? '••••' + selected.nin.slice(-4) : 'Not provided' },
-              { label: 'Draw code',       value: selected.draw_code || '—', mono: true },
               { label: 'KYC status',      value: selected.kyc_status === 'verified' ? 'Verified' : 'Pending', kyc: true },
               { label: 'Payment network', value: selected.payment_network === 'mtn' ? 'MTN MoMo' : selected.payment_network === 'airtel' ? 'Airtel Money' : 'Not set' },
               { label: 'Balance',         value: formatUGX(wallets[selected.id] ? Number(wallets[selected.id].balance) : 0) },
