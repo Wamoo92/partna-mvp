@@ -1,0 +1,14 @@
+project_id = "gxxffatdlyhrudxsgdje"
+
+# Pesapal endpoints are PUBLIC: pesapal-callback is reached by the customer's
+# browser via a top-level redirect from Pesapal (no Authorization header), and
+# pesapal-ipn is called server-to-server by Pesapal. They must NOT require a
+# Supabase JWT, otherwise the gateway rejects them with UNAUTHORIZED_NO_AUTH_HEADER
+# before the function runs (which blocked the wallet credit + redirect). Security
+# is enforced inside the functions by verifying the payment with Pesapal's
+# GetTransactionStatus API.
+[functions.pesapal-callback]
+verify_jwt = false
+
+[functions.pesapal-ipn]
+verify_jwt = false
