@@ -30,6 +30,38 @@ function generateCollectionCode(): string {
   return Array.from({ length: 6 }, () => chars[Math.floor(Math.random() * chars.length)]).join('')
 }
 
+async function sendCardEmail(to: string, subject: string, html: string) {
+  try {
+    await fetch(`${SUPABASE_URL}/functions/v1/send-admin-email`, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${SUPABASE_SERVICE}` },
+      body:    JSON.stringify({ to, subject, html, from: 'support' }),
+    })
+  } catch (e) { console.error('order-physical-card email error (non-critical):', e) }
+}
+function cardOrderEmailHtml({ customerName, businessName, collectionCode }: Record<string, string>): string {
+  return `
+    <div style="font-family: Inter, system-ui, sans-serif; max-width: 560px; margin: 0 auto; padding: 32px 24px; color: #111;">
+      <h2 style="font-size: 22px; font-weight: 600; margin: 0 0 12px;">Your physical card is on the way</h2>
+      <p style="font-size: 15px; color: #444; line-height: 1.6; margin: 0 0 20px;">
+        Hi ${customerName}, your ${businessName} physical Partna card has been ordered. It will be ready for
+        collection at ${businessName} within 5–7 working days.
+      </p>
+      <div style="background: #F6F7EE; border: 1px solid #D7D8CB; border-radius: 10px; padding: 16px; text-align: center; margin: 0 0 24px;">
+        <p style="font-size: 12px; color: #959687; margin: 0 0 6px;">Your collection code</p>
+        <p style="font-size: 26px; font-weight: 700; font-family: monospace; letter-spacing: 0.18em; margin: 0; color: #111;">${collectionCode}</p>
+      </div>
+      <p style="font-size: 14px; color: #444; line-height: 1.6; margin: 0 0 20px;">
+        Bring your National ID and this collection code to ${businessName} to collect your card.
+      </p>
+      <p style="font-size: 13px; color: #959687; line-height: 1.6; margin: 0;">
+        The UGX 20,000 issuing fee has been charged. Your monthly subscription will be UGX 10,000 from the date your
+        card is delivered. Questions? Contact <a href="mailto:support@partna.io" style="color:#111;font-weight:600;">support@partna.io</a>.
+      </p>
+      <p style="font-size: 13px; color: #959687; margin: 24px 0 0;">Powered by Partna</p>
+    </div>`
+}
+
 Deno.serve(async (req) => {
   const CORS = getCorsHeaders(req)
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS })
@@ -171,6 +203,20 @@ Deno.serve(async (req) => {
 
     if (txnError) {
       console.error('Failed to record issuing fee transaction:', txnError)
+    }
+
+    // ── Send order confirmation email (server-side, non-blocking) ─────────
+    if (customer.email) {
+      const businessName = (customer.businesses as any)?.name || 'Partna'
+      await sendCardEmail(
+        customer.email,
+        `Your ${businessName} physical card order — collection code inside`,
+        cardOrderEmailHtml({
+          customerName:   `${customer.first_name || ''} ${customer.last_name || ''}`.trim() || 'there',
+          businessName,
+          collectionCode,
+        })
+      )
     }
 
     return new Response(JSON.stringify({

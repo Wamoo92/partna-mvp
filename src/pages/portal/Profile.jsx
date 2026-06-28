@@ -356,7 +356,15 @@ export default function Profile({
       if (signInError) { setPinError('Current PIN is incorrect.'); setChangingPin(false); return }
       const { error: updateError } = await supabase.auth.updateUser({ password: `pin-${newPin}-${cleanPhone}` })
       if (updateError) { setPinError('Could not update PIN. Please try again.'); setChangingPin(false); return }
-      if (customer?.phone) sendSMS(customer.id, customer.phone, 'pin_changed', {})
+      // PIN-changed SMS is sent server-side (the send-sms relay is locked down).
+      try {
+        const { data: { session } } = await supabase.auth.getSession()
+        if (session) await fetch(`${SUPABASE_URL}/functions/v1/notify-pin-changed`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+          body: JSON.stringify({}),
+        })
+      } catch (e) { console.error('PIN-changed notification error (non-critical):', e) }
       setPinSuccess(true); setCurrentPin(''); setNewPin(''); setConfirmPin('')
       setTimeout(() => { setShowPinForm(false); setPinSuccess(false) }, 2000)
     } catch (e) { setPinError('Something went wrong. Please try again.') }

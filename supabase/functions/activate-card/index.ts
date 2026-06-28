@@ -24,6 +24,47 @@ function generateReference(): string {
   return 'CRD-' + Array.from({ length: 8 }, () => chars[Math.floor(Math.random() * chars.length)]).join('')
 }
 
+// ── Server-side notification helpers ───────────────────────────────────────
+async function sendCardEmail(to: string, subject: string, html: string) {
+  try {
+    await fetch(`${SUPABASE_URL}/functions/v1/send-admin-email`, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${SUPABASE_SERVICE}` },
+      body:    JSON.stringify({ to, subject, html, from: 'support' }),
+    })
+  } catch (e) { console.error('activate-card email error (non-critical):', e) }
+}
+function maskCard(n?: string): string {
+  if (!n) return '—'
+  const digits = String(n).replace(/\D/g, '')
+  return digits.length >= 4 ? `•••• •••• •••• ${digits.slice(-4)}` : '—'
+}
+function formatExpiry(d?: string): string {
+  if (!d) return '—'
+  const dt = new Date(d)
+  if (isNaN(dt.getTime())) return '—'
+  return `${String(dt.getMonth() + 1).padStart(2, '0')}/${String(dt.getFullYear()).slice(-2)}`
+}
+function cardActivationEmailHtml({ customerName, businessName, cardNumber, expiry, nextBillingDate }: Record<string, string>): string {
+  return `
+    <div style="font-family: Inter, system-ui, sans-serif; max-width: 560px; margin: 0 auto; padding: 32px 24px; color: #111;">
+      <h2 style="font-size: 22px; font-weight: 600; margin: 0 0 12px;">Your virtual card is active</h2>
+      <p style="font-size: 15px; color: #444; line-height: 1.6; margin: 0 0 20px;">
+        Hi ${customerName}, your ${businessName} Partna virtual card has been activated successfully.
+        You can now use it to earn cashback rewards at Partna partner merchants.
+      </p>
+      <div style="background: #F6F7EE; border: 1px solid #D7D8CB; border-radius: 10px; overflow: hidden; margin: 0 0 24px;">
+        ${[['Card number', cardNumber], ['Expires', expiry], ['Next renewal', nextBillingDate], ['Monthly fee', 'UGX 5,000']]
+          .map(([l, v], i, a) => `<div style="display:flex;justify-content:space-between;padding:10px 16px;${i < a.length - 1 ? 'border-bottom:1px solid #D5D9DD;' : ''}"><span style="font-size:13px;color:#959687;">${l}</span><span style="font-size:13px;font-weight:600;font-family:monospace;">${v}</span></div>`).join('')}
+      </div>
+      <p style="font-size: 13px; color: #959687; line-height: 1.6; margin: 0;">
+        Your subscription renews monthly at UGX 5,000 from your savings wallet. You can cancel any time from your card page.
+        Questions? Contact <a href="mailto:support@partna.io" style="color:#111;font-weight:600;">support@partna.io</a>.
+      </p>
+      <p style="font-size: 13px; color: #959687; margin: 24px 0 0;">Powered by Partna</p>
+    </div>`
+}
+
 Deno.serve(async (req) => {
   const CORS = getCorsHeaders(req)
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS })
@@ -43,7 +84,7 @@ Deno.serve(async (req) => {
     // ── Get customer record ───────────────────────────────────────────────
     const { data: customer, error: custError } = await supabase
       .from('customers')
-      .select('id, business_id, first_name, last_name, phone, businesses(subscription_package)')
+      .select('id, business_id, email, first_name, last_name, phone, businesses(subscription_package, name)')
       .eq('auth_user_id', user.id)
       .maybeSingle()
 
@@ -160,6 +201,27 @@ Deno.serve(async (req) => {
     if (txnError) {
       // Non-fatal — subscription and deduction succeeded, just log
       console.error('Failed to record activation transaction:', txnError)
+    }
+
+    // ── Send activation welcome email (server-side, non-blocking) ─────────
+    if (customer.email) {
+      const { data: cardRow } = await supabase
+        .from('cards').select('card_number, expiry_date').eq('wallet_id', wallet.id).maybeSingle()
+      const nextBilling = nextBillingDate
+        ? new Date(nextBillingDate).toLocaleDateString('en-UG', { day: 'numeric', month: 'long', year: 'numeric' })
+        : '30 days from today'
+      const businessName = (customer.businesses as any)?.name || 'Partna'
+      await sendCardEmail(
+        customer.email,
+        `Your ${businessName} card is now active`,
+        cardActivationEmailHtml({
+          customerName:    `${customer.first_name || ''} ${customer.last_name || ''}`.trim() || 'there',
+          businessName,
+          cardNumber:      maskCard(cardRow?.card_number),
+          expiry:          formatExpiry(cardRow?.expiry_date),
+          nextBillingDate: nextBilling,
+        })
+      )
     }
 
     return new Response(JSON.stringify({

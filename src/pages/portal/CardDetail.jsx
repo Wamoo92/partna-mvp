@@ -306,23 +306,8 @@ export default function CardDetail({
       setWalletBalance(data.new_balance)
       await loadAll()
 
-      // Send activation welcome email — fire and forget
-      if (customer?.email) {
-        const nextBilling = data.next_billing_date
-          ? new Date(data.next_billing_date).toLocaleDateString('en-UG', { day: 'numeric', month: 'long', year: 'numeric' })
-          : '30 days from today'
-        sendEmail(
-          customer.email,
-          `Your ${brand.businessName} Partna card is now active`,
-          cardActivationEmail({
-            customerName:    `${customer.first_name} ${customer.last_name}`,
-            businessName:    brand.businessName,
-            cardNumber:      card?.card_number ? formatCardNumber(card.card_number) : '—',
-            expiry:          card?.expiry_date ? formatExpiry(card.expiry_date) : '—',
-            nextBillingDate: nextBilling,
-          })
-        )
-      }
+      // The activation welcome email is now sent server-side by the activate-card
+      // Edge Function (the email relay is locked to admins/service-role).
 
       setTimeout(() => { setShowActivateModal(false); setActivateSuccess(false) }, 1800)
     } catch (e) {
@@ -357,30 +342,17 @@ export default function CardDetail({
   async function handleCancel() {
     setCancelling(true); setCancelError('')
     try {
-      const { error } = await supabase
-        .from('card_subscriptions')
-        .update({ status: 'cancelled', cancelled_at: new Date().toISOString(), cancellation_reason: 'customer_request' })
-        .eq('id', subscription.id)
-      if (error) throw error
-
+      // Cancellation + confirmation email now happen server-side (card_subscriptions
+      // is service-role only, so the client could not update it directly).
+      const { data: { session } } = await supabase.auth.getSession()
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/cancel-card-subscription`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session?.access_token}` },
+        body:    JSON.stringify({}),
+      })
+      const data = await res.json()
+      if (!res.ok || !data.success) { setCancelError(data.error || 'Could not cancel subscription. Please try again.'); setCancelling(false); return }
       setShowCancelModal(false)
-
-      // Send cancellation confirmation email — fire and forget
-      if (customer?.email) {
-        const billingEnd = subscription?.next_billing_date
-          ? new Date(subscription.next_billing_date).toLocaleDateString('en-UG', { day: 'numeric', month: 'long', year: 'numeric' })
-          : 'end of your current billing period'
-        sendEmail(
-          customer.email,
-          `Your ${brand.businessName} card subscription has been cancelled`,
-          cardCancellationEmail({
-            customerName:    `${customer.first_name} ${customer.last_name}`,
-            businessName:    brand.businessName,
-            billingPeriodEnd: billingEnd,
-          })
-        )
-      }
-
       await loadAll()
     } catch (e) {
       setCancelError('Could not cancel subscription. Please try again.')
