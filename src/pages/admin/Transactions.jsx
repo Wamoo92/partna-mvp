@@ -18,7 +18,8 @@ function downloadOpenFloatFile(rows, filename) {
 
 async function sendSMS(customerId, phone, event, vars = {}) {
   try {
-    await fetch(`${SUPABASE_URL}/functions/v1/send-sms`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${SUPABASE_ANON_KEY}` }, body: JSON.stringify({ event, phone, customerId, vars }) })
+    const { data: { session } } = await supabase.auth.getSession()
+    await fetch(`${SUPABASE_URL}/functions/v1/send-sms`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session?.access_token}` }, body: JSON.stringify({ event, phone, customerId, vars }) })
   } catch (e) { console.error('SMS send error (non-critical):', e) }
 }
 

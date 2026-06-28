@@ -20,15 +20,15 @@ function getCorsHeaders(req: Request) {
   }
 }
 
-function ok(data: unknown) {
+function ok(data: unknown, req: Request) {
   return new Response(JSON.stringify(data), {
-    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    headers: { ...getCorsHeaders(req), 'Content-Type': 'application/json' },
   })
 }
 
-function err(message: string, status = 400) {
+function err(message: string, req: Request, status = 400) {
   return new Response(JSON.stringify({ error: message }), {
-    status, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    status, headers: { ...getCorsHeaders(req), 'Content-Type': 'application/json' },
   })
 }
 
@@ -111,7 +111,7 @@ Deno.serve(async (req) => {
 
     // ── Validate required fields ───────────────────────────────────────────
     if (!email || !password || !businessName || !sector || !contactName || !plan || !inviteToken) {
-      return err('Missing required fields')
+      return err('Missing required fields', req)
     }
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE)
@@ -126,9 +126,9 @@ Deno.serve(async (req) => {
     if (authError) {
       const msg = authError.message || ''
       if (msg.toLowerCase().includes('already registered') || msg.toLowerCase().includes('already been registered')) {
-        return err('This email is already registered. Please use a different email address.')
+        return err('This email is already registered. Please use a different email address.', req)
       }
-      return err(`Could not create user account: ${msg}`)
+      return err(`Could not create user account: ${msg}`, req)
     }
 
     const authUserId = authData.user.id
@@ -157,7 +157,7 @@ Deno.serve(async (req) => {
     if (bizError || !bizData) {
       // Clean up auth user before returning error
       await supabase.auth.admin.deleteUser(authUserId)
-      return err(`Could not create business record: ${bizError?.message || 'Unknown error'}`)
+      return err(`Could not create business record: ${bizError?.message || "Unknown error"}`, req)
     }
 
     // ── Step 3: Create business admin record ──────────────────────────────
@@ -178,7 +178,7 @@ Deno.serve(async (req) => {
       // Clean up business and auth user before returning error
       await supabase.from('businesses').delete().eq('id', bizData.id)
       await supabase.auth.admin.deleteUser(authUserId)
-      return err(`Could not create admin record: ${adminError.message}`)
+      return err(`Could not create admin record: ${adminError.message}`, req)
     }
 
     // ── Step 4: Send welcome email ─────────────────────────────────────────
@@ -187,7 +187,7 @@ Deno.serve(async (req) => {
         method:  'POST',
         headers: {
           'Content-Type':  'application/json',
-          'Authorization': `Bearer ${SUPABASE_ANON}`,
+          'Authorization': `Bearer ${SUPABASE_SERVICE}`,
         },
         body: JSON.stringify({
           to:      email,
@@ -206,10 +206,10 @@ Deno.serve(async (req) => {
       success:    true,
       businessId: bizData.id,
       authUserId,
-    })
+    }, req)
 
   } catch (e) {
     console.error('create-business-user error:', e)
-    return err(e.message || 'Unexpected error', 500)
+    return err(e.message || 'Unexpected error', req, 500)
   }
 })

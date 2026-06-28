@@ -8,9 +8,10 @@ const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY
 
 async function sendSMS(customerId, phone, event, vars = {}) {
   try {
+    const { data: { session } } = await supabase.auth.getSession()
     await fetch(`${SUPABASE_URL}/functions/v1/send-sms`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${SUPABASE_ANON_KEY}` },
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session?.access_token}` },
       body: JSON.stringify({ event, phone, customerId, vars }),
     })
   } catch (e) { console.error('SMS send error (non-critical):', e) }

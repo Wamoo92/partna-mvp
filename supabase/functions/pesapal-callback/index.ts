@@ -58,11 +58,25 @@ serve(async (req) => {
   // enrollmentId is a UI hint for the success page only — never used for crediting.
   const enrollmentId    = params.get('enrollmentId') || ''
 
+  // Redirect the customer BACK to the exact origin they started from (their
+  // subdomain portal), so their session survives. Validate it is a partna.io
+  // origin (prevents open redirect); fall back to APP_BASE if absent/invalid.
+  function safePartnaOrigin(o: string): string {
+    try {
+      const u = new URL(o)
+      if (u.protocol === 'https:' && (u.hostname === 'partna.io' || u.hostname === 'www.partna.io' || u.hostname.endsWith('.partna.io'))) {
+        return u.origin
+      }
+    } catch (_) { /* ignore */ }
+    return ''
+  }
+  const BASE = safePartnaOrigin(params.get('returnOrigin') || '') || APP_BASE
+
   // SECURITY: walletId / amount / customerId from the URL are intentionally IGNORED.
   // The amount credited is the server-stored transaction amount, verified against
   // Pesapal's GetTransactionStatus and applied atomically by process_pesapal_credit.
   if (!orderTrackingId || !reference) {
-    return Response.redirect(`${APP_BASE}/portal/home?deposit=failed`, 302)
+    return Response.redirect(`${BASE}/portal/home?deposit=failed`, 302)
   }
 
   try {
@@ -77,7 +91,7 @@ serve(async (req) => {
       console.error('pesapal-callback: merchant_reference mismatch', {
         orderTrackingId, reference, verified: status.merchant_reference,
       })
-      return Response.redirect(`${APP_BASE}/portal/home?deposit=failed`, 302)
+      return Response.redirect(`${BASE}/portal/home?deposit=failed`, 302)
     }
 
     if (status.payment_status_description !== 'Completed') {
@@ -86,7 +100,7 @@ serve(async (req) => {
         .update({ status: 'failed', notes: `Pesapal status: ${status.payment_status_description}` })
         .eq('reference', reference)
         .eq('status', 'pending')
-      return Response.redirect(`${APP_BASE}/portal/home?deposit=failed`, 302)
+      return Response.redirect(`${BASE}/portal/home?deposit=failed`, 302)
     }
 
     // Atomic + idempotent + amount-verified credit (see migration RPC).
@@ -99,7 +113,7 @@ serve(async (req) => {
 
     if (rpcError) {
       console.error('pesapal-callback: process_pesapal_credit failed', rpcError)
-      return Response.redirect(`${APP_BASE}/portal/home?deposit=error`, 302)
+      return Response.redirect(`${BASE}/portal/home?deposit=error`, 302)
     }
 
     const outcome = result?.result
@@ -127,7 +141,7 @@ serve(async (req) => {
       }
 
       return Response.redirect(
-        `${APP_BASE}/portal/payment-success?reference=${reference}&amount=${creditedAmount}&enrollmentId=${enrollmentId}`,
+        `${BASE}/portal/payment-success?reference=${reference}&amount=${creditedAmount}&enrollmentId=${enrollmentId}`,
         302
       )
     }
@@ -135,17 +149,17 @@ serve(async (req) => {
     if (outcome === 'already_processed') {
       // Idempotent success — the IPN (or an earlier callback) already credited it.
       return Response.redirect(
-        `${APP_BASE}/portal/payment-success?reference=${reference}&amount=${verifiedAmount}&enrollmentId=${enrollmentId}`,
+        `${BASE}/portal/payment-success?reference=${reference}&amount=${verifiedAmount}&enrollmentId=${enrollmentId}`,
         302
       )
     }
 
     // not_found / amount_mismatch
     console.error('pesapal-callback: credit not applied', { reference, outcome, result })
-    return Response.redirect(`${APP_BASE}/portal/home?deposit=failed`, 302)
+    return Response.redirect(`${BASE}/portal/home?deposit=failed`, 302)
 
   } catch (err) {
     console.error('pesapal-callback error:', err)
-    return Response.redirect(`${APP_BASE}/portal/home?deposit=error`, 302)
+    return Response.redirect(`${BASE}/portal/home?deposit=error`, 302)
   }
 })

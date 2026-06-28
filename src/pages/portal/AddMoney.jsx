@@ -97,6 +97,8 @@ export default function AddMoney({
         body: JSON.stringify({
           amount: parsedAmount, currency: 'UGX',
           walletId: wallet.id, campaignId: enrollment?.campaign_id || null, enrollmentId: enrollmentId || null,
+          // So Pesapal redirects the customer back to THIS subdomain (keeps session).
+          returnOrigin: window.location.origin,
         }),
       })
       const data = await res.json()

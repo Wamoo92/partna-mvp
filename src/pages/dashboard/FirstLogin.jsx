@@ -81,11 +81,12 @@ function accountReadyEmail({ adminName, businessName }) {
 
 async function sendAccountReadyEmail({ adminEmail, adminName, businessName }) {
   try {
+    const { data: { session } } = await supabase.auth.getSession()
     await fetch(`${SUPABASE_URL}/functions/v1/send-admin-email`, {
       method:  'POST',
       headers: {
         'Content-Type':  'application/json',
-        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+        'Authorization': `Bearer ${session?.access_token}`,
       },
       body: JSON.stringify({
         to:      adminEmail,

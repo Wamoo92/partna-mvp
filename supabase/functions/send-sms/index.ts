@@ -186,10 +186,46 @@ async function logSMS(supabase: any, {
   }
 }
 
+// ── Caller authorization ─────────────────────────────────────────────────
+// Authorized if the request carries the service-role key (internal Edge-Function
+// calls already do) OR a JWT belonging to a Partna admin / business admin.
+// Everything else (anon key, customers, no auth) is rejected — this used to be an
+// open relay that could send SMS billed to Partna to any number.
+function jwtRole(jwt: string): string | null {
+  try {
+    const json = JSON.parse(atob(jwt.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')))
+    return typeof json.role === 'string' ? json.role : null
+  } catch { return null }
+}
+
+async function isAuthorizedCaller(req: Request): Promise<boolean> {
+  const bearer = (req.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '').trim()
+  if (!bearer) return false
+  // Internal Edge-Function calls carry the service-role JWT. verify_jwt is enabled
+  // for this function, so the gateway has already verified the signature — a
+  // service_role role claim is therefore trustworthy.
+  if (bearer === Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || jwtRole(bearer) === 'service_role') return true
+  const admin = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)
+  const { data: { user } } = await admin.auth.getUser(bearer)
+  if (!user) return false
+  if (user.email) {
+    const { data: au } = await admin.from('admin_users').select('email').eq('email', user.email).maybeSingle()
+    if (au) return true
+  }
+  const { data: ba } = await admin.from('business_admins').select('id').eq('auth_user_id', user.id).limit(1).maybeSingle()
+  return !!ba
+}
+
 // ── Main handler ───────────────────────────────────────────────────────────
 Deno.serve(async (req) => {
   const corsHeaders = getCorsHeaders(req)
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
+
+  if (!(await isAuthorizedCaller(req))) {
+    return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+      status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    })
+  }
 
   try {
     const { event, phone, customerId, vars = {} } = await req.json()

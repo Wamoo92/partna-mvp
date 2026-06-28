@@ -68,6 +68,29 @@ serve(async (req) => {
       })
     }
 
+    // ── Authorize: caller must be a business admin of THIS business ───────
+    // Previously unauthenticated — anyone could import students into any business.
+    const supabase = createClient(SUPABASE_URL, SERVICE_KEY)
+    const jwt = (req.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '').trim()
+    if (!jwt) {
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+        status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
+    const { data: { user } } = await supabase.auth.getUser(jwt)
+    if (!user) {
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+        status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
+    const { data: ba } = await supabase
+      .from('business_admins').select('id').eq('auth_user_id', user.id).eq('business_id', businessId).limit(1).maybeSingle()
+    if (!ba) {
+      return new Response(JSON.stringify({ error: 'Forbidden — not an admin of this business' }), {
+        status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
+
     // Decode base64 CSV
     const decoded = atob(csvContent)
     const rows    = parseCSV(decoded)
@@ -77,8 +100,6 @@ serve(async (req) => {
         status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
     }
-
-    const supabase = createClient(SUPABASE_URL, SERVICE_KEY)
 
     // Parse headers
     const headers = rows[0].map(normaliseHeader)

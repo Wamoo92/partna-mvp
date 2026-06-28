@@ -224,11 +224,34 @@ serve(async (req) => {
     const isLate        = campaign.target_date && new Date(campaign.target_date) < new Date()
     const lateFeeAmount = isLate ? Number(campaign.late_payment_fee || 1000) : 0
 
-    // ── Fetch business wallet ─────────────────────────────────────────────
-    const businessWallet = campaign.businesses?.business_wallets?.[0]
+    // ── Fetch (or auto-provision) the school's business wallet ────────────
+    // A business may not have a wallet row yet (newly onboarded schools), which
+    // previously failed EVERY fee payment with "School wallet not found". Create
+    // one on first payment so the credit can proceed.
+    const bizId = campaign.business_id || campaign.businesses?.id
+    let businessWallet = campaign.businesses?.business_wallets?.[0]
     if (!businessWallet) {
-      return new Response(JSON.stringify({ error: 'School wallet not found' }), {
-        status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      const { data: existing } = await supabase
+        .from('business_wallets').select('id, balance').eq('business_id', bizId).maybeSingle()
+      if (existing) {
+        businessWallet = existing
+      } else {
+        const { data: created, error: createErr } = await supabase
+          .from('business_wallets').insert({ business_id: bizId, balance: 0 }).select('id, balance').single()
+        if (createErr || !created) {
+          // A concurrent payment may have created it — re-select.
+          const { data: reselect } = await supabase
+            .from('business_wallets').select('id, balance').eq('business_id', bizId).maybeSingle()
+          businessWallet = reselect || null
+        } else {
+          businessWallet = created
+        }
+      }
+    }
+    if (!businessWallet) {
+      console.error('process-fee-payment: could not provision business wallet for', bizId)
+      return new Response(JSON.stringify({ error: 'School wallet could not be set up. Please try again.' }), {
+        status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
     }
 

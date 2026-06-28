@@ -92,6 +92,11 @@ export function useAuth() {
   }, [])
 
   async function fetchCustomer(userId) {
+    // Mark loading while the customer row is fetched. Without this, right after
+    // signInWithPassword the app has a session but customer === null and
+    // loading === false, so the route guards would treat the user as logged out
+    // and bounce them back to /portal/login (login appeared to need two tries).
+    setLoading(true)
     try {
       const { data: customerData } = await supabase
         .from('customers')

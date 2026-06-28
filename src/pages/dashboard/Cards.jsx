@@ -70,11 +70,12 @@ function physicalStatusBadge(status) {
 
 async function sendEmail(to, subject, html) {
   try {
+    const { data: { session } } = await supabase.auth.getSession()
     await fetch(`${SUPABASE_URL}/functions/v1/send-admin-email`, {
       method:  'POST',
       headers: {
         'Content-Type':  'application/json',
-        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+        'Authorization': `Bearer ${session?.access_token}`,
       },
       body: JSON.stringify({ to, subject, html }),
     })

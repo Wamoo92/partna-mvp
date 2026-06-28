@@ -137,7 +137,8 @@ export default function Students({
     setImporting(true)
     try {
       const base64 = await new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = ev => resolve(ev.target.result.split(',')[1]); reader.onerror = reject; reader.readAsDataURL(file) })
-      const res = await fetch(`${SUPABASE_URL}/functions/v1/import-students`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${SUPABASE_ANON_KEY}` }, body: JSON.stringify({ businessId: business.id, importedBy: admin?.id || null, fileName: file.name, csvContent: base64 }) })
+      const { data: { session } } = await supabase.auth.getSession()
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/import-students`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session?.access_token}` }, body: JSON.stringify({ businessId: business.id, importedBy: admin?.id || null, fileName: file.name, csvContent: base64 }) })
       const data = await res.json(); setImportResult(data); await loadStudents()
     } catch (err) { console.error('Import error:', err); setImportResult({ success: false, error: 'Import failed. Please try again.' }) }
     setImporting(false)

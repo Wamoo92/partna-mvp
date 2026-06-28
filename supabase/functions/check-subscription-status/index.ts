@@ -34,7 +34,7 @@ async function sendEmail(to: string, subject: string, html: string) {
       method:  'POST',
       headers: {
         'Content-Type':  'application/json',
-        'Authorization': `Bearer ${SUPABASE_ANON}`,
+        'Authorization': `Bearer ${SUPABASE_SERVICE}`,
       },
       body: JSON.stringify({ to, subject, html, from: 'billing' }),
     })

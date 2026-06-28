@@ -95,7 +95,23 @@ serve(async (req) => {
 
   try {
     const body = await req.json()
-    const { amount, currency = 'UGX', walletId, campaignId, enrollmentId } = body
+    const { amount, currency = 'UGX', walletId, campaignId, enrollmentId, returnOrigin } = body
+
+    // The customer initiates from their subdomain portal (e.g.
+    // refactoryacademy.partna.io). Pesapal will later redirect their browser to the
+    // callback, which must send them BACK to that exact origin — otherwise the
+    // session (stored per-origin) is lost and they land on the login screen.
+    // Validate it is a partna.io origin before trusting it (prevents open redirect).
+    function safePartnaOrigin(o: string): string {
+      try {
+        const u = new URL(o)
+        if (u.protocol === 'https:' && (u.hostname === 'partna.io' || u.hostname === 'www.partna.io' || u.hostname.endsWith('.partna.io'))) {
+          return u.origin
+        }
+      } catch (_) { /* ignore */ }
+      return ''
+    }
+    const validOrigin = safePartnaOrigin(returnOrigin || req.headers.get('origin') || '')
 
     // Input validation
     if (!amount || typeof amount !== 'number' || amount < 1000 || amount > 50000000) {
@@ -161,7 +177,7 @@ serve(async (req) => {
         currency,
         amount:          Number(amount),
         description:     `Partna deposit — ${campaignId || 'savings'}`,
-        callback_url:    `${CALLBACK_URL}?walletId=${walletId}&amount=${amount}&reference=${reference}&customerId=${customer.id}&campaignId=${campaignId || ''}&enrollmentId=${enrollmentId || ''}`,
+        callback_url:    `${CALLBACK_URL}?walletId=${walletId}&amount=${amount}&reference=${reference}&customerId=${customer.id}&campaignId=${campaignId || ''}&enrollmentId=${enrollmentId || ''}&returnOrigin=${encodeURIComponent(validOrigin)}`,
         notification_id: ipn_id,
         billing_address: {
           email_address: customer.email      || '',
