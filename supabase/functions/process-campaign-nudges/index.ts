@@ -1,4 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { formatUGX } from '../_shared/fees.ts'
 
 const SUPABASE_URL     = Deno.env.get('SUPABASE_URL')!
 const SUPABASE_SERVICE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
@@ -35,9 +36,6 @@ function daysBetween(a: Date, b: Date): number {
   return Math.floor((b.getTime() - a.getTime()) / (1000 * 60 * 60 * 24))
 }
 
-function formatUGX(n: number): string {
-  return Number(n).toLocaleString('en-UG', { maximumFractionDigits: 0 })
-}
 
 // ── Send SMS via send-sms Edge Function ───────────────────────────────────
 async function sendNudge({

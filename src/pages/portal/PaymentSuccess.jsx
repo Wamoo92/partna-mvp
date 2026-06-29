@@ -1,10 +1,8 @@
 import { useEffect } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useBrand } from '../../lib/BrandContext'
+import { formatUGX } from '../../lib/constants'
 
-function formatUGX(n) {
-  return 'UGX ' + Number(n).toLocaleString('en-UG', { maximumFractionDigits: 0 })
-}
 
 const C = {
   bg:       '#F6F7EE',

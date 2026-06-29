@@ -3,7 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom'
 import { supabase } from '../../supabase'
 import { useBrand } from '../../lib/BrandContext'
 import LoadError from '../../components/LoadError'
-import { CARRIER_FEE, PARTNA_WITHDRAWAL_FEE_PERCENT, MIN_WITHDRAWAL } from '../../lib/constants'
+import { CARRIER_FEE, PARTNA_WITHDRAWAL_FEE_PERCENT, MIN_WITHDRAWAL, formatUGX } from '../../lib/constants'
 
 const SUPABASE_URL      = import.meta.env.VITE_SUPABASE_URL
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY
@@ -18,9 +18,6 @@ function toOpenFloatNetwork(network) {
   if (network === 'mtn') return 'MTN'
   if (network === 'airtel') return 'AirtelMoney'
   return network
-}
-function formatUGX(n) {
-  return 'UGX ' + Number(n).toLocaleString('en-UG', { maximumFractionDigits: 0 })
 }
 function formatAmountInput(val) {
   const digits = val.replace(/\D/g, '')

@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../supabase'
 import { useBrand } from '../../lib/BrandContext'
 import LoadError from '../../components/LoadError'
+import { formatUGX } from '../../lib/constants'
 
 const SUPABASE_URL      = import.meta.env.VITE_SUPABASE_URL
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY
@@ -20,9 +21,6 @@ function formatExpiry(dateStr) {
   return `${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getFullYear()).slice(-2)}`
 }
 
-function formatUGX(n) {
-  return 'UGX ' + Number(n).toLocaleString('en-UG', { maximumFractionDigits: 0 })
-}
 
 function formatDate(dateStr) {
   if (!dateStr) return '—'

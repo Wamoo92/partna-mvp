@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../supabase'
 import { useBrand } from '../../lib/BrandContext'
 import LoadError from '../../components/LoadError'
-import { CARRIER_FEE, EARLY_EXIT_FEE_PERCENT } from '../../lib/constants'
+import { CARRIER_FEE, EARLY_EXIT_FEE_PERCENT, formatUGX } from '../../lib/constants'
 
 const SUPABASE_URL      = import.meta.env.VITE_SUPABASE_URL
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY
@@ -19,9 +19,6 @@ async function sendSMS(customerId, phone, event, vars = {}) {
   } catch (e) { console.error('SMS send error (non-critical):', e) }
 }
 
-function formatUGX(n) {
-  return 'UGX ' + Number(n).toLocaleString('en-UG', { maximumFractionDigits: 0 })
-}
 function maskNin(nin) {
   if (!nin) return 'Not provided'
   return '•'.repeat(Math.max(0, nin.length - 4)) + nin.slice(-4)

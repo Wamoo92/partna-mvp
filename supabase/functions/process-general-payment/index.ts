@@ -1,6 +1,6 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
-import { PARTNA_GENERAL_FEE_PERCENT } from '../_shared/fees.ts'
+import { PARTNA_GENERAL_FEE_PERCENT, formatUGX } from '../_shared/fees.ts'
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SERVICE_KEY  = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
@@ -23,9 +23,6 @@ function getCorsHeaders(req: Request) {
 const json = (data: unknown, req: Request, status = 200) =>
   new Response(JSON.stringify(data), { status, headers: { ...getCorsHeaders(req), 'Content-Type': 'application/json' } })
 
-function formatUGX(n: number): string {
-  return 'UGX ' + Number(n).toLocaleString('en-UG', { maximumFractionDigits: 0 })
-}
 function generateReference(): string {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
   let ref = 'TXN-'

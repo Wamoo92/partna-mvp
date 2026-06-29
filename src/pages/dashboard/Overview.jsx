@@ -1,18 +1,13 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../supabase'
+import { formatUGX, businessWithdrawalFees, MIN_BUSINESS_WITHDRAWAL } from '../../lib/constants'
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL
 
 const CHART_FILTERS = [{ label: '7d', days: 7 }, { label: '30d', days: 30 }, { label: '1yr', days: 365 }]
 
 // ── Helpers ────────────────────────────────────────────────────────────────
-function formatUGX(n) {
-  if (n >= 1000000) return 'UGX ' + (n / 1000000).toFixed(1) + 'M'
-  if (n >= 1000)    return 'UGX ' + (n / 1000).toFixed(0) + 'K'
-  return 'UGX ' + Number(n).toLocaleString('en-UG', { maximumFractionDigits: 0 })
-}
-function formatUGXFull(n) { return 'UGX ' + Number(n).toLocaleString('en-UG', { maximumFractionDigits: 0 }) }
 function formatAmountInput(val) { return val.replace(/\D/g, '').replace(/\B(?=(\d{3})+(?!\d))/g, ',') }
 function txAmountColor(type) { return type === 'deposit' ? '#59886D' : '#CC3939' }
 function txLabel(type) { return type === 'deposit' ? 'Deposit' : type === 'withdrawal' ? 'Withdrawal' : type === 'payment' ? 'Fee payment' : type }
@@ -238,7 +233,7 @@ export default function Overview({ admin, business }) {
                 .from('transactions')
                 .select('amount')
                 .in('customer_id', enrolledIds)
-                .eq('type', 'payment')
+                .in('type', ['payment', 'fee_payment', 'late_fee_payment'])
               amountPaid = payments?.reduce((s, p) => s + Number(p.amount), 0) || 0
             }
 
@@ -252,7 +247,7 @@ export default function Overview({ admin, business }) {
 
       let totalPayments = 0; let txns = []
       if (customerIds.length > 0) {
-        const { data: payments } = await supabase.from('transactions').select('amount').in('customer_id', customerIds).eq('type', 'payment')
+        const { data: payments } = await supabase.from('transactions').select('amount').in('customer_id', customerIds).in('type', ['payment', 'fee_payment', 'late_fee_payment'])
         totalPayments = payments?.reduce((s, p) => s + Number(p.amount), 0) || 0
         const { data: allTxnData } = await supabase.from('transactions').select('*, customers(first_name, last_name)').in('customer_id', customerIds).order('created_at', { ascending: false })
         txns = allTxnData || []
@@ -288,27 +283,30 @@ export default function Overview({ admin, business }) {
     setWithdrawError('')
     const amount  = parseInt(withdrawAmount.replace(/,/g, ''), 10)
     const balance = businessWallet ? Number(businessWallet.balance) : 0
-    if (!amount || amount < 1000) { setWithdrawError('Minimum withdrawal is UGX 1,000.'); return }
+    if (!amount || amount < MIN_BUSINESS_WITHDRAWAL) { setWithdrawError(`Minimum withdrawal is ${formatUGX(MIN_BUSINESS_WITHDRAWAL)}.`); return }
     if (amount > balance)         { setWithdrawError('Amount exceeds your available balance.'); return }
 
     setWithdrawLoading(true)
     try {
-      const notes = `Bank: ${bankAccount.bank_name} · ${bankAccount.account_name} · ${bankAccount.account_number}${bankAccount.notification_phone ? ` · Notify: ${bankAccount.notification_phone}` : ''}`
-      await supabase.from('business_transactions').insert({
-        business_id:               business.id,
-        type:                      'withdrawal',
-        amount,
-        status:                    'pending',
-        notes,
-        withdrawal_method:         bankAccount.bank_name,
-        withdrawal_account_name:   bankAccount.account_name,
-        withdrawal_account_number: bankAccount.account_number,
-        withdrawal_notify_phone:   bankAccount.notification_phone || null,
+      // business_transactions / business_wallets are not writable by a business admin
+      // under RLS, so the debit, the fee split (3% + UGX 6,000) and the records are
+      // all done server-side (service role) by process-business-withdrawal.
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) { setWithdrawError('Your session has expired. Please log in again.'); setWithdrawLoading(false); return }
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/process-business-withdrawal`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+        body:    JSON.stringify({ amount }),
       })
-      await supabase.from('business_wallets').update({ balance: balance - amount }).eq('business_id', business.id)
-      setBusinessWallet(prev => ({ ...prev, balance: balance - amount }))
+      const data = await res.json()
+      if (!res.ok || !data.success) { setWithdrawError(data.error || 'Something went wrong. Please try again.'); setWithdrawLoading(false); return }
 
-      const amountStr    = formatUGXFull(amount)
+      setBusinessWallet(prev => ({ ...prev, balance: data.newBalance }))
+
+      const grossStr     = formatUGX(data.gross)
+      const partnaStr    = formatUGX(data.partnaFee)
+      const carrierStr   = formatUGX(data.carrierFee)
+      const netStr       = formatUGX(data.netAmount)
       const accountNum   = bankAccount.account_number || ''
       const last4        = accountNum.length >= 4 ? accountNum.slice(-4) : accountNum
       const accountLabel = last4 ? `${bankAccount.bank_name} account ending in ${last4}` : bankAccount.bank_name
@@ -319,15 +317,17 @@ export default function Overview({ admin, business }) {
         <h2 style="font-size: 20px; font-weight: 600; margin: 0 0 12px; letter-spacing: -0.5px;">Withdrawal request received</h2>
         <p style="font-size: 15px; color: #444; line-height: 1.6; margin: 0 0 20px;">
           Hi ${admin?.full_name || 'there'}, we have received your withdrawal request of
-          <strong style="color: #111;"> ${amountStr}</strong> from your
+          <strong style="color: #111;"> ${grossStr}</strong> from your
           <strong style="color: #111;"> ${business.name}</strong> Partna wallet.
-          Funds will be transferred to your ${accountLabel} within 1–2 business days.
+          After fees, <strong style="color: #111;"> ${netStr}</strong> will be transferred to your ${accountLabel} within 1–2 business days.
         </p>
         <div style="background: #F6F7EE; border: 1px solid #D7D8CB; border-radius: 10px; padding: 16px 18px; margin: 0 0 20px;">
           <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
-            <tr><td style="padding: 6px 0; color: #959687; font-weight: 500; width: 140px;">Amount</td><td style="padding: 6px 0; font-weight: 600; color: #111;">${amountStr}</td></tr>
+            <tr><td style="padding: 6px 0; color: #959687; font-weight: 500; width: 160px;">Withdrawal amount</td><td style="padding: 6px 0; font-weight: 600; color: #111;">${grossStr}</td></tr>
+            <tr><td style="padding: 6px 0; color: #959687; font-weight: 500;">Partna fee (3%)</td><td style="padding: 6px 0; font-weight: 600; color: #CC3939;">− ${partnaStr}</td></tr>
+            <tr><td style="padding: 6px 0; color: #959687; font-weight: 500;">Bank transfer fee</td><td style="padding: 6px 0; font-weight: 600; color: #CC3939;">− ${carrierStr}</td></tr>
+            <tr><td style="padding: 6px 0; color: #959687; font-weight: 600;">You receive</td><td style="padding: 6px 0; font-weight: 700; color: #59886D;">${netStr}</td></tr>
             <tr><td style="padding: 6px 0; color: #959687; font-weight: 500;">Bank</td><td style="padding: 6px 0; font-weight: 600; color: #111;">${bankAccount.bank_name}</td></tr>
-            <tr><td style="padding: 6px 0; color: #959687; font-weight: 500;">Account name</td><td style="padding: 6px 0; font-weight: 600; color: #111;">${bankAccount.account_name}</td></tr>
             <tr><td style="padding: 6px 0; color: #959687; font-weight: 500;">Account number</td><td style="padding: 6px 0; font-weight: 600; color: #111; font-family: monospace;">${accountNum}</td></tr>
             <tr><td style="padding: 6px 0; color: #959687; font-weight: 500;">Status</td><td style="padding: 6px 0; font-weight: 600; color: #EF8354;">Pending processing</td></tr>
           </table>
@@ -336,15 +336,13 @@ export default function Overview({ admin, business }) {
         <p style="font-size: 13px; color: #959687; margin: 0;">Powered by <a href="https://www.partna.io" style="color: #111; font-weight: 600; text-decoration: none;">Partna</a></p>
       </div>`
 
-      supabase.auth.getSession().then(({ data: { session } }) => {
-        for (const email of recipients) {
-          fetch(`${SUPABASE_URL}/functions/v1/send-admin-email`, {
-            method:  'POST',
-            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session?.access_token}` },
-            body:    JSON.stringify({ to: email, from: 'billing', subject: `Withdrawal request received — ${amountStr}`, html: emailHtml }),
-          }).catch(e => console.error('Withdrawal confirmation email error (non-critical):', e))
-        }
-      })
+      for (const email of recipients) {
+        fetch(`${SUPABASE_URL}/functions/v1/send-admin-email`, {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+          body:    JSON.stringify({ to: email, from: 'billing', subject: `Withdrawal request received — ${grossStr}`, html: emailHtml }),
+        }).catch(e => console.error('Withdrawal confirmation email error (non-critical):', e))
+      }
 
       setWithdrawSuccess(true)
       await loadData()
@@ -373,7 +371,7 @@ export default function Overview({ admin, business }) {
       {showWithdraw && (
         <Modal
           title="Withdraw funds"
-          sub={`Available: ${formatUGXFull(bizBalance)}`}
+          sub={`Available: ${formatUGX(bizBalance)}`}
           onClose={() => { setShowWithdraw(false); setWithdrawAmount(''); setWithdrawError(''); setWithdrawSuccess(false) }}
         >
           {withdrawSuccess ? (
@@ -384,7 +382,7 @@ export default function Overview({ admin, business }) {
                 </div>
                 <p style={{ fontSize: 15, fontWeight: 600, color: C.black, margin: 0 }}>Withdrawal request submitted</p>
                 <p style={{ fontSize: 13, fontWeight: 500, color: C.secondary, margin: 0, lineHeight: '140%' }}>
-                  Your withdrawal of <strong style={{ color: C.black }}>{formatUGXFull(parseInt(withdrawAmount.replace(/,/g, ''), 10))}</strong> has been submitted. Funds will be transferred within 1–2 business days.
+                  Your withdrawal of <strong style={{ color: C.black }}>{formatUGX(parseInt(withdrawAmount.replace(/,/g, ''), 10))}</strong> has been submitted. Funds will be transferred within 1–2 business days.
                 </p>
               </div>
               <button onClick={() => { setShowWithdraw(false); setWithdrawAmount(''); setWithdrawError(''); setWithdrawSuccess(false) }} style={{ ...btnPrimary, width: '100%', justifyContent: 'center' }}>Done</button>
@@ -399,7 +397,7 @@ export default function Overview({ admin, business }) {
                     style={{ ...inputStyle, paddingLeft: 54, fontSize: 22, fontWeight: 600, letterSpacing: '-0.5px' }}
                     onFocus={e => e.target.style.borderColor = C.black} onBlur={e => e.target.style.borderColor = C.grayLine} />
                 </div>
-                <p style={{ fontSize: 11, fontWeight: 500, color: C.grayMid, margin: '4px 0 0' }}>Minimum UGX 1,000 · Available: {formatUGXFull(bizBalance)}</p>
+                <p style={{ fontSize: 11, fontWeight: 500, color: C.grayMid, margin: '4px 0 0' }}>Minimum UGX 1,000 · Available: {formatUGX(bizBalance)}</p>
               </div>
               <div>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
@@ -421,6 +419,32 @@ export default function Overview({ admin, business }) {
                 </div>
                 <p style={{ fontSize: 11, fontWeight: 500, color: C.grayMid, margin: '5px 0 0', lineHeight: '140%' }}>To change your bank account details, go to Settings → Bank Account.</p>
               </div>
+
+              {/* Fee breakdown — shown before confirming */}
+              {(() => {
+                const gross = parseInt(withdrawAmount.replace(/,/g, ''), 10)
+                if (!gross || gross < MIN_BUSINESS_WITHDRAWAL) return null
+                const f = businessWithdrawalFees(gross)
+                return (
+                  <div style={{ background: C.white, border: `1px solid ${C.stroke}`, borderRadius: 10, overflow: 'hidden' }}>
+                    {[
+                      { label: 'Withdrawal amount', value: formatUGX(f.gross),       color: C.black },
+                      { label: 'Partna fee (3%)',   value: '− ' + formatUGX(f.partnaFee),  color: C.red },
+                      { label: 'Bank transfer fee', value: '− ' + formatUGX(f.carrierFee), color: C.red },
+                    ].map((row, i) => (
+                      <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '9px 14px', borderBottom: `1px solid ${C.grayLine}` }}>
+                        <span style={{ fontSize: 12, fontWeight: 500, color: C.secondary }}>{row.label}</span>
+                        <span style={{ fontSize: 13, fontWeight: 600, color: row.color }}>{row.value}</span>
+                      </div>
+                    ))}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '11px 14px', background: C.black }}>
+                      <span style={{ fontSize: 13, fontWeight: 600, color: C.white }}>You receive</span>
+                      <span style={{ fontSize: 16, fontWeight: 600, color: C.green, letterSpacing: '-0.5px' }}>{formatUGX(f.netAmount)}</span>
+                    </div>
+                  </div>
+                )
+              })()}
+
               {withdrawError && <div style={{ background: C.bgRed, borderRadius: 8, padding: '10px 14px', fontSize: 13, fontWeight: 500, color: C.red }}>{withdrawError}</div>}
               <div style={{ background: C.bg, border: `1px solid ${C.grayLine}`, borderRadius: 8, padding: '10px 14px', fontSize: 13, fontWeight: 500, color: C.secondary, lineHeight: '140%' }}>
                 Withdrawals are processed within 1–2 business days by the Partna team.

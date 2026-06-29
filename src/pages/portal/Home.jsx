@@ -4,6 +4,7 @@ import { supabase } from '../../supabase'
 import { useBrand } from '../../lib/BrandContext'
 import { getEffectiveStatus } from '../../lib/campaignUtils'
 import LoadError from '../../components/LoadError'
+import { formatUGX } from '../../lib/constants'
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -18,9 +19,6 @@ function formatExpiry(dateStr) {
   return `${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getFullYear()).slice(-2)}`
 }
 
-function formatUGX(amount) {
-  return 'UGX ' + Number(amount).toLocaleString('en-UG', { maximumFractionDigits: 0 })
-}
 
 function formatDate(dateStr) {
   return new Date(dateStr).toLocaleDateString('en-UG', {

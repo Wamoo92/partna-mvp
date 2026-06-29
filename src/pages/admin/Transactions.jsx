@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import * as XLSX from 'xlsx'
 import { supabase } from '../../supabase'
+import { formatUGX, businessWithdrawalFees } from '../../lib/constants'
 
 const SUPABASE_URL      = import.meta.env.VITE_SUPABASE_URL
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY
@@ -34,12 +35,6 @@ async function writeAuditLog({ actorId, action, resourceId, metadata }) {
   } catch (e) { console.error('Audit log write error:', e) }
 }
 
-function formatUGX(n) {
-  if (n >= 1000000) return 'UGX ' + (n / 1000000).toFixed(1) + 'M'
-  if (n >= 1000)    return 'UGX ' + (n / 1000).toFixed(0) + 'K'
-  return 'UGX ' + Number(n).toLocaleString('en-UG', { maximumFractionDigits: 0 })
-}
-function formatUGXFull(n) { return 'UGX ' + Number(n).toLocaleString('en-UG', { maximumFractionDigits: 0 }) }
 function formatDateTime(d) {
   if (!d) return '—'
   return new Date(d).toLocaleString('en-UG', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true })
@@ -251,7 +246,7 @@ export default function Transactions() {
   async function loadBusiness() {
     setLoadingBiz(true)
     try {
-      const { data } = await supabase.from('business_transactions').select('*, businesses(id, name, admin_email, contact_email)').eq('type', 'withdrawal').order('created_at', { ascending: false })
+      const { data } = await supabase.from('business_transactions').select('*, businesses(id, name, admin_email, contact_email), business_transaction_fees(net_amount)').eq('type', 'withdrawal').order('created_at', { ascending: false })
       setBizWithdrawals(data || [])
     } catch (e) { console.error('Business withdrawals load error:', e) }
     setLoadingBiz(false)
@@ -273,7 +268,7 @@ export default function Transactions() {
       const txn = transactions.find(t => t.id === txnId)
       setTransactions(prev => prev.map(t => t.id === txnId ? { ...t, status: 'completed' } : t))
       setConfirmId(null)
-      if (txn?.customers?.phone && txn?.customer_id) sendSMS(txn.customer_id, txn.customers.phone, 'withdrawal_completed', { amount: formatUGXFull(txn.amount), reference: txn.reference || txnId.slice(0, 8) })
+      if (txn?.customers?.phone && txn?.customer_id) sendSMS(txn.customer_id, txn.customers.phone, 'withdrawal_completed', { amount: formatUGX(txn.amount), reference: txn.reference || txnId.slice(0, 8) })
     } catch (e) { console.error('Mark completed error:', e) }
     setMarkingId(null)
   }
@@ -370,7 +365,7 @@ export default function Transactions() {
       const { error: bizErr } = await supabase.from('business_wallets').update({ balance: newBizBalance }).eq('id', bizWallet.id)
       if (bizErr) { await supabase.from('wallets').update({ balance: Number(wallet.balance) }).eq('id', wallet.id); setReverseError('Could not debit school wallet. Reversal rolled back.'); setReversing(false); return }
       await supabase.from('transactions').update({ status: 'reversed', notes: (txn.notes || '') + ` | REVERSED: ${reverseReason}` }).eq('id', txn.id)
-      await writeAuditLog({ actorId, action: 'fee_payment_reversed', resourceId: txn.id, metadata: { reason: reverseReason, amount: formatUGXFull(amount), net_to_school: formatUGXFull(netPaid), student_name: txn.students ? `${txn.students.first_name} ${txn.students.last_name}` : '—', parent_name: txn.customers ? `${txn.customers.first_name} ${txn.customers.last_name}` : '—', campaign: txn.campaigns?.name || '—', before_status: txn.status, after_status: 'reversed', parent_wallet_credited: formatUGXFull(amount), school_wallet_debited: formatUGXFull(netPaid) } })
+      await writeAuditLog({ actorId, action: 'fee_payment_reversed', resourceId: txn.id, metadata: { reason: reverseReason, amount: formatUGX(amount), net_to_school: formatUGX(netPaid), student_name: txn.students ? `${txn.students.first_name} ${txn.students.last_name}` : '—', parent_name: txn.customers ? `${txn.customers.first_name} ${txn.customers.last_name}` : '—', campaign: txn.campaigns?.name || '—', before_status: txn.status, after_status: 'reversed', parent_wallet_credited: formatUGX(amount), school_wallet_debited: formatUGX(netPaid) } })
       setFeePayments(prev => prev.map(t => t.id === txn.id ? { ...t, status: 'reversed' } : t))
       setShowReverseModal(null); setReverseReason('')
     } catch (e) { console.error('Reversal error:', e); setReverseError('Something went wrong. Please try again.') }
@@ -402,7 +397,7 @@ export default function Transactions() {
       const toStudentName   = `${reassignStudent.first_name} ${reassignStudent.last_name}`
       const { error: txnErr } = await supabase.from('transactions').update({ student_id: reassignStudent.id, notes: (txn.notes || '') + ` | REASSIGNED from ${fromStudentName} to ${toStudentName}: ${reassignReason}` }).eq('id', txn.id)
       if (txnErr) { setReassignError('Could not update transaction. Please try again.'); setReassigning(false); return }
-      await writeAuditLog({ actorId, action: 'fee_payment_reassigned', resourceId: txn.id, metadata: { reason: reassignReason, amount: formatUGXFull(txn.gross_amount || txn.amount), from_student_id: txn.student_id, from_student_name: fromStudentName, from_partna_id: txn.students?.partna_student_id || '—', to_student_id: reassignStudent.id, to_student_name: toStudentName, to_partna_id: reassignStudent.partna_student_id, campaign: txn.campaigns?.name || '—', parent_name: txn.customers ? `${txn.customers.first_name} ${txn.customers.last_name}` : '—' } })
+      await writeAuditLog({ actorId, action: 'fee_payment_reassigned', resourceId: txn.id, metadata: { reason: reassignReason, amount: formatUGX(txn.gross_amount || txn.amount), from_student_id: txn.student_id, from_student_name: fromStudentName, from_partna_id: txn.students?.partna_student_id || '—', to_student_id: reassignStudent.id, to_student_name: toStudentName, to_partna_id: reassignStudent.partna_student_id, campaign: txn.campaigns?.name || '—', parent_name: txn.customers ? `${txn.customers.first_name} ${txn.customers.last_name}` : '—' } })
       setFeePayments(prev => prev.map(t => t.id === txn.id ? { ...t, student_id: reassignStudent.id, students: reassignStudent } : t))
       setShowReassignModal(null); setReassignStudentId(''); setReassignStudent(null); setReassignReason('')
     } catch (e) { console.error('Reassignment error:', e); setReassignError('Something went wrong. Please try again.') }
@@ -441,6 +436,10 @@ export default function Transactions() {
       .filter(t => selectedBiz.has(t.id))
       .map(t => {
         const phone = (t.withdrawal_notify_phone || '').replace(/^\+/, '').replace(/^0/, '256')
+        // OpenFloat must disburse the NET the business receives (gross − 3% − UGX 6,000),
+        // not the gross. Prefer the recorded net_amount; recalculate if it's missing.
+        const netFromFee = t.business_transaction_fees?.[0]?.net_amount
+        const netAmount  = netFromFee != null ? Number(netFromFee) : businessWithdrawalFees(Number(t.amount)).netAmount
         return [
           t.withdrawal_method || '',
           t.withdrawal_account_name || '',
@@ -448,7 +447,7 @@ export default function Transactions() {
           '',
           '',
           phone,
-          Number(t.amount),
+          netAmount,
           t.reference || t.id.slice(0, 8),
         ]
       })
@@ -539,8 +538,8 @@ export default function Transactions() {
             { label: 'Student',       value: showReverseModal.students ? `${showReverseModal.students.first_name} ${showReverseModal.students.last_name}` : '—' },
             { label: 'Parent',        value: showReverseModal.customers ? `${showReverseModal.customers.first_name} ${showReverseModal.customers.last_name}` : '—' },
             { label: 'Campaign',      value: showReverseModal.campaigns?.name || '—' },
-            { label: 'Gross paid',    value: formatUGXFull(showReverseModal.gross_amount || showReverseModal.amount), color: C.green },
-            { label: 'Net to school', value: formatUGXFull(showReverseModal.net_to_school || showReverseModal.amount), color: C.red },
+            { label: 'Gross paid',    value: formatUGX(showReverseModal.gross_amount || showReverseModal.amount), color: C.green },
+            { label: 'Net to school', value: formatUGX(showReverseModal.net_to_school || showReverseModal.amount), color: C.red },
           ]} />
           <div style={{ background: C.bgOrange, border: `1px solid ${C.orange}`, borderRadius: 8, padding: '10px 14px', fontSize: 13, fontWeight: 500, color: C.orange, lineHeight: '140%' }}>
             This will credit the full amount back to the parent's wallet and debit the school's Partna wallet. The transaction will be marked as reversed. This action is permanent and audit logged.
@@ -642,7 +641,7 @@ export default function Transactions() {
             </>}>
             <SummaryTable rows={[
               { label: 'Business',        value: w?.businesses?.name },
-              { label: 'Amount',          value: formatUGXFull(w?.amount), color: C.red },
+              { label: 'Amount',          value: formatUGX(w?.amount), color: C.red },
               { label: 'Method',          value: method },
               { label: 'Account name',    value: w?.withdrawal_account_name   || '—' },
               { label: 'Account number',  value: w?.withdrawal_account_number || '—' },
@@ -877,7 +876,7 @@ export default function Transactions() {
                             <tr key={t.id} style={{ borderBottom: i < filteredBiz.length - 1 ? `1px solid ${C.grayLine}` : 'none', background: isSelected ? 'rgba(133,160,197,0.06)' : i % 2 === 0 ? C.white : C.bg }}>
                               <td style={{ padding: '11px 14px' }}><input type="checkbox" checked={isSelected} onChange={() => toggleBiz(t.id)} style={{ cursor: 'pointer' }} /></td>
                               <td style={{ padding: '11px 14px', fontSize: 13, fontWeight: 600, color: C.black }}>{t.businesses?.name || '—'}</td>
-                              <td style={{ padding: '11px 14px', fontSize: 13, fontWeight: 600, color: C.red, whiteSpace: 'nowrap' }}>{formatUGXFull(t.amount)}</td>
+                              <td style={{ padding: '11px 14px', fontSize: 13, fontWeight: 600, color: C.red, whiteSpace: 'nowrap' }}>{formatUGX(t.amount)}</td>
                               <td style={{ padding: '11px 14px' }}>
                                 <Badge value={method} cfg={isMobile ? { bg: C.bgOrange, color: C.orange } : { bg: C.grayLight, color: C.grayMid }} />
                               </td>
@@ -979,7 +978,7 @@ export default function Transactions() {
                               {t.campaigns?.term_or_semester && <p style={{ fontSize: 10, fontWeight: 500, color: C.secondary, margin: 0 }}>{t.campaigns.term_or_semester}</p>}
                             </td>
                             <td style={{ padding: '11px 14px', fontSize: 12, fontWeight: 500, color: C.secondary, whiteSpace: 'nowrap' }}>{formatDateTime(t.created_at)}</td>
-                            <td style={{ padding: '11px 14px', fontSize: 13, fontWeight: 600, color: C.green, whiteSpace: 'nowrap' }}>{formatUGXFull(t.gross_amount || t.amount)}</td>
+                            <td style={{ padding: '11px 14px', fontSize: 13, fontWeight: 600, color: C.green, whiteSpace: 'nowrap' }}>{formatUGX(t.gross_amount || t.amount)}</td>
                             <td style={{ padding: '11px 14px' }}><Badge value={t.status} cfg={statusCfg(t.status)} /></td>
                             <td style={{ padding: '11px 14px' }}>
                               {t.status !== 'reversed' ? (

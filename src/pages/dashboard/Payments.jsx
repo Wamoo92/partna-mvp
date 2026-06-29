@@ -1,13 +1,8 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../../supabase'
+import { formatUGX } from '../../lib/constants'
 
 // ── Helpers — unchanged ────────────────────────────────────────────────────
-function formatUGX(n) { return 'UGX ' + Number(n).toLocaleString('en-UG', { maximumFractionDigits: 0 }) }
-function formatUGXShort(n) {
-  if (n >= 1000000) return 'UGX ' + (n / 1000000).toFixed(1) + 'M'
-  if (n >= 1000)    return 'UGX ' + (n / 1000).toFixed(0) + 'K'
-  return 'UGX ' + Number(n).toLocaleString('en-UG', { maximumFractionDigits: 0 })
-}
 function formatDateTime(d) {
   if (!d) return '—'
   return new Date(d).toLocaleString('en-UG', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true })
@@ -188,9 +183,9 @@ function EducationPayments({ business }) {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20, fontFamily: 'Inter, system-ui, sans-serif' }}>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
         <StatCard label="Total payments"      value={payments.length}            accentColor={C.blue}   />
-        <StatCard label="Gross collected"     value={formatUGXShort(totalGross)} accentColor={C.green}  />
-        <StatCard label="MDR deducted"        value={formatUGXShort(totalMDR)}   accentColor={C.orange} />
-        <StatCard label="Net to your account" value={formatUGXShort(totalNet)}   accentColor={C.black}  />
+        <StatCard label="Gross collected"     value={formatUGX(totalGross)} accentColor={C.green}  />
+        <StatCard label="MDR deducted"        value={formatUGX(totalMDR)}   accentColor={C.orange} />
+        <StatCard label="Net to your account" value={formatUGX(totalNet)}   accentColor={C.black}  />
       </div>
 
       <div style={{ background: C.bg, border: `1px solid ${C.grayLine}`, borderRadius: 8, padding: '10px 14px', fontSize: 13, fontWeight: 500, color: C.secondary, lineHeight: '140%' }}>
@@ -347,10 +342,10 @@ function GeneralPayments({ business }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20, fontFamily: 'Inter, system-ui, sans-serif' }}>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
-        <StatCard label="Total deposits"     value={formatUGXShort(totals.deposits)}                       accentColor={C.green}  />
-        <StatCard label="Total fee payments" value={formatUGXShort(totals.payments)}                       accentColor={C.blue}   />
-        <StatCard label="Total withdrawals"  value={formatUGXShort(totals.withdrawals)}                    accentColor={C.red}    />
-        <StatCard label="Net savings (AUM)"  value={formatUGXShort(totals.deposits - totals.withdrawals)}  accentColor={C.orange} />
+        <StatCard label="Total deposits"     value={formatUGX(totals.deposits)}                       accentColor={C.green}  />
+        <StatCard label="Total fee payments" value={formatUGX(totals.payments)}                       accentColor={C.blue}   />
+        <StatCard label="Total withdrawals"  value={formatUGX(totals.withdrawals)}                    accentColor={C.red}    />
+        <StatCard label="Net savings (AUM)"  value={formatUGX(totals.deposits - totals.withdrawals)}  accentColor={C.orange} />
       </div>
 
       <div style={{ background: C.white, border: `1px solid ${C.stroke}`, borderRadius: 12, padding: '14px 16px', display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>

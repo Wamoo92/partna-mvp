@@ -1,5 +1,6 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { formatUGX } from '../_shared/fees.ts'
 
 const CONSUMER_KEY    = Deno.env.get('PESAPAL_CONSUMER_KEY')!
 const CONSUMER_SECRET = Deno.env.get('PESAPAL_CONSUMER_SECRET')!
@@ -31,9 +32,6 @@ async function getTransactionStatus(token: string, orderTrackingId: string) {
   return await res.json()
 }
 
-function formatUGX(n: number): string {
-  return 'UGX ' + Number(n).toLocaleString('en-UG', { maximumFractionDigits: 0 })
-}
 
 async function sendSMS(customerId: string, phone: string, event: string, vars: Record<string, string>) {
   try {

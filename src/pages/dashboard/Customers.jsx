@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../../supabase'
+import { formatUGX } from '../../lib/constants'
 
 // ── Helpers — unchanged ────────────────────────────────────────────────────
-function formatUGX(n) { return 'UGX ' + Number(n).toLocaleString('en-UG', { maximumFractionDigits: 0 }) }
 function formatDate(d) { return new Date(d).toLocaleDateString('en-UG', { day: 'numeric', month: 'short', year: 'numeric' }) }
 function txAmountColor(type) { return type === 'deposit' ? '#59886D' : '#CC3939' }
 function txIconBg(type) {

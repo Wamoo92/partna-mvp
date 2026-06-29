@@ -1,13 +1,9 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../supabase'
+import { formatUGX } from '../../lib/constants'
 
 // ── Helpers — unchanged ────────────────────────────────────────────────────
-function formatUGX(n) {
-  if (n >= 1000000) return 'UGX ' + (n / 1000000).toFixed(1) + 'M'
-  if (n >= 1000)    return 'UGX ' + (n / 1000).toFixed(0) + 'K'
-  return 'UGX ' + Number(n).toLocaleString('en-UG', { maximumFractionDigits: 0 })
-}
 function formatDate(d) {
   if (!d) return '—'
   return new Date(d).toLocaleDateString('en-UG', { day: 'numeric', month: 'short', year: 'numeric' })

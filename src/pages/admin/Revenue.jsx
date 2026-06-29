@@ -1,12 +1,8 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../../supabase'
+import { formatUGX } from '../../lib/constants'
 
-// ── Helpers — unchanged ────────────────────────────────────────────────────
-function formatUGX(n) {
-  if (n >= 1000000) return 'UGX ' + (n / 1000000).toFixed(1) + 'M'
-  if (n >= 1000)    return 'UGX ' + (n / 1000).toFixed(0) + 'K'
-  return 'UGX ' + Number(n).toLocaleString('en-UG', { maximumFractionDigits: 0 })
-}
+// ── Helpers ────────────────────────────────────────────────────────────────
 function formatUSD(n) {
   return '$' + Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
@@ -55,7 +51,7 @@ export default function Revenue() {
   async function loadAll() {
     setLoading(true)
     try {
-      const { data: feeData } = await supabase.from('transaction_fees').select('*, transactions(reference, type, created_at, customers(first_name, last_name, business_id, businesses(name)))').order('created_at', { ascending: false })
+      const { data: feeData } = await supabase.from('transaction_fees').select('*, transactions(reference, type, amount, created_at, customers(first_name, last_name, business_id, businesses(name)))').order('created_at', { ascending: false })
       setFees(feeData || [])
       const { data: subData } = await supabase.from('business_subscriptions').select('*, businesses(name, admin_email)').order('started_at', { ascending: false })
       setSubscriptions(subData || [])
@@ -97,8 +93,8 @@ export default function Revenue() {
   const hasFilters = filterBusiness || dateFrom || dateTo
 
   function exportFeeCSV() {
-    const rows = [['Reference', 'Customer', 'Business', 'Type', 'Gross Amount', 'Partna Fee', 'Net Amount', 'Date'],
-      ...filteredFees.map(f => [f.transactions?.reference || f.transaction_id, `${f.transactions?.customers?.first_name} ${f.transactions?.customers?.last_name}`, f.transactions?.customers?.businesses?.name || '', f.transactions?.type || '', f.gross_amount, f.partna_fee, f.net_amount, new Date(f.created_at || f.transactions?.created_at).toISOString()])]
+    const rows = [['Reference', 'Customer', 'Business', 'Type', 'Gross Amount', 'Partna Fee', 'Carrier Fee', 'Net Amount', 'Date'],
+      ...filteredFees.map(f => [f.transactions?.reference || f.transaction_id, `${f.transactions?.customers?.first_name} ${f.transactions?.customers?.last_name}`, f.transactions?.customers?.businesses?.name || '', f.transactions?.type || '', Number(f.transactions?.amount || 0), Number(f.partna_fee || 0), Number(f.carrier_fee || 0), Number(f.net_amount || 0), new Date(f.created_at || f.transactions?.created_at).toISOString()])]
     const csv = rows.map(r => r.map(v => `"${v}"`).join(',')).join('\n')
     const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(new Blob([csv], { type: 'text/csv' })), download: `partna-fees-${new Date().toISOString().slice(0, 10)}.csv` })
     a.click()
@@ -175,7 +171,8 @@ export default function Revenue() {
             {[
               { label: 'Records shown', value: filteredFees.length, color: C.black },
               { label: 'Partna fees',   value: formatUGX(filteredFees.reduce((s, f) => s + Number(f.partna_fee || 0), 0)),   color: C.green },
-              { label: 'Total gross',   value: formatUGX(filteredFees.reduce((s, f) => s + Number(f.gross_amount || 0), 0)), color: C.black },
+              { label: 'Carrier fees',  value: formatUGX(filteredFees.reduce((s, f) => s + Number(f.carrier_fee || 0), 0)),  color: C.red   },
+              { label: 'Total gross',   value: formatUGX(filteredFees.reduce((s, f) => s + Number(f.transactions?.amount || 0), 0)), color: C.black },
             ].map((item, i) => (
               <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                 <span style={{ fontSize: 12, fontWeight: 500, color: C.secondary }}>{item.label}:</span>
@@ -190,14 +187,14 @@ export default function Revenue() {
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                 <thead>
                   <tr style={{ background: C.bg, borderBottom: `1px solid ${C.grayLine}` }}>
-                    {['Reference', 'Customer', 'Business', 'Type', 'Gross amount', 'Partna fee', 'Net amount', 'Date'].map(h => (
+                    {['Reference', 'Customer', 'Business', 'Type', 'Gross amount', 'Partna fee', 'Carrier fee', 'Net amount', 'Date'].map(h => (
                       <th key={h} style={{ padding: '10px 14px', textAlign: 'left', fontSize: 11, fontWeight: 600, color: C.secondary, textTransform: 'uppercase', letterSpacing: '0.04em', whiteSpace: 'nowrap' }}>{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
                   {filteredFees.length === 0 ? (
-                    <tr><td colSpan={8} style={{ textAlign: 'center', padding: '48px 20px', fontSize: 14, fontWeight: 500, color: C.secondary }}>No fee records found</td></tr>
+                    <tr><td colSpan={9} style={{ textAlign: 'center', padding: '48px 20px', fontSize: 14, fontWeight: 500, color: C.secondary }}>No fee records found</td></tr>
                   ) : filteredFees.map((f, i) => (
                     <tr key={f.id} style={{ borderBottom: i < filteredFees.length - 1 ? `1px solid ${C.grayLine}` : 'none', background: i % 2 === 0 ? C.white : C.bg }}>
                       <td style={{ padding: '11px 14px' }}>
@@ -215,12 +212,15 @@ export default function Revenue() {
                         {f.transactions?.type || '—'}
                       </td>
                       <td style={{ padding: '11px 14px', fontSize: 13, fontWeight: 500, color: C.black, whiteSpace: 'nowrap' }}>
-                        {formatUGX(f.gross_amount || 0)}
+                        {formatUGX(f.transactions?.amount || 0)}
                       </td>
                       <td style={{ padding: '11px 14px' }}>
                         <span style={{ fontFamily: 'monospace', fontSize: 11, fontWeight: 600, color: C.green, background: C.bgGreen, borderRadius: 6, padding: '3px 8px', whiteSpace: 'nowrap' }}>
                           {formatUGX(f.partna_fee || 0)}
                         </span>
+                      </td>
+                      <td style={{ padding: '11px 14px', fontSize: 13, fontWeight: 500, color: C.red, whiteSpace: 'nowrap' }}>
+                        {formatUGX(f.carrier_fee || 0)}
                       </td>
                       <td style={{ padding: '11px 14px', fontSize: 13, fontWeight: 600, color: C.green, whiteSpace: 'nowrap' }}>
                         {formatUGX(f.net_amount || 0)}

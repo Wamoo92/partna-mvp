@@ -1,5 +1,6 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { formatUGX } from '../_shared/fees.ts'
 
 const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY')!
 const AT_API_KEY = Deno.env.get('AT_API_KEY')!
@@ -102,9 +103,6 @@ serve(async (req) => {
     const customerName = `${customer.first_name} ${customer.last_name}`
     const customerPhone = customer.phone || ''
 
-    function formatUGX(n: number) {
-      return 'UGX ' + n.toLocaleString('en-UG', { maximumFractionDigits: 0 })
-    }
 
     function formatDateTime(d: string) {
       return new Date(d).toLocaleString('en-UG', {

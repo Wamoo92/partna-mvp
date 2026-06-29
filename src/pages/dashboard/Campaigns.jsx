@@ -2,14 +2,9 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../supabase'
 import { getEffectiveStatus, getDeletionMsRemaining, formatCountdown } from '../../lib/campaignUtils'
+import { formatUGX } from '../../lib/constants'
 
 // ── Helpers ────────────────────────────────────────────────────────────────
-function formatUGX(n) { return 'UGX ' + Number(n).toLocaleString('en-UG', { maximumFractionDigits: 0 }) }
-function formatUGXShort(n) {
-  if (n >= 1000000) return 'UGX ' + (n / 1000000).toFixed(1) + 'M'
-  if (n >= 1000)    return 'UGX ' + (n / 1000).toFixed(0) + 'K'
-  return 'UGX ' + Number(n).toLocaleString('en-UG', { maximumFractionDigits: 0 })
-}
 function formatAmountInput(val) { return val.replace(/\D/g, '').replace(/\B(?=(\d{3})+(?!\d))/g, ',') }
 function daysLeft(campaign) { return Math.max(Math.ceil((new Date(campaign.target_date).getTime() - Date.now()) / 86400000), 0) }
 
@@ -110,8 +105,8 @@ function ProgressBar({ label, amount, target, color, bgColor }) {
         <div style={{ height: '100%', width: `${pct}%`, background: color, borderRadius: 999, transition: 'width 0.4s' }} />
       </div>
       <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 3 }}>
-        <span style={{ fontSize: 10, fontWeight: 500, color: C.grayMid }}>{formatUGXShort(amount)}</span>
-        <span style={{ fontSize: 10, fontWeight: 500, color: C.grayMid }}>of {formatUGXShort(target)}</span>
+        <span style={{ fontSize: 10, fontWeight: 500, color: C.grayMid }}>{formatUGX(amount)}</span>
+        <span style={{ fontSize: 10, fontWeight: 500, color: C.grayMid }}>of {formatUGX(target)}</span>
       </div>
     </div>
   )
@@ -184,7 +179,7 @@ function CampaignCard({ campaign, status, stats, onDelete, onRestart }) {
           </div>
           <div style={{ textAlign: 'right' }}>
             <p style={{ fontSize: 12, fontWeight: 600, color: C.secondary, margin: '0 0 1px' }}>Collection target</p>
-            <p style={{ fontSize: 13, fontWeight: 600, color: C.black, margin: 0 }}>{enrolled > 0 ? formatUGXShort(collectionTarget) : '—'}</p>
+            <p style={{ fontSize: 13, fontWeight: 600, color: C.black, margin: 0 }}>{enrolled > 0 ? formatUGX(collectionTarget) : '—'}</p>
           </div>
         </div>
         {enrolled > 0 && (

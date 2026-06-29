@@ -3,12 +3,10 @@ import { useNavigate, useLocation } from 'react-router-dom'
 import { supabase } from '../../supabase'
 import { useBrand } from '../../lib/BrandContext'
 import LoadError from '../../components/LoadError'
+import { formatUGX } from '../../lib/constants'
 
 const PAGE_SIZE = 10
 
-function formatUGX(n) {
-  return 'UGX ' + Number(n).toLocaleString('en-UG', { maximumFractionDigits: 0 })
-}
 function formatTime(dateStr) {
   return new Date(dateStr).toLocaleTimeString('en-UG', { hour: '2-digit', minute: '2-digit', hour12: true })
 }

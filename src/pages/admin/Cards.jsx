@@ -1,17 +1,12 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../../supabase'
+import { formatUGX } from '../../lib/constants'
 
 const SUPABASE_URL      = import.meta.env.VITE_SUPABASE_URL
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
-function formatUGX(n) {
-  if (!n) return 'UGX 0'
-  if (n >= 1000000) return 'UGX ' + (n / 1000000).toFixed(1) + 'M'
-  if (n >= 1000)    return 'UGX ' + (n / 1000).toFixed(0) + 'K'
-  return 'UGX ' + Number(n).toLocaleString('en-UG', { maximumFractionDigits: 0 })
-}
 
 function formatDateTime(d) {
   if (!d) return '—'

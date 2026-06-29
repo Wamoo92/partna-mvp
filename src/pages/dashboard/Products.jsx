@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../../supabase'
+import { formatUGX } from '../../lib/constants'
 
 // ── Helpers — unchanged ────────────────────────────────────────────────────
 function generateProductCode() {
@@ -8,7 +9,6 @@ function generateProductCode() {
   for (let i = 0; i < 6; i++) code += chars[Math.floor(Math.random() * chars.length)]
   return code
 }
-function formatUGX(n) { return 'UGX ' + Number(n).toLocaleString('en-UG', { maximumFractionDigits: 0 }) }
 function formatAmountInput(val) { return val.replace(/\D/g, '').replace(/\B(?=(\d{3})+(?!\d))/g, ',') }
 
 // ── Sellin tokens ──────────────────────────────────────────────────────────

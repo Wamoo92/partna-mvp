@@ -1,5 +1,6 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { formatUGX } from '../_shared/fees.ts'
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SERVICE_KEY  = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
@@ -34,9 +35,6 @@ function isRateLimited(customerId: string): boolean {
   return false
 }
 
-function formatUGX(n: number): string {
-  return 'UGX ' + Number(n).toLocaleString('en-UG', { maximumFractionDigits: 0 })
-}
 
 function generateReference(): string {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
@@ -226,17 +224,12 @@ serve(async (req) => {
       })
     }
 
-    // ── Calculate MDR ─────────────────────────────────────────────────────
-    const { data: mdrResult } = await supabase.rpc('calculate_mdr', {
-      payment_amount:  paymentAmount,
-      campaign_status: campaign.status,
-      campaign_date:   campaign.target_date,
-    })
-
-    const mdr = mdrResult?.[0] || { mdr_rate: 0.75, mdr_amount: 0, net_to_school: paymentAmount }
-    const netToSchool = Number(mdr.net_to_school)
-    const mdrAmount   = Number(mdr.mdr_amount)
-    const mdrRate     = Number(mdr.mdr_rate)
+    // ── New fee model: customer payments carry NO fee ─────────────────────
+    // The school is credited the FULL amount; Partna recovers its cost from the
+    // business withdrawal fee (3% + UGX 6,000) instead of an MDR on each payment.
+    const netToSchool = paymentAmount
+    const mdrAmount   = 0
+    const mdrRate     = 0
 
     // ── Late fee check ────────────────────────────────────────────────────
     const isLate        = campaign.target_date && new Date(campaign.target_date) < new Date()
