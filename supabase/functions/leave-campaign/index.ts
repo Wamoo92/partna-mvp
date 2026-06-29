@@ -1,12 +1,10 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
+import { CARRIER_FEE, EARLY_EXIT_FEE_PERCENT } from '../_shared/fees.ts'
+
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SERVICE_KEY  = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-
-// Flat mobile-money payout fee — same as a normal withdrawal. The refund is
-// disbursed to the customer's mobile money, so it bears the carrier fee too.
-const CARRIER_FEE = 1800
 
 function getCorsHeaders(req: Request) {
   const origin  = req.headers.get('origin') || ''
@@ -56,7 +54,7 @@ serve(async (req) => {
     const { data: wallet } = await supabase
       .from('wallets').select('id, balance').eq('id', enrollment.wallet_id).maybeSingle()
     const balance    = Number(wallet?.balance || 0)
-    const fee        = Math.round(balance * 0.10)            // 10% early-exit fee (Partna)
+    const fee        = Math.round(balance * EARLY_EXIT_FEE_PERCENT)  // early-exit fee (Partna)
     const carrierFee = balance > 0 ? CARRIER_FEE : 0          // mobile-money payout fee
     const refund     = Math.max(0, balance - fee - carrierFee)
 

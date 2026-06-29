@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { supabase } from '../../supabase'
 import { useBrand } from '../../lib/BrandContext'
+import LoadError from '../../components/LoadError'
 
 const PAGE_SIZE = 10
 
@@ -87,6 +88,7 @@ export default function Transactions({
   const [campaign, setCampaign]                 = useState(null)
   const [allTransactions, setAllTransactions]   = useState([])
   const [loading, setLoading]                   = useState(true)
+  const [loadError, setLoadError]               = useState(false)
   const [visibleCount, setVisibleCount]         = useState(PAGE_SIZE)
   const [typeFilter, setTypeFilter]             = useState('all')
   const [dateFrom, setDateFrom]                 = useState('')
@@ -98,7 +100,7 @@ export default function Transactions({
   // ── Business logic — unchanged ────────────────────────────────────────
 
   async function loadData() {
-    setLoading(true)
+    setLoading(true); setLoadError(false)
     try {
       const { data: enrollData } = await supabase.from('customer_campaigns').select('*, campaigns(*), wallets(*)').eq('customer_id', customer.id).eq('status', 'active').order('enrolled_at', { ascending: true })
       setEnrollments(enrollData || [])
@@ -109,7 +111,7 @@ export default function Transactions({
         const { data: txnData } = await supabase.from('transactions').select('*').eq('customer_id', customer.id).eq('campaign_id', active.campaign_id).order('created_at', { ascending: false })
         setAllTransactions(txnData || [])
       }
-    } catch (e) { console.error('Transactions load error:', e) }
+    } catch (e) { console.error('Transactions load error:', e); setLoadError(true) }
     setLoading(false)
   }
 
@@ -143,6 +145,8 @@ export default function Transactions({
       <div className="spinner spinner-lg" />
     </div>
   )
+
+  if (loadError) return <LoadError onRetry={loadData} />
 
   const inputStyle = { display: 'block', width: '100%', padding: '9px 12px', fontSize: 13, fontWeight: 500, color: C.black, background: C.white, border: `1px solid ${C.grayLine}`, borderRadius: 8, outline: 'none', fontFamily: 'Inter, system-ui, sans-serif' }
 

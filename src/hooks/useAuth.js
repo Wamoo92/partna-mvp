@@ -91,6 +91,18 @@ export function useAuth() {
     return () => subscription.unsubscribe()
   }, [])
 
+  // ── Cross-institution isolation ───────────────────────────────────────
+  // If we're on an institution subdomain and the loaded customer belongs to a
+  // DIFFERENT business, sign them out. This runs only once BOTH the customer and
+  // the subdomain business are resolved, so it can't be skipped by the earlier
+  // stale-closure race (where subdomainBusiness was still null during fetchCustomer).
+  useEffect(() => {
+    if (customer && subdomainBusiness && customer.business_id !== subdomainBusiness.id) {
+      console.warn('Customer business mismatch — signing out')
+      supabase.auth.signOut()
+    }
+  }, [customer, subdomainBusiness])
+
   async function fetchCustomer(userId, { silent = false } = {}) {
     // Mark loading while the customer row is fetched. Without this, right after
     // signInWithPassword the app has a session but customer === null and
@@ -122,16 +134,10 @@ export function useAuth() {
         return
       }
 
-      // ── Security check: if a subdomain business is loaded, the customer
-      // must belong to that business. If not, sign them out immediately.
-      // This prevents a customer from one institution logging into another's portal.
-      const slug = detectSubdomainSlug()
-      if (slug && subdomainBusiness && customerData.business_id !== subdomainBusiness.id) {
-        console.warn('Customer business mismatch — signing out')
-        await supabase.auth.signOut()
-        if (!silent) setLoading(false)
-        return
-      }
+      // Cross-institution isolation is enforced by a dedicated effect below that
+      // waits until BOTH the customer and the subdomain business are loaded — doing
+      // it here was unreliable because subdomainBusiness was usually still null in
+      // this closure (it loads in a separate async effect), so the check never fired.
 
       setCustomer(customerData)
 

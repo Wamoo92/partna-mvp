@@ -1,5 +1,6 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { PARTNA_GENERAL_FEE_PERCENT } from '../_shared/fees.ts'
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SERVICE_KEY  = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
@@ -94,53 +95,33 @@ serve(async (req) => {
     }
 
     const fullPayment = payAmount >= remaining
-    const partnaFee   = Math.round(payAmount * 0.01)
+    const partnaFee   = Math.round(payAmount * PARTNA_GENERAL_FEE_PERCENT)
     const reference   = generateReference()
 
-    // ── Debit wallet with an optimistic lock (rejects on lost-update race) ─
-    const { data: debited } = await supabase
-      .from('wallets').update({ balance: balance - payAmount, updated_at: new Date().toISOString() })
-      .eq('id', wallet.id).eq('balance', balance).select('id')
-    if (!debited || debited.length === 0) {
-      return json({ error: 'Your balance changed during processing. Please try again.' }, req, 409)
+    // ── Atomic: debit wallet, record txn + fee, and (on full payment) credit
+    // escrow + record the sale + consume the discount — all in ONE transaction.
+    const { data: rpcData, error: rpcErr } = await supabase.rpc('process_general_payment_tx', {
+      p_wallet_id:    wallet.id,
+      p_customer_id:  customer.id,
+      p_campaign_id:  campaign.id,
+      p_business_id:  campaign.business_id,
+      p_amount:       payAmount,
+      p_partna_fee:   partnaFee,
+      p_full_payment: fullPayment,
+      p_discount_id:  discount?.id || null,
+      p_reference:    reference,
+      p_notes:        discountPct > 0 ? `Discount prize applied: ${discountPct}% (${formatUGX(discountAmount)} saved)` : null,
+      p_sale_notes:   discountPct > 0 ? `Discount prize applied: ${discountPct}% off` : null,
+    })
+    if (rpcErr) {
+      const msg = rpcErr.message || ''
+      if (msg.includes('INSUFFICIENT_BALANCE')) return json({ error: `Insufficient balance. Your wallet has ${formatUGX(balance)}.`, blocked: true }, req, 400)
+      console.error('process-general-payment: RPC failed', rpcErr)
+      return json({ error: 'Payment processing failed. Please try again.' }, req, 500)
     }
+    const newBalance = Number(rpcData?.new_balance ?? (balance - payAmount))
 
-    // ── Record the transaction ───────────────────────────────────────────
-    const { data: txnRows } = await supabase.from('transactions').insert({
-      customer_id: customer.id, wallet_id: wallet.id, campaign_id: campaign.id,
-      type: 'payment', amount: payAmount, status: 'completed', reference,
-      notes: discountPct > 0 ? `Discount prize applied: ${discountPct}% (${formatUGX(discountAmount)} saved)` : null,
-    }).select('id')
-    const txnId = txnRows?.[0]?.id || null
-
-    if (txnId) {
-      await supabase.from('transaction_fees').insert({
-        transaction_id: txnId, customer_id: customer.id, fee_type: 'payment', charged_to: 'business',
-        partna_fee: partnaFee, carrier_fee: 0, tax: 0, total_fees: partnaFee, net_amount: payAmount - partnaFee,
-      })
-    }
-
-    // ── Full payment: credit escrow (campaign's business) + record sale ───
-    if (fullPayment) {
-      const { data: escrow } = await supabase
-        .from('escrow_wallets').select('id, balance').eq('business_id', campaign.business_id).maybeSingle()
-      if (escrow) {
-        await supabase.from('escrow_wallets').update({ balance: Number(escrow.balance) + payAmount }).eq('id', escrow.id)
-      } else {
-        await supabase.from('escrow_wallets').insert({ business_id: campaign.business_id, balance: payAmount })
-      }
-      await supabase.from('sales').insert({
-        business_id: campaign.business_id, customer_id: customer.id, campaign_id: campaign.id,
-        transaction_id: txnId, amount: payAmount, type: 'retail', status: 'pending', is_prize: false,
-        notes: discountPct > 0 ? `Discount prize applied: ${discountPct}% off` : null,
-      })
-    }
-
-    if (discount) await supabase.from('customer_discounts').update({ is_used: true }).eq('id', discount.id)
-
-    return json({
-      success: true, reference, newBalance: balance - payAmount, isFullPayment: fullPayment,
-    }, req)
+    return json({ success: true, reference, newBalance, isFullPayment: fullPayment }, req)
 
   } catch (e) {
     console.error('process-general-payment error:', e)

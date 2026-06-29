@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { supabase } from '../../supabase'
 import { useBrand } from '../../lib/BrandContext'
+import LoadError from '../../components/LoadError'
 
 const SUPABASE_URL      = import.meta.env.VITE_SUPABASE_URL
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY
@@ -46,6 +47,7 @@ export default function AddMoney({
   const [amount, setAmount]                       = useState('')
   const [loading, setLoading]                     = useState(false)
   const [loadingEnrollment, setLoadingEnrollment] = useState(true)
+  const [loadError, setLoadError]                 = useState(false)
   const [error, setError]                         = useState('')
   const [enrollment, setEnrollment]               = useState(null)
   const [wallet, setWallet]                       = useState(null)
@@ -59,7 +61,7 @@ export default function AddMoney({
   // ── Business logic — unchanged ─────────────────────────────────────────
 
   async function loadEnrollment() {
-    setLoadingEnrollment(true)
+    setLoadingEnrollment(true); setLoadError(false)
     try {
       let q = supabase
         .from('customer_campaigns')
@@ -75,6 +77,7 @@ export default function AddMoney({
       if (data) { setEnrollment(data); setCampaign(data.campaigns); setWallet(data.wallets) }
     } catch (e) {
       console.error('Load enrollment error:', e)
+      setLoadError(true)
     }
     setLoadingEnrollment(false)
   }
@@ -122,6 +125,8 @@ export default function AddMoney({
       <div className="spinner spinner-lg" />
     </div>
   )
+
+  if (loadError) return <LoadError onRetry={loadEnrollment} />
 
   const balance = wallet?.balance || 0
   const target  = campaign?.target_amount || 0

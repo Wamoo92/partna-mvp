@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { supabase } from '../../supabase'
 import { useBrand } from '../../lib/BrandContext'
+import LoadError from '../../components/LoadError'
 
 const SUPABASE_URL      = import.meta.env.VITE_SUPABASE_URL
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY
@@ -141,6 +142,7 @@ export default function Pay({
     : ['How much to pay?', 'Confirm payment']
 
   const [step, setStep] = useState(1)
+  const [loadError, setLoadError] = useState(false)
 
   const [enrollment, setEnrollment]               = useState(null)
   const [wallet, setWallet]                       = useState(null)
@@ -169,7 +171,7 @@ export default function Pay({
   // ── All business logic — unchanged ────────────────────────────────────
 
   async function loadEnrollment() {
-    setLoadingEnrollment(true)
+    setLoadingEnrollment(true); setLoadError(false)
     try {
       let q = supabase.from('customer_campaigns').select('*, campaigns(*), wallets(*)').eq('customer_id', customer.id).eq('status', 'active')
       if (enrollmentId) { q = q.eq('id', enrollmentId) } else { q = q.order('enrolled_at', { ascending: true }).limit(1) }
@@ -188,7 +190,7 @@ export default function Pay({
           if (discountData) setDiscount(discountData)
         }
       }
-    } catch (e) { console.error('Load enrollment error:', e) }
+    } catch (e) { console.error('Load enrollment error:', e); setLoadError(true) }
     setLoadingEnrollment(false)
   }
 
@@ -293,6 +295,8 @@ export default function Pay({
       <div className="spinner spinner-lg" />
     </div>
   )
+
+  if (loadError) return <LoadError onRetry={loadEnrollment} />
 
   const isSuccess = step === successStep
 

@@ -81,6 +81,7 @@ export default function CustomerDetail() {
   const [kycSuccess, setKycSuccess]   = useState('')
   const [savingFlag, setSavingFlag]   = useState(false)
   const [flagSuccess, setFlagSuccess] = useState('')
+  const [confirmFlag, setConfirmFlag] = useState(false)
 
   const [refundAmount, setRefundAmount]   = useState('')
   const [refundConfirm, setRefundConfirm] = useState('')
@@ -128,6 +129,7 @@ export default function CustomerDetail() {
       setTimeout(() => setFlagSuccess(''), 3000)
     } catch (e) { console.error('Flag error:', e) }
     setSavingFlag(false)
+    setConfirmFlag(false)
   }
 
   async function handleRefund() {
@@ -347,13 +349,38 @@ export default function CustomerDetail() {
             <p style={{ fontSize: 13, fontWeight: 500, color: C.secondary, margin: '0 0 14px', lineHeight: '140%' }}>
               Flagging an account marks it for review. The customer can still use the platform.
             </p>
-            <button onClick={handleToggleFlag} disabled={savingFlag}
+            <button onClick={() => setConfirmFlag(true)} disabled={savingFlag}
               style={{ ...(customer.is_flagged ? btnSuccess : btnDanger), opacity: savingFlag ? 0.75 : 1 }}>
               {savingFlag
                 ? <><div className="spinner spinner-sm spinner-light" /> Saving…</>
                 : customer.is_flagged ? 'Remove flag' : 'Flag this account'
               }
             </button>
+
+            {confirmFlag && (
+              <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: 24 }}>
+                <div style={{ background: C.white, borderRadius: 14, padding: 24, maxWidth: 380, width: '100%', boxShadow: '0 8px 32px rgba(0,0,0,0.2)', fontFamily: 'Inter, system-ui, sans-serif' }}>
+                  <p style={{ fontSize: 16, fontWeight: 600, color: C.black, margin: '0 0 8px' }}>
+                    {customer.is_flagged ? 'Remove flag?' : 'Flag this account?'}
+                  </p>
+                  <p style={{ fontSize: 13, fontWeight: 500, color: C.secondary, margin: '0 0 18px', lineHeight: '140%' }}>
+                    {customer.is_flagged
+                      ? `This removes the review flag from ${customer.first_name} ${customer.last_name}'s account.`
+                      : `This marks ${customer.first_name} ${customer.last_name}'s account for review.`}
+                  </p>
+                  <div style={{ display: 'flex', gap: 10 }}>
+                    <button onClick={() => setConfirmFlag(false)} disabled={savingFlag}
+                      style={{ flex: 1, padding: '10px', fontSize: 13, fontWeight: 600, color: C.black, background: C.white, border: `1px solid ${C.grayLine}`, borderRadius: 10, cursor: 'pointer', fontFamily: 'inherit' }}>
+                      Cancel
+                    </button>
+                    <button onClick={handleToggleFlag} disabled={savingFlag}
+                      style={{ flex: 1, padding: '10px', fontSize: 13, fontWeight: 600, color: C.white, background: C.black, border: `1px solid ${C.black}`, borderRadius: 10, cursor: savingFlag ? 'not-allowed' : 'pointer', fontFamily: 'inherit', opacity: savingFlag ? 0.75 : 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                      {savingFlag ? <><div className="spinner spinner-sm spinner-light" /> Saving…</> : 'Confirm'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
           </SectionCard>
 
           {/* Manual refund */}

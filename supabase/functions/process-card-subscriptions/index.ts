@@ -4,9 +4,28 @@ const SUPABASE_URL     = Deno.env.get('SUPABASE_URL')!
 const SUPABASE_SERVICE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 const SUPABASE_ANON    = Deno.env.get('SUPABASE_ANON_KEY')!
 
-const CORS = {
-  'Access-Control-Allow-Origin':  '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+const CRON_SECRET = Deno.env.get('CRON_SECRET') || ''
+
+function getCorsHeaders(req: Request) {
+  const origin  = req.headers.get('origin') || ''
+  const allowed = (
+    origin === 'https://www.partna.io' ||
+    origin === 'https://partna.io'     ||
+    origin.endsWith('.partna.io')      ||
+    origin === 'http://localhost:5173' ||
+    origin === 'http://localhost:3000'
+  )
+  return {
+    'Access-Control-Allow-Origin':  allowed ? origin : 'https://www.partna.io',
+    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-cron-secret',
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  }
+}
+
+// Scheduler-only. Must present the shared cron secret (the anon key is public, not enough).
+function isAuthorizedCron(req: Request): boolean {
+  const provided = req.headers.get('X-Cron-Secret') || ''
+  return CRON_SECRET.length > 0 && provided === CRON_SECRET
 }
 
 function generateReference(): string {
@@ -34,7 +53,11 @@ async function sendSMS(supabase: any, customerId: string, phone: string, event: 
 }
 
 Deno.serve(async (req) => {
+  const CORS = getCorsHeaders(req)
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS })
+  if (!isAuthorizedCron(req)) {
+    return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { ...CORS, 'Content-Type': 'application/json' } })
+  }
 
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE)
   const now      = new Date()

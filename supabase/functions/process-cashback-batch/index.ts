@@ -3,6 +3,31 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SERVICE_KEY  = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+const CRON_SECRET  = Deno.env.get('CRON_SECRET') || ''
+
+// Subdomain-aware CORS (consistent with the rest of the platform).
+function getCorsHeaders(req: Request) {
+  const origin  = req.headers.get('origin') || ''
+  const allowed = (
+    origin === 'https://www.partna.io' ||
+    origin === 'https://partna.io'     ||
+    origin.endsWith('.partna.io')      ||
+    origin === 'http://localhost:5173' ||
+    origin === 'http://localhost:3000'
+  )
+  return {
+    'Access-Control-Allow-Origin':  allowed ? origin : 'https://www.partna.io',
+    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-cron-secret',
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  }
+}
+
+// This function is for the scheduler only. It must present the shared cron secret
+// in the X-Cron-Secret header (the anon key is NOT sufficient — it is public).
+function isAuthorizedCron(req: Request): boolean {
+  const provided = req.headers.get('X-Cron-Secret') || ''
+  return CRON_SECRET.length > 0 && provided === CRON_SECRET
+}
 
 // ── Tier thresholds (fetched fresh from DB each run) ──────────────────────
 // Defined in cashback_tiers table — admin can adjust via Rewards page
@@ -14,11 +39,14 @@ const PAYMENT_TYPES = ['fee_payment', 'late_fee_payment', 'payment']
 const PROGRESS_TYPES = ['fee_payment', 'late_fee_payment', 'payment', 'deposit']
 
 serve(async (req) => {
-  // Allow manual trigger via POST as well as cron GET
-  const authHeader = req.headers.get('Authorization')
-  if (!authHeader?.includes(SERVICE_KEY.slice(0, 20))) {
-    // Basic check — cron jobs from Supabase include service role key
-    // Skip auth check if running as internal cron (Supabase handles this)
+  const cors = getCorsHeaders(req)
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: cors })
+
+  // Fail closed: only the scheduler (with the cron secret) may run this.
+  if (!isAuthorizedCron(req)) {
+    return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+      status: 401, headers: { ...cors, 'Content-Type': 'application/json' },
+    })
   }
 
   const supabase = createClient(SUPABASE_URL, SERVICE_KEY)
@@ -167,18 +195,32 @@ serve(async (req) => {
         .lte('created_at', today)
 
       for (const cb of pendingCashback || []) {
-        // Fetch current wallet balance
+        // Idempotency: atomically CLAIM the cashback row first by flipping
+        // pending → completed, guarded by status='pending'. Only the run that
+        // actually flips the row (claimed.length === 1) proceeds to credit, so a
+        // re-run or a partial-failure replay can never credit the same row twice.
+        const { data: claimed, error: claimErr } = await supabase
+          .from('transactions')
+          .update({ status: 'completed' })
+          .eq('id', cb.id)
+          .eq('status', 'pending')
+          .select('id')
+
+        if (claimErr || !claimed || claimed.length === 0) continue // already claimed elsewhere
+
         const { data: wallet } = await supabase
           .from('wallets')
           .select('balance')
           .eq('id', cb.wallet_id)
           .maybeSingle()
 
-        if (!wallet) continue
+        if (!wallet) {
+          // Can't credit — release the claim so it is retried next run.
+          await supabase.from('transactions').update({ status: 'pending' }).eq('id', cb.id)
+          continue
+        }
 
         const newBalance = Number(wallet.balance) + Number(cb.amount)
-
-        // Credit wallet
         const { error: walletErr } = await supabase
           .from('wallets')
           .update({ balance: newBalance })
@@ -186,14 +228,10 @@ serve(async (req) => {
 
         if (walletErr) {
           console.error(`Failed to credit cashback wallet for transaction ${cb.id}:`, walletErr)
+          // Release the claim so the credit is retried on the next run.
+          await supabase.from('transactions').update({ status: 'pending' }).eq('id', cb.id)
           continue
         }
-
-        // Mark cashback transaction as completed
-        await supabase
-          .from('transactions')
-          .update({ status: 'completed' })
-          .eq('id', cb.id)
 
         cashbackCredited++
         console.log(`[process-cashback-batch] Cashback credited: transaction ${cb.id}, amount ${cb.amount}`)

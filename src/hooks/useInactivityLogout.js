@@ -27,6 +27,9 @@ export function useInactivityLogout(timeoutMs, onLogout) {
   const warningTimer   = useRef(null)
   const countdownTimer = useRef(null)
   const onLogoutRef    = useRef(onLogout)
+  // Guards against setState after unmount — a queued interval/timeout callback can
+  // still fire once between clearInterval and the component being torn down.
+  const isMounted      = useRef(true)
 
   // Keep onLogout ref current without re-running effects
   useEffect(() => { onLogoutRef.current = onLogout }, [onLogout])
@@ -43,11 +46,13 @@ export function useInactivityLogout(timeoutMs, onLogout) {
 
     // Warning fires (timeoutMs - WARNING_BEFORE_MS) after last activity
     warningTimer.current = setTimeout(() => {
+      if (!isMounted.current) return
       setShowWarning(true)
       setSecondsLeft(60)
 
       // Countdown ticker
       countdownTimer.current = setInterval(() => {
+        if (!isMounted.current) { clearInterval(countdownTimer.current); return }
         setSecondsLeft(s => {
           if (s <= 1) {
             clearInterval(countdownTimer.current)
@@ -85,11 +90,13 @@ export function useInactivityLogout(timeoutMs, onLogout) {
   }, [clearAllTimers, startTimers])
 
   useEffect(() => {
+    isMounted.current = true
     startTimers()
 
     EVENTS.forEach(event => window.addEventListener(event, handleActivity, { passive: true }))
 
     return () => {
+      isMounted.current = false
       clearAllTimers()
       EVENTS.forEach(event => window.removeEventListener(event, handleActivity))
     }

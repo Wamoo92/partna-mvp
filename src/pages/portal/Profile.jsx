@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../supabase'
 import { useBrand } from '../../lib/BrandContext'
+import LoadError from '../../components/LoadError'
+import { CARRIER_FEE, EARLY_EXIT_FEE_PERCENT } from '../../lib/constants'
 
 const SUPABASE_URL      = import.meta.env.VITE_SUPABASE_URL
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY
@@ -259,6 +261,7 @@ export default function Profile({
 
   const [enrollments, setEnrollments] = useState([])
   const [loading, setLoading]         = useState(true)
+  const [loadError, setLoadError]     = useState(false)
 
   const [showPinForm, setShowPinForm]   = useState(false)
   const [currentPin, setCurrentPin]     = useState('')
@@ -283,18 +286,18 @@ export default function Profile({
   // ── All business logic — unchanged ────────────────────────────────────
 
   async function loadData() {
-    setLoading(true)
+    setLoading(true); setLoadError(false)
     try {
       const { data } = await supabase.from('customer_campaigns').select('*, campaigns(*), wallets(*)').eq('customer_id', customer.id).eq('status', 'active').order('enrolled_at', { ascending: true })
       setEnrollments(data || [])
-    } catch (e) { console.error('Profile load error:', e) }
+    } catch (e) { console.error('Profile load error:', e); setLoadError(true) }
     setLoading(false)
   }
 
   function calcRefund(balance) {
     const gross = Number(balance)
-    const fee        = Math.round(gross * 0.10)        // 10% early-exit fee
-    const carrierFee = gross > 0 ? 1800 : 0             // flat mobile-money payout fee
+    const fee        = Math.round(gross * EARLY_EXIT_FEE_PERCENT)  // early-exit fee
+    const carrierFee = gross > 0 ? CARRIER_FEE : 0                 // flat mobile-money payout fee
     return { gross, fee, carrierFee, refund: Math.max(0, gross - fee - carrierFee) }
   }
 
@@ -385,6 +388,8 @@ export default function Profile({
       <div className="spinner spinner-lg" />
     </div>
   )
+
+  if (loadError) return <LoadError onRetry={loadData} />
 
   const inputStyle = { display: 'block', width: '100%', padding: '10px 14px', fontSize: 14, fontWeight: 500, color: C.black, background: C.white, border: `1px solid ${C.grayLine}`, borderRadius: 10, outline: 'none', fontFamily: 'Inter, system-ui, sans-serif', textAlign: 'center', letterSpacing: '0.5em', fontSize: 22, fontWeight: 600 }
 

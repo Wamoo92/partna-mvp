@@ -23,28 +23,26 @@ export default function AdminLogin() {
   const [password, setPassword]   = useState('')
   const [loading, setLoading]     = useState(false)
   const [error, setError]         = useState('')
-  const [debugInfo, setDebugInfo] = useState('')
 
   // ── Business logic — unchanged ─────────────────────────────────────────
   async function handleLogin(e) {
     e.preventDefault()
-    setError(''); setDebugInfo('')
+    setError('')
     if (!email || !password) { setError('Please enter your email and password.'); return }
     setLoading(true)
     try {
-      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({ email: email.toLowerCase().trim(), password })
-      if (authError) { setDebugInfo('Auth error: ' + authError.message); setError('Incorrect email or password.'); setLoading(false); return }
-      const authedEmail = authData.user.email
-      setDebugInfo('Authed as: ' + authedEmail)
-      const { data: allAdmins, error: listError } = await supabase.from('admin_users').select('email')
-      setDebugInfo(prev => prev + ' | All admins: ' + JSON.stringify(allAdmins) + ' | List error: ' + JSON.stringify(listError))
-      const isAdmin = allAdmins && allAdmins.some(a => a.email.toLowerCase().trim() === authedEmail.toLowerCase().trim())
-      setDebugInfo(prev => prev + ' | isAdmin: ' + isAdmin)
-      if (!isAdmin) { await supabase.auth.signOut(); setError('Access denied. This account does not have admin privileges.'); setLoading(false); return }
+      const cleanEmail = email.toLowerCase().trim()
+      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({ email: cleanEmail, password })
+      if (authError) { console.error('Admin login auth error:', authError.message); setError('Incorrect email or password.'); setLoading(false); return }
+      // Only check whether THIS signed-in user's email is an admin — never load or
+      // display the full admin list. RLS on admin_users also restricts reads to the
+      // row matching the caller's own email.
+      const authedEmail = (authData.user.email || '').toLowerCase().trim()
+      const { data: adminRow } = await supabase.from('admin_users').select('email').eq('email', authedEmail).maybeSingle()
+      if (!adminRow) { await supabase.auth.signOut(); setError('Access denied. This account does not have admin privileges.'); setLoading(false); return }
       navigate('/admin/dashboard', { replace: true })
     } catch (e) {
       console.error('Admin login error:', e)
-      setDebugInfo('Exception: ' + e.message)
       setError('Something went wrong. Please try again.')
     }
     setLoading(false)
@@ -84,13 +82,6 @@ export default function AdminLogin() {
           {error && (
             <div style={{ background: C.bgRed, borderRadius: 8, padding: '12px 14px', fontSize: 14, fontWeight: 500, color: C.red, lineHeight: '140%' }}>
               {error}
-            </div>
-          )}
-
-          {/* Debug panel — kept as-is for internal use */}
-          {debugInfo && (
-            <div style={{ padding: '10px 14px', background: '#f0f9ff', border: '1px solid #BAE6FD', borderRadius: 8, fontSize: 12, color: '#0369a1', fontFamily: 'monospace', wordBreak: 'break-all', lineHeight: '140%' }}>
-              {debugInfo}
             </div>
           )}
 

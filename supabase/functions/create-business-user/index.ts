@@ -33,7 +33,7 @@ function err(message: string, req: Request, status = 400) {
 }
 
 // ── Welcome email HTML ─────────────────────────────────────────────────────
-function welcomeEmail(contactName: string, email: string, businessName: string, tempPassword: string): string {
+function welcomeEmail(contactName: string, email: string, businessName: string): string {
   return `
     <div style="font-family: Inter, system-ui, sans-serif; max-width: 560px; margin: 0 auto; padding: 32px 24px; color: #111;">
       <img src="https://www.partna.io/partna-logo.png" alt="Partna" style="height: 28px; margin-bottom: 28px;" />
@@ -43,25 +43,21 @@ function welcomeEmail(contactName: string, email: string, businessName: string, 
       </h2>
 
       <p style="font-size: 15px; color: #444; line-height: 1.6; margin: 0 0 20px;">
-        Your <strong>${businessName}</strong> account has been created on Partna.
-        Use the credentials below to log in to your dashboard for the first time.
-        You will be prompted to set a new password on your first login.
+        Your <strong>${businessName}</strong> account has been created on Partna. Your login email is below.
+        For your security we never send passwords by email — set your own password using the
+        <strong>“Forgot password”</strong> link on the dashboard login page.
       </p>
 
       <div style="background: #F6F7EE; border: 1px solid #D7D8CB; border-radius: 10px; overflow: hidden; margin: 0 0 24px;">
-        <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; border-bottom: 1px solid #D5D9DD;">
-          <span style="font-size: 13px; font-weight: 500; color: #959687;">Email</span>
-          <span style="font-size: 13px; font-weight: 600; color: #111;">${email}</span>
-        </div>
         <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 16px;">
-          <span style="font-size: 13px; font-weight: 500; color: #959687;">Temporary password</span>
-          <span style="font-size: 15px; font-weight: 700; color: #111; font-family: monospace; letter-spacing: 0.08em;">${tempPassword}</span>
+          <span style="font-size: 13px; font-weight: 500; color: #959687;">Login email</span>
+          <span style="font-size: 13px; font-weight: 600; color: #111;">${email}</span>
         </div>
       </div>
 
       <a href="https://www.partna.io/dashboard/login"
         style="display: inline-block; padding: 13px 28px; background: #111; color: #fff; font-size: 15px; font-weight: 600; text-decoration: none; border-radius: 10px; margin: 0 0 24px;">
-        Log in to your dashboard →
+        Go to the dashboard →
       </a>
 
       <p style="font-size: 13px; color: #959687; line-height: 1.6; margin: 0 0 8px;">
@@ -73,7 +69,7 @@ function welcomeEmail(contactName: string, email: string, businessName: string, 
 
       <div style="border-top: 1px solid #D7D8CB; padding-top: 20px;">
         <p style="font-size: 12px; color: #959687; margin: 0; line-height: 1.6;">
-          For security, you will be asked to change your password immediately after your first login.
+          On the login page, click <strong>“Forgot password”</strong> to receive a secure link and set your password.
           If you did not expect this email, please contact
           <a href="mailto:support@partna.io" style="color: #111; font-weight: 600;">support@partna.io</a>.
         </p>
@@ -193,7 +189,7 @@ Deno.serve(async (req) => {
           to:      email,
           from:    'support',
           subject: `Welcome to Partna — your ${businessName} account is ready`,
-          html:    welcomeEmail(contactName, email, businessName, password),
+          html:    welcomeEmail(contactName, email, businessName),
         }),
       })
     } catch (emailErr) {

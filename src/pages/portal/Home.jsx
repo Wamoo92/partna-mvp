@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../supabase'
 import { useBrand } from '../../lib/BrandContext'
 import { getEffectiveStatus } from '../../lib/campaignUtils'
+import LoadError from '../../components/LoadError'
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -61,6 +62,7 @@ export default function Home({
   const [cards, setCards]                     = useState({})
   const [activeIdx, setActiveIdx]             = useState(0)
   const [loading, setLoading]                 = useState(true)
+  const [loadError, setLoadError]             = useState(false)
   const [cardFlipped, setCardFlipped]         = useState(false)
   const [transactions, setTransactions]       = useState([])
   const [cardSubscription, setCardSubscription] = useState(null)
@@ -85,7 +87,7 @@ export default function Home({
   }, [showPricingTip])
 
   async function fetchData() {
-    setLoading(true)
+    setLoading(true); setLoadError(false)
     try {
       const { data: enrollData } = await supabase
         .from('customer_campaigns')
@@ -123,6 +125,7 @@ export default function Home({
 
     } catch (err) {
       console.error('Error fetching home data:', err)
+      setLoadError(true)
     } finally {
       setLoading(false)
     }
@@ -185,6 +188,8 @@ export default function Home({
       <div className="spinner spinner-lg" />
     </div>
   )
+
+  if (loadError) return <LoadError onRetry={fetchData} />
 
   // ── Empty state ────────────────────────────────────────────────────────
   if (enrollments.length === 0) return (

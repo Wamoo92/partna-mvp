@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../supabase'
 import { useBrand } from '../../lib/BrandContext'
+import LoadError from '../../components/LoadError'
 
 const SUPABASE_URL      = import.meta.env.VITE_SUPABASE_URL
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY
@@ -200,6 +201,7 @@ export default function CardDetail({
 
   const [card, setCard]               = useState(null)
   const [loading, setLoading]         = useState(true)
+  const [loadError, setLoadError]     = useState(false)
   const [flipped, setFlipped]         = useState(false)
   const [enrollment, setEnrollment]   = useState(null)
   const [tiers, setTiers]             = useState([])
@@ -236,7 +238,7 @@ export default function CardDetail({
   useEffect(() => { if (customer) loadAll() }, [customer])
 
   async function loadAll() {
-    setLoading(true)
+    setLoading(true); setLoadError(false)
     try {
       const { data: cardData } = await supabase
         .from('cards').select('*').eq('customer_id', customer.id)
@@ -285,6 +287,7 @@ export default function CardDetail({
 
     } catch (e) {
       console.error('CardDetail load error:', e)
+      setLoadError(true)
     }
     setLoading(false)
   }
@@ -391,6 +394,8 @@ export default function CardDetail({
       <div className="spinner spinner-lg" />
     </div>
   )
+
+  if (loadError) return <LoadError onRetry={loadAll} />
 
   return (
     <div style={{ minHeight: '100vh', background: C.bg, display: 'flex', flexDirection: 'column', paddingBottom: 80, fontFamily: 'Inter, system-ui, sans-serif' }}>

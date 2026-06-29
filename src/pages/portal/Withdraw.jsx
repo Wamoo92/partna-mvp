@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { supabase } from '../../supabase'
 import { useBrand } from '../../lib/BrandContext'
+import LoadError from '../../components/LoadError'
+import { CARRIER_FEE, PARTNA_WITHDRAWAL_FEE_PERCENT, MIN_WITHDRAWAL } from '../../lib/constants'
 
 const SUPABASE_URL      = import.meta.env.VITE_SUPABASE_URL
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY
@@ -28,10 +30,9 @@ function nowDisplay() {
   return new Date().toLocaleString('en-UG', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true })
 }
 
-const CARRIER_FEE = 1800
 function getFees(amt) {
   if (!amt || isNaN(amt)) return { partnaFee: 0, carrierFee: 0, totalFees: 0, netAmount: 0 }
-  const partnaFee  = Math.round(amt * 0.02)
+  const partnaFee  = Math.round(amt * PARTNA_WITHDRAWAL_FEE_PERCENT)
   const carrierFee = CARRIER_FEE
   const totalFees  = partnaFee + carrierFee
   const netAmount  = Math.max(0, amt - totalFees)
@@ -111,6 +112,7 @@ export default function Withdraw({
   const [momoPhone, setMomoPhone]                 = useState('')
   const [loading, setLoading]                     = useState(false)
   const [loadingEnrollment, setLoadingEnrollment] = useState(true)
+  const [loadError, setLoadError]                 = useState(false)
   const [error, setError]                         = useState('')
   const [txnReference, setTxnReference]           = useState('')
   const [enrollment, setEnrollment]               = useState(null)
@@ -119,7 +121,7 @@ export default function Withdraw({
 
   const parsedAmount = parseInt(amount.replace(/,/g, ''), 10)
   const balance      = wallet ? Number(wallet.balance) : 0
-  const validAmount  = !isNaN(parsedAmount) && parsedAmount >= 5000 && parsedAmount <= balance
+  const validAmount  = !isNaN(parsedAmount) && parsedAmount >= MIN_WITHDRAWAL && parsedAmount <= balance
   const fees         = getFees(parsedAmount)
   // Withdrawals go to the customer's saved payment source — not chosen here.
   const hasPaymentSource = !!(customer?.payment_network && customer?.payment_number)
@@ -135,13 +137,13 @@ export default function Withdraw({
   // ── Business logic — unchanged ────────────────────────────────────────
 
   async function loadEnrollment() {
-    setLoadingEnrollment(true)
+    setLoadingEnrollment(true); setLoadError(false)
     try {
       let q = supabase.from('customer_campaigns').select('*, campaigns(*), wallets(*)').eq('customer_id', customer.id).eq('status', 'active')
       if (enrollmentId) { q = q.eq('id', enrollmentId) } else { q = q.order('enrolled_at', { ascending: true }).limit(1) }
       const { data } = await q.maybeSingle()
       if (data) { setEnrollment(data); setCampaign(data.campaigns); setWallet(data.wallets) }
-    } catch (e) { console.error('Load enrollment error:', e) }
+    } catch (e) { console.error('Load enrollment error:', e); setLoadError(true) }
     setLoadingEnrollment(false)
   }
 
@@ -176,6 +178,8 @@ export default function Withdraw({
       <div className="spinner spinner-lg" />
     </div>
   )
+
+  if (loadError) return <LoadError onRetry={loadEnrollment} />
 
   const btnPrimary   = { width: '100%', padding: '11px 18px', fontSize: 14, fontWeight: 600, color: C.white, background: C.black, border: `1px solid ${C.black}`, borderRadius: 10, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, fontFamily: 'Inter, system-ui, sans-serif' }
   const btnSecondary = { width: '100%', padding: '11px 18px', fontSize: 14, fontWeight: 600, color: C.black, background: C.white, border: `1px solid ${C.grayLine}`, borderRadius: 10, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, fontFamily: 'Inter, system-ui, sans-serif' }
@@ -309,7 +313,7 @@ export default function Withdraw({
                 style={btnPrimary}
                 onClick={() => {
                   if (!validAmount) {
-                    if (isNaN(parsedAmount) || parsedAmount < 5000) setError('Minimum withdrawal is UGX 5,000.')
+                    if (isNaN(parsedAmount) || parsedAmount < MIN_WITHDRAWAL) setError(`Minimum withdrawal is ${formatUGX(MIN_WITHDRAWAL)}.`)
                     else if (parsedAmount > balance) setError('Amount exceeds your available balance of ' + formatUGX(balance) + '.')
                     return
                   }

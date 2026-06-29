@@ -30,6 +30,10 @@ export default function PaymentSuccess() {
   const amount       = params.get('amount')
   const enrollmentId = params.get('enrollmentId') || null
 
+  // Validate the amount from the URL — never render "UGX NaN" if it's missing or malformed.
+  const amountNum      = Number(amount)
+  const hasValidAmount = amount != null && amount.trim() !== '' && !isNaN(amountNum)
+
   const btnPrimary = {
     width: '100%', padding: '11px 18px',
     fontSize: 14, fontWeight: 600,
@@ -106,16 +110,20 @@ export default function PaymentSuccess() {
               </div>
             )}
 
-            {/* Amount */}
-            {amount && (
+            {/* Amount — only render when it parses to a valid number */}
+            {hasValidAmount ? (
               <div style={{ marginTop: 4 }}>
                 <p style={{ fontSize: 11, fontWeight: 500, color: C.secondary, margin: '0 0 4px', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
                   Amount deposited
                 </p>
                 <p style={{ fontSize: 32, fontWeight: 600, color: C.green, letterSpacing: '-1px', margin: 0 }}>
-                  {formatUGX(amount)}
+                  {formatUGX(amountNum)}
                 </p>
               </div>
+            ) : (
+              <p style={{ fontSize: 13, fontWeight: 500, color: C.secondary, margin: '4px 0 0' }}>
+                Your deposit was received. Check your transactions for the exact amount.
+              </p>
             )}
           </div>
 

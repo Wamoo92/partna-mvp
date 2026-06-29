@@ -1,5 +1,6 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { CARRIER_FEE, PARTNA_WITHDRAWAL_FEE_PERCENT } from '../_shared/fees.ts'
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SERVICE_KEY  = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
@@ -36,8 +37,6 @@ function toOpenFloatNetwork(network: string): string {
   if (network === 'airtel') return 'AirtelMoney'
   return network
 }
-
-const CARRIER_FEE = 1800
 
 async function sendSMS(customerId: string, phone: string, event: string, vars: Record<string, string>) {
   try {
@@ -94,47 +93,41 @@ serve(async (req) => {
     const openFloatNetwork = toOpenFloatNetwork(savedNetwork)
     const networkLabel     = savedNetwork === 'mtn' ? 'MTN MoMo' : savedNetwork === 'airtel' ? 'Airtel Money' : openFloatNetwork
     const payoutPhone      = String(customer.payment_number).replace(/\s/g, '')
-    const partnaFee  = Math.round(amt * 0.02)
+    const partnaFee  = Math.round(amt * PARTNA_WITHDRAWAL_FEE_PERCENT)
     const totalFees  = partnaFee + CARRIER_FEE
     const netAmount  = Math.max(0, amt - totalFees)   // amount actually disbursed to mobile money
     const reference  = generateReference()
 
-    // ── Debit wallet with an optimistic lock ──────────────────────────────
-    const { data: debited } = await supabase
-      .from('wallets').update({ balance: balance - amt, updated_at: new Date().toISOString() })
-      .eq('id', wallet.id).eq('balance', balance).select('id')
-    if (!debited || debited.length === 0) {
-      return json({ error: 'Your balance changed during processing. Please try again.' }, req, 409)
+    // ── Atomic: debit wallet + record pending withdrawal + fees in ONE txn ──
+    // amt = gross debited from the wallet; the NET (after fees) is paid out to the
+    // customer's mobile money (transaction_fees.net_amount).
+    const { data: rpcData, error: rpcErr } = await supabase.rpc('process_withdrawal_tx', {
+      p_wallet_id:        wallet.id,
+      p_customer_id:      customer.id,
+      p_campaign_id:      enrollment.campaign_id,
+      p_amount:           amt,
+      p_network:          openFloatNetwork,
+      p_withdrawal_phone: payoutPhone,
+      p_reference:        reference,
+      p_notes:            `Payout UGX ${netAmount.toLocaleString()} to ${networkLabel} ${payoutPhone} (gross UGX ${amt.toLocaleString()} − fees UGX ${totalFees.toLocaleString()})`,
+      p_partna_fee:       partnaFee,
+      p_carrier_fee:      CARRIER_FEE,
+      p_total_fees:       totalFees,
+      p_net_amount:       netAmount,
+    })
+    if (rpcErr) {
+      const msg = rpcErr.message || ''
+      if (msg.includes('INSUFFICIENT_BALANCE')) return json({ error: `Insufficient balance. Your wallet has ${formatUGX(balance)}.` }, req, 400)
+      if (msg.includes('WALLET_NOT_FOUND'))     return json({ error: 'Wallet not found' }, req, 404)
+      console.error('process-withdrawal: RPC failed', rpcErr)
+      return json({ error: 'Could not process withdrawal. Please try again.' }, req, 500)
     }
-
-    const { data: txnRows, error: txnErr } = await supabase.from('transactions').insert({
-      customer_id: customer.id, wallet_id: wallet.id, campaign_id: enrollment.campaign_id,
-      type: 'withdrawal', amount: amt, status: 'pending',
-      network: openFloatNetwork, withdrawal_network: openFloatNetwork, withdrawal_phone: payoutPhone,
-      reference,
-      // amt = gross debited from the wallet; the NET (after fees) is what is paid out
-      // to the customer's mobile money, recorded here and in transaction_fees.net_amount.
-      notes: `Payout UGX ${netAmount.toLocaleString()} to ${networkLabel} ${payoutPhone} (gross UGX ${amt.toLocaleString()} − fees UGX ${totalFees.toLocaleString()})`,
-    }).select('id')
-    if (txnErr) {
-      // Restore the balance — the withdrawal record could not be created.
-      await supabase.from('wallets').update({ balance, updated_at: new Date().toISOString() }).eq('id', wallet.id)
-      console.error('process-withdrawal: txn insert failed, balance restored', txnErr)
-      return json({ error: 'Could not record withdrawal. Please try again.' }, req, 500)
-    }
-    const txnId = txnRows?.[0]?.id || null
-    if (txnId) {
-      await supabase.from('transaction_fees').insert({
-        transaction_id: txnId, customer_id: customer.id, network: openFloatNetwork,
-        fee_type: 'withdrawal', charged_to: 'user',
-        partna_fee: partnaFee, carrier_fee: CARRIER_FEE, tax: 0, total_fees: totalFees, net_amount: netAmount,
-      })
-    }
+    const newBalance = Number(rpcData?.new_balance ?? (balance - amt))
 
     const smsPhone = customer.phone || payoutPhone
     await sendSMS(customer.id, smsPhone, 'withdrawal_requested', { amount: formatUGX(amt), reference })
 
-    return json({ success: true, reference, newBalance: balance - amt, netAmount }, req)
+    return json({ success: true, reference, newBalance, netAmount }, req)
 
   } catch (e) {
     console.error('process-withdrawal error:', e)

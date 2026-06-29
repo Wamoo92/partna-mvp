@@ -139,6 +139,24 @@ serve(async (req) => {
       })
     }
 
+    // ── Enrollment scope (Medium 2) ──────────────────────────────────────
+    // The customer must be ACTIVELY enrolled in THIS campaign for THIS student.
+    // Without this, a caller could direct their own funds into any campaign/student
+    // (including another business's) by supplying arbitrary ids.
+    const { data: enrollmentRow } = await supabase
+      .from('customer_campaigns')
+      .select('id')
+      .eq('customer_id', customerId)
+      .eq('campaign_id', campaignId)
+      .eq('student_id', studentId)
+      .eq('status', 'active')
+      .maybeSingle()
+    if (!enrollmentRow) {
+      return new Response(JSON.stringify({ error: 'You are not enrolled in this campaign for this student.' }), {
+        status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
+
     // ── Rate limit ───────────────────────────────────────────────────────
     if (isRateLimited(customerId)) {
       return new Response(JSON.stringify({ error: 'Too many payment attempts. Please try again later.' }), {
@@ -275,84 +293,41 @@ serve(async (req) => {
 
     const reference = generateReference()
 
-    // ── ATOMIC PAYMENT — debit parent, credit school ──────────────────────
-    // Step A: Debit parent wallet
+    // ── ATOMIC PAYMENT — debit parent, credit school, record txn + MDR fee ─
+    // All of it runs in ONE database transaction (process_fee_payment_tx). If any
+    // step fails the whole thing rolls back, so the parent can never be debited
+    // without the school being credited and the records written.
     const newParentBalance = walletBalance - paymentAmount
-
-    const { error: debitErr } = await supabase
-      .from('wallets')
-      .update({ balance: newParentBalance, updated_at: new Date().toISOString() })
-      .eq('id', walletId)
-      .eq('balance', walletBalance) // Optimistic lock — only update if balance unchanged
-
-    if (debitErr) {
-      return new Response(JSON.stringify({
-        error: 'Payment failed — wallet balance changed during processing. Please try again.',
-      }), {
-        status: 409, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      })
-    }
-
-    // Step B: Credit school wallet (net of MDR)
-    const newSchoolBalance = Number(businessWallet.balance) + netToSchool
-
-    const { error: creditErr } = await supabase
-      .from('business_wallets')
-      .update({ balance: newSchoolBalance })
-      .eq('id', businessWallet.id)
-
-    if (creditErr) {
-      // ROLLBACK: restore parent wallet balance
-      await supabase
-        .from('wallets')
-        .update({ balance: walletBalance, updated_at: new Date().toISOString() })
-        .eq('id', walletId)
-
-      console.error('School wallet credit failed, parent wallet rolled back:', creditErr)
-      return new Response(JSON.stringify({
-        error: 'Payment failed during processing. Your balance has been restored. Please try again.',
-      }), {
+    const { error: rpcErr } = await supabase.rpc('process_fee_payment_tx', {
+      p_wallet_id:          walletId,
+      p_customer_id:        customerId,
+      p_campaign_id:        campaignId,
+      p_student_id:         studentId,
+      p_business_wallet_id: businessWallet.id,
+      p_amount:             paymentAmount,
+      p_net_to_school:      netToSchool,
+      p_mdr_rate:           mdrRate,
+      p_mdr_amount:         mdrAmount,
+      p_late_fee:           lateFeeAmount,
+      p_is_late:            !!isLate,
+      p_fee_type:           campaign.fee_type || null,
+      p_reference:          reference,
+      p_notes:              `Fee payment for ${studentName} — ${campaign.name}`,
+    })
+    if (rpcErr) {
+      const msg = rpcErr.message || ''
+      if (msg.includes('INSUFFICIENT_BALANCE')) {
+        return new Response(JSON.stringify({ error: `Insufficient balance. Your wallet has ${formatUGX(walletBalance)}.`, blocked: true }), {
+          status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        })
+      }
+      console.error('process-fee-payment: RPC failed (no money moved)', rpcErr)
+      return new Response(JSON.stringify({ error: 'Payment failed during processing. No money has left your wallet. Please try again.' }), {
         status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
     }
 
-    // Step C: Record transaction
-    const { error: txnErr } = await supabase.from('transactions').insert({
-      customer_id:      customerId,
-      wallet_id:        walletId,
-      campaign_id:      campaignId,
-      student_id:       studentId,
-      type:             isLate ? 'late_fee_payment' : 'fee_payment',
-      amount:           paymentAmount,
-      gross_amount:     paymentAmount,
-      net_to_school:    netToSchool,
-      mdr_rate:         mdrRate,
-      mdr_amount:       mdrAmount,
-      late_fee_charged: lateFeeAmount,
-      fee_type:         campaign.fee_type || null,
-      status:           'completed',
-      reference,
-      notes: `Fee payment for ${studentName} — ${campaign.name}`,
-    })
-
-    if (txnErr) {
-      console.error('Transaction record failed (payment already processed):', txnErr)
-      // Payment is done — don't rollback, just log the error
-    }
-
-    // Step D: Record MDR as Partna revenue in transaction_fees
-    await supabase.from('transaction_fees').insert({
-      customer_id: customerId,
-      fee_type:    'mdr',
-      charged_to:  'business',
-      partna_fee:  mdrAmount,
-      carrier_fee: 0,
-      tax:         0,
-      total_fees:  mdrAmount,
-      net_amount:  netToSchool,
-    })
-
-    // Step E: Calculate total paid to date for this student/campaign.
+    // Calculate total paid to date for this student/campaign.
     // The payment transaction was already inserted in Step C, so the RPC total
     // already includes it — do NOT add paymentAmount again (that double-counted
     // the total shown on the success screen and in the confirmation SMS).

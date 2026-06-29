@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../supabase'
 
 const SUPABASE_URL      = import.meta.env.VITE_SUPABASE_URL
-const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY
 
 // ── Sellin tokens ──────────────────────────────────────────────────────────
 const C = {

@@ -7,13 +7,31 @@ const AT_USERNAME = Deno.env.get('AT_USERNAME')!
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 
+function getCorsHeaders(req: Request) {
+  const origin  = req.headers.get('origin') || ''
+  const allowed = (
+    origin === 'https://www.partna.io' ||
+    origin === 'https://partna.io'     ||
+    origin.endsWith('.partna.io')      ||
+    origin === 'http://localhost:5173' ||
+    origin === 'http://localhost:3000'
+  )
+  return {
+    'Access-Control-Allow-Origin':  allowed ? origin : 'https://www.partna.io',
+    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  }
+}
+
 serve(async (req) => {
+  const CORS = getCorsHeaders(req)
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS })
   try {
     const body = await req.json()
     const record = body.record
 
     if (!record) {
-      return new Response(JSON.stringify({ error: 'No record in payload' }), { status: 400 })
+      return new Response(JSON.stringify({ error: 'No record in payload' }), { status: 400, headers: { ...CORS, 'Content-Type': 'application/json' } })
     }
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
@@ -26,7 +44,7 @@ serve(async (req) => {
       .maybeSingle()
 
     if (!customer) {
-      return new Response(JSON.stringify({ error: 'Customer not found' }), { status: 404 })
+      return new Response(JSON.stringify({ error: 'Customer not found' }), { status: 404, headers: { ...CORS, 'Content-Type': 'application/json' } })
     }
 
     // ── Fetch campaign ──
@@ -301,11 +319,11 @@ serve(async (req) => {
       sms: smsResult,
     }), {
       status: 200,
-      headers: { 'Content-Type': 'application/json' },
+      headers: { ...CORS, 'Content-Type': 'application/json' },
     })
 
   } catch (error) {
     console.error('Edge function error:', error)
-    return new Response(JSON.stringify({ error: String(error) }), { status: 500 })
+    return new Response(JSON.stringify({ error: String(error) }), { status: 500, headers: { ...CORS, 'Content-Type': 'application/json' } })
   }
 })
