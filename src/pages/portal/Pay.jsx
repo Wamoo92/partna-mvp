@@ -156,7 +156,10 @@ export default function Pay({
   const [isFullPayment, setIsFullPayment] = useState(false)
   const [discount, setDiscount]           = useState(null)
 
-  useEffect(() => { if (customer) loadEnrollment() }, [customer, enrollmentId])
+  // Depend on the customer ID (not the object) + enrollmentId so a silent global
+  // refetch (which replaces the customer object after a payment) does not re-run
+  // loadEnrollment and flash the spinner over the success screen.
+  useEffect(() => { if (customer) loadEnrollment() }, [customer?.id, enrollmentId])
 
   // ── All business logic — unchanged ────────────────────────────────────
 

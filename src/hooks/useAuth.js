@@ -91,12 +91,18 @@ export function useAuth() {
     return () => subscription.unsubscribe()
   }, [])
 
-  async function fetchCustomer(userId) {
+  async function fetchCustomer(userId, { silent = false } = {}) {
     // Mark loading while the customer row is fetched. Without this, right after
     // signInWithPassword the app has a session but customer === null and
     // loading === false, so the route guards would treat the user as logged out
     // and bounce them back to /portal/login (login appeared to need two tries).
-    setLoading(true)
+    //
+    // A "silent" refresh (refetch from a money flow) must NOT flip loading: the
+    // route guards (HomeGuard) render a spinner while loading is true, which
+    // UNMOUNTS the current screen (e.g. Pay) and remounts it fresh — resetting it
+    // to step 1 and discarding the success step. So silent refetches refresh data
+    // in place without ever touching loading.
+    if (!silent) setLoading(true)
     try {
       const { data: customerData } = await supabase
         .from('customers')
@@ -105,14 +111,14 @@ export function useAuth() {
         .maybeSingle()
 
       if (!customerData) {
-        setLoading(false)
+        if (!silent) setLoading(false)
         return
       }
 
       // Check account hasn't been deleted
       if (customerData.registration_status === 'deleted') {
         await supabase.auth.signOut()
-        setLoading(false)
+        if (!silent) setLoading(false)
         return
       }
 
@@ -123,7 +129,7 @@ export function useAuth() {
       if (slug && subdomainBusiness && customerData.business_id !== subdomainBusiness.id) {
         console.warn('Customer business mismatch — signing out')
         await supabase.auth.signOut()
-        setLoading(false)
+        if (!silent) setLoading(false)
         return
       }
 
@@ -157,7 +163,7 @@ export function useAuth() {
       console.error('fetchCustomer error:', e)
     }
 
-    setLoading(false)
+    if (!silent) setLoading(false)
   }
 
   async function signOut() {
@@ -178,6 +184,6 @@ export function useAuth() {
     enrollments,
     loading,
     signOut,
-    refetch: () => customer && fetchCustomer(customer.auth_user_id),
+    refetch: () => customer && fetchCustomer(customer.auth_user_id, { silent: true }),
   }
 }
