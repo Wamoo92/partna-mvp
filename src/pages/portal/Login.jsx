@@ -6,11 +6,21 @@ import { useBrand } from '../../lib/BrandContext'
 const SUPABASE_URL      = import.meta.env.VITE_SUPABASE_URL
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY
 
-export default function Login() {
+export default function Login({ customer }) {
   useEffect(() => { document.title = 'Login - Partna' }, [])
 
   const brand = useBrand()
   const navigate = useNavigate()
+
+  // Drive the post-login redirect from the customer state (loaded by useAuth after
+  // the session is established) rather than from the sign-in call. Navigating right
+  // after signInWithPassword races useAuth: the session exists but the customer row
+  // isn't loaded yet, so the protected route sees no customer and bounces back here
+  // — which is exactly the "login needs two attempts" bug. Waiting for `customer`
+  // guarantees the protected route can see it before we navigate.
+  useEffect(() => {
+    if (customer) navigate('/portal/home', { replace: true })
+  }, [customer, navigate])
   const [phone, setPhone] = useState('')
   const [pin, setPin] = useState('')
   const [loading, setLoading] = useState(false)
@@ -39,17 +49,18 @@ export default function Login() {
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${SUPABASE_ANON_KEY}` },
         body: JSON.stringify({ phone: cleanPhone }),
       })
-      const customer = await res.json()
-      if (!customer.found || !customer.email) { setError('Phone number not found. Please check and try again.'); setLoading(false); return }
-      if (customer.registration_status !== 'complete') { setError('Account registration is incomplete. Please complete registration.'); setLoading(false); return }
+      const lookup = await res.json()
+      if (!lookup.found || !lookup.email) { setError('Phone number not found. Please check and try again.'); setLoading(false); return }
+      if (lookup.registration_status !== 'complete') { setError('Account registration is incomplete. Please complete registration.'); setLoading(false); return }
       const password = `pin-${pin}-${cleanPhone}`
-      const { error: signInError } = await supabase.auth.signInWithPassword({ email: customer.email, password })
+      const { error: signInError } = await supabase.auth.signInWithPassword({ email: lookup.email, password })
       if (signInError) { setError('Incorrect PIN. Please try again.'); setLoading(false); return }
-      navigate('/portal/home')
+      // Intentionally do NOT navigate here. The redirect happens in the effect above
+      // once useAuth has loaded the customer, so we never navigate before the
+      // protected route can see the customer. Keep the spinner running until then.
     } catch (err) {
       console.error('Login error:', err)
       setError('Something went wrong. Please try again.')
-    } finally {
       setLoading(false)
     }
   }

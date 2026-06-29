@@ -350,7 +350,7 @@ function CampaignDetailCard({ campaign, customer, brand, cardFlipped, setCardFli
           )}
 
           <button
-            onClick={onConfirm} disabled={!agreed || saving || !canEnroll}
+            onClick={() => onConfirm(campaign)} disabled={!agreed || saving || !canEnroll}
             style={{ ...btnPrimary, width: '100%', padding: '11px 18px', opacity: !agreed || saving || !canEnroll ? 0.45 : 1, cursor: !agreed || saving || !canEnroll ? 'not-allowed' : 'pointer' }}
           >
             {saving ? <><div className="spinner spinner-sm spinner-light" /> Enrolling…</> : 'Join this campaign'}
@@ -423,8 +423,13 @@ export default function SelectCampaign({
     if (camps && camps.length > 0) { setRetailCampaign(camps[0]) } else { setProductError('No active campaign found for this product.') }
   }
 
-  async function handleConfirm() {
-    const campaign = isRetail ? retailCampaign : selectedCampaign
+  async function handleConfirm(campaignArg) {
+    // The detail card passes the campaign it is actually displaying. This is
+    // essential when exactly one campaign is available (the "enroll a second
+    // student in another campaign" case): that card renders without ever setting
+    // selectedCampaign, so reading selectedCampaign here was null and the Join
+    // button silently did nothing.
+    const campaign = (campaignArg && campaignArg.id) ? campaignArg : (isRetail ? retailCampaign : selectedCampaign)
     if (!campaign || !agreed) return
     const isEduCampaign = campaign.campaign_type === 'education_fees'
     if (isEduCampaign && !confirmedStudent) return

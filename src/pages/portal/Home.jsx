@@ -145,6 +145,10 @@ export default function Home({
   const campaignStatus = activeCampaign ? getEffectiveStatus(activeCampaign) : 'active'
   const campaignLocked = campaignStatus === 'paused' || campaignStatus === 'deleted'
   const hasMultiple    = enrollments.length > 1
+  // Only education fees campaigns have a payment obligation. General savings
+  // campaigns have nothing to "pay", so the Pay action is disabled for them.
+  const isFeesCampaign = activeCampaign?.campaign_type === 'education_fees'
+  const payDisabled    = campaignLocked || !isFeesCampaign
 
   const campaignTxns = transactions
     .filter(t => t.campaign_id === activeCampaign?.id)
@@ -502,11 +506,11 @@ export default function Home({
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
           {[
             { label: 'Add money', disabled: campaignLocked, onClick: () => !campaignLocked && (kycPending ? navigate('/portal/kyc') : navigate('/portal/add-money', { state: { enrollmentId: activeEnrollment?.id } })) },
-            { label: 'Pay',       disabled: campaignLocked, onClick: () => !campaignLocked && navigate('/portal/pay', { state: { enrollmentId: activeEnrollment?.id } }) },
+            { label: 'Pay',       disabled: payDisabled, title: !isFeesCampaign ? 'Not applicable for this campaign' : undefined, onClick: () => !payDisabled && navigate('/portal/pay', { state: { enrollmentId: activeEnrollment?.id } }) },
             { label: 'Withdraw',  disabled: campaignLocked, onClick: () => !campaignLocked && (kycPending ? navigate('/portal/kyc') : navigate('/portal/withdraw', { state: { enrollmentId: activeEnrollment?.id } })) },
-          ].map(({ label, disabled, onClick }) => (
+          ].map(({ label, disabled, onClick, title }) => (
             <button
-              key={label} onClick={onClick} disabled={disabled}
+              key={label} onClick={onClick} disabled={disabled} title={title}
               style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, padding: '16px 8px', background: C.white, border: `1px solid ${C.stroke}`, borderRadius: 12, cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.4 : 1, transition: 'background 0.15s' }}
               onMouseEnter={e => { if (!disabled) e.currentTarget.style.background = C.accent }}
               onMouseLeave={e => { if (!disabled) e.currentTarget.style.background = C.white }}
@@ -520,6 +524,13 @@ export default function Home({
             </button>
           ))}
         </div>
+
+        {/* Pay is only meaningful for education fees campaigns */}
+        {!campaignLocked && !isFeesCampaign && activeCampaign && (
+          <p style={{ textAlign: 'center', fontSize: 11, fontWeight: 500, color: C.grayMid, margin: '-2px 0 0' }}>
+            Pay is not applicable for this campaign
+          </p>
+        )}
 
         {/* View card shortcut — only for card-enabled users */}
         {cardEnabled && !campaignLocked && (

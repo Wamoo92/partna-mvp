@@ -214,7 +214,7 @@ function PortalAndDashboard() {
         {/* ── Public routes — no inactivity timer ── */}
         <Route path="/portal"            element={<Landing />} />
         <Route path="/portal/register"   element={<Register />} />
-        <Route path="/portal/login"      element={<Login />} />
+        <Route path="/portal/login"      element={<Login customer={customer} />} />
         <Route path="/portal/reset-pin"  element={<ResetPin />} />
 
         {/* ── Authenticated portal routes — wrapped with inactivity timer ── */}
