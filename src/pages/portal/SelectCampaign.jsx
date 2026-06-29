@@ -259,7 +259,7 @@ function StudentIdLookup({ businessId, enrolledStudentIds, onStudentConfirmed, c
 }
 
 // ── Campaign detail + enroll card ──────────────────────────────────────────
-function CampaignDetailCard({ campaign, customer, brand, cardFlipped, setCardFlipped, agreed, setAgreed, saving, onConfirm, alreadyEnrolled, isEducation, businessId, enrolledStudentIds, confirmedStudent, onStudentConfirmed, onStudentClear }) {
+function CampaignDetailCard({ campaign, customer, brand, cardFlipped, setCardFlipped, agreed, setAgreed, saving, error, onConfirm, alreadyEnrolled, isEducation, businessId, enrolledStudentIds, confirmedStudent, onStudentConfirmed, onStudentClear }) {
   const isEduCampaign = campaign.campaign_type === 'education_fees'
   const canEnroll     = !isEduCampaign || (isEduCampaign && !!confirmedStudent)
 
@@ -343,6 +343,12 @@ function CampaignDetailCard({ campaign, customer, brand, cardFlipped, setCardFli
             </span>
           </label>
 
+          {error && (
+            <div style={{ background: C.bgRed, borderRadius: 8, padding: '10px 14px', fontSize: 13, fontWeight: 500, color: C.red, lineHeight: '140%' }}>
+              {error}
+            </div>
+          )}
+
           <button
             onClick={onConfirm} disabled={!agreed || saving || !canEnroll}
             style={{ ...btnPrimary, width: '100%', padding: '11px 18px', opacity: !agreed || saving || !canEnroll ? 0.45 : 1, cursor: !agreed || saving || !canEnroll ? 'not-allowed' : 'pointer' }}
@@ -379,6 +385,7 @@ export default function SelectCampaign({
   const [enrolledCampaignIds, setEnrolledCampaignIds] = useState([])
   const [enrolledStudentIds, setEnrolledStudentIds]   = useState([])
   const [confirmedStudent, setConfirmedStudent]   = useState(null)
+  const [error, setError]                         = useState('')
 
   useEffect(() => { if (business?.id && customer?.id) loadData() }, [business, customer])
   useEffect(() => { setConfirmedStudent(null); setAgreed(false) }, [selectedCampaign?.id])
@@ -419,28 +426,44 @@ export default function SelectCampaign({
   async function handleConfirm() {
     const campaign = isRetail ? retailCampaign : selectedCampaign
     if (!campaign || !agreed) return
-    if (enrolledCampaignIds.includes(campaign.id)) { navigate('/portal/home', { replace: true }); return }
     const isEduCampaign = campaign.campaign_type === 'education_fees'
     if (isEduCampaign && !confirmedStudent) return
-    setSaving(true)
+    // General savings: one enrollment per campaign — if already in it, just go home.
+    // (Education is decided server-side: the same campaign can be joined again for a
+    //  different student, so we always let the server validate.)
+    if (!isEduCampaign && enrolledCampaignIds.includes(campaign.id)) { navigate('/portal/home', { replace: true }); return }
+    setError(''); setSaving(true)
     try {
       // Enrollment + wallet creation now happen server-side (service role) so the
       // customer/business/student IDs are verified and the wallet can't be forged.
       const { data: { session } } = await supabase.auth.getSession()
-      if (!session) { console.error('No active session'); setSaving(false); return }
+      if (!session) { setError('Your session has expired. Please log in again.'); setSaving(false); return }
       const res = await fetch(`${SUPABASE_URL}/functions/v1/enroll-campaign`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
         body: JSON.stringify({ campaignId: campaign.id, ...(isEduCampaign && confirmedStudent ? { studentId: confirmedStudent.id } : {}) }),
       })
       const data = await res.json()
-      if (!res.ok || !data.success) { console.error('Enrollment error:', data.error); setSaving(false); return }
-      // Refresh the global enrollments (used by HomeGuard) before navigating, so
-      // the new enrollment is visible and /portal/home does not bounce back here.
-      if (refetch) await refetch()
-      if (data.firstEnrollment) { navigate('/portal/kyc', { replace: true }) } else { navigate('/portal/home', { replace: true }) }
-    } catch (e) { console.error('Campaign selection error:', e) }
-    setSaving(false)
+      if (!res.ok || !data.success) {
+        // Surface the real reason instead of silently doing nothing.
+        setError(data.error || 'Could not join the campaign. Please try again.')
+        setSaving(false)
+        return
+      }
+      // Navigate immediately — the enrollment has already succeeded server-side.
+      // The old code awaited refetch() before navigating; a slow/hanging refetch
+      // left the button looking dead even though the join had gone through. Home
+      // loads its own enrollment list on mount, and HomeGuard already passes for a
+      // second enrollment (the customer still has their existing one), so we can
+      // refresh the shared state in the background.
+      if (data.firstEnrollment) navigate('/portal/kyc', { replace: true })
+      else navigate('/portal/home', { replace: true })
+      if (refetch) refetch()
+    } catch (e) {
+      console.error('Campaign selection error:', e)
+      setError('Something went wrong. Please try again.')
+      setSaving(false)
+    }
   }
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -455,7 +478,7 @@ export default function SelectCampaign({
   const hasEnrollments     = enrolledCampaignIds.length > 0
 
   const detailProps = {
-    customer, brand, cardFlipped, setCardFlipped, agreed, setAgreed, saving, onConfirm: handleConfirm,
+    customer, brand, cardFlipped, setCardFlipped, agreed, setAgreed, saving, error, onConfirm: handleConfirm,
     isEducation: business?.sector === 'Education',
     businessId: business?.id,
     enrolledStudentIds, confirmedStudent,

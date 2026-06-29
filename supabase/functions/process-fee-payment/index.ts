@@ -352,12 +352,15 @@ serve(async (req) => {
       net_amount:  netToSchool,
     })
 
-    // Step E: Calculate total paid to date for this student/campaign
+    // Step E: Calculate total paid to date for this student/campaign.
+    // The payment transaction was already inserted in Step C, so the RPC total
+    // already includes it — do NOT add paymentAmount again (that double-counted
+    // the total shown on the success screen and in the confirmation SMS).
     const { data: totalData } = await supabase.rpc('get_student_payment_total', {
       p_student_id:  studentId,
       p_campaign_id: campaignId,
     })
-    const totalPaid = Number(totalData || 0) + paymentAmount
+    const totalPaid = Number(totalData || 0)
 
     // ── Check if minimum registration amount is now met ───────────────────
     const minReg = Number(campaign.minimum_registration_amount || 0)

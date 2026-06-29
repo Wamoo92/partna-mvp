@@ -119,7 +119,12 @@ export default function Pay({
   const navigate = useNavigate()
   const location = useLocation()
 
-  const isEducation  = brand.sector === 'Education'
+  // Whether THIS enrollment is a fees payment is decided by the campaign's type,
+  // not the business sector. An education business can also run general savings
+  // campaigns; treating those as fees made Pay demand a student and show
+  // "No student is linked to this campaign enrollment". Falls back to the business
+  // sector only until the campaign has loaded.
+  const isEducation  = campaign ? campaign.campaign_type === 'education_fees' : brand.sector === 'Education'
   const enrollmentId = location.state?.enrollmentId || null
 
   const totalSteps  = isEducation ? 3 : 2
@@ -171,7 +176,10 @@ export default function Pay({
       const { data: enrollData } = await q.maybeSingle()
       if (enrollData) {
         setEnrollment(enrollData); setCampaign(enrollData.campaigns); setWallet(enrollData.wallets)
-        if (isEducation) {
+        // Decide from the freshly loaded campaign — the render-time isEducation is
+        // still stale here because setCampaign hasn't committed yet.
+        const eduCampaign = enrollData.campaigns?.campaign_type === 'education_fees'
+        if (eduCampaign) {
           if (enrollData.student_id) await loadStudentBalance(enrollData.student_id, enrollData.campaign_id)
         } else {
           const { data: paidData } = await supabase.from('transactions').select('amount').eq('customer_id', customer.id).eq('campaign_id', enrollData.campaign_id).eq('type', 'payment')
