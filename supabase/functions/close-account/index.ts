@@ -4,6 +4,10 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SERVICE_KEY  = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 
+// Flat mobile-money payout fee — refunds are disbursed to mobile money, so they
+// bear the carrier fee like a normal withdrawal.
+const CARRIER_FEE = 1800
+
 function getCorsHeaders(req: Request) {
   const origin  = req.headers.get('origin') || ''
   const allowed = (
@@ -48,18 +52,24 @@ serve(async (req) => {
     if (userErr || !authUser) return json({ error: 'Unauthorized' }, req, 401)
 
     const { data: customer } = await supabase
-      .from('customers').select('id, phone').eq('auth_user_id', authUser.id).maybeSingle()
+      .from('customers').select('id, phone, payment_network, payment_number').eq('auth_user_id', authUser.id).maybeSingle()
     if (!customer) return json({ error: 'Customer not found' }, req, 403)
+
+    const payoutNetwork = customer.payment_network === 'mtn' ? 'MTN'
+      : customer.payment_network === 'airtel' ? 'AirtelMoney'
+      : (customer.payment_network || null)
+    const payoutPhone = customer.payment_number || customer.phone || null
 
     const { data: enrollments } = await supabase
       .from('customer_campaigns').select('id, campaign_id, wallet_id, wallets(id, balance)')
       .eq('customer_id', customer.id).eq('status', 'active')
 
     for (const enrollment of enrollments || []) {
-      const wallet  = (enrollment as any).wallets
-      const balance = Number(wallet?.balance || 0)
-      const fee     = Math.round(balance * 0.10)
-      const refund  = Math.max(0, balance - fee)
+      const wallet     = (enrollment as any).wallets
+      const balance    = Number(wallet?.balance || 0)
+      const fee        = Math.round(balance * 0.10)            // 10% early-exit fee (Partna)
+      const carrierFee = balance > 0 ? CARRIER_FEE : 0          // mobile-money payout fee
+      const refund     = Math.max(0, balance - fee - carrierFee)
 
       await supabase.from('customer_campaigns')
         .update({ status: 'left', left_at: new Date().toISOString() }).eq('id', enrollment.id)
@@ -67,14 +77,16 @@ serve(async (req) => {
         await supabase.from('wallets').update({ balance: 0, updated_at: new Date().toISOString() }).eq('id', wallet.id)
       }
       if (balance > 0) {
-        await supabase.from('transactions').insert({
+        const { data: refundTxn } = await supabase.from('transactions').insert({
           customer_id: customer.id, wallet_id: wallet?.id || null, campaign_id: enrollment.campaign_id,
           type: 'withdrawal', amount: balance, status: 'pending',
-          notes: `Account deleted — refund pending. Fee: UGX ${fee.toLocaleString()}. Net: UGX ${refund.toLocaleString()}`,
-        })
+          network: payoutNetwork, withdrawal_network: payoutNetwork, withdrawal_phone: payoutPhone,
+          notes: `Account deleted — refund pending. Exit fee: UGX ${fee.toLocaleString()}, mobile money fee: UGX ${carrierFee.toLocaleString()}. Net: UGX ${refund.toLocaleString()}`,
+        }).select('id').single()
         await supabase.from('transaction_fees').insert({
+          transaction_id: refundTxn?.id || null,
           customer_id: customer.id, fee_type: 'delete_account', charged_to: 'user',
-          partna_fee: fee, carrier_fee: 0, tax: 0, total_fees: fee, net_amount: refund,
+          partna_fee: fee, carrier_fee: carrierFee, tax: 0, total_fees: fee + carrierFee, net_amount: refund,
         })
       }
     }

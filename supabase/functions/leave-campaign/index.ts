@@ -4,6 +4,10 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SERVICE_KEY  = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 
+// Flat mobile-money payout fee — same as a normal withdrawal. The refund is
+// disbursed to the customer's mobile money, so it bears the carrier fee too.
+const CARRIER_FEE = 1800
+
 function getCorsHeaders(req: Request) {
   const origin  = req.headers.get('origin') || ''
   const allowed = (
@@ -51,9 +55,10 @@ serve(async (req) => {
 
     const { data: wallet } = await supabase
       .from('wallets').select('id, balance').eq('id', enrollment.wallet_id).maybeSingle()
-    const balance = Number(wallet?.balance || 0)
-    const fee     = Math.round(balance * 0.10)
-    const refund  = Math.max(0, balance - fee)
+    const balance    = Number(wallet?.balance || 0)
+    const fee        = Math.round(balance * 0.10)            // 10% early-exit fee (Partna)
+    const carrierFee = balance > 0 ? CARRIER_FEE : 0          // mobile-money payout fee
+    const refund     = Math.max(0, balance - fee - carrierFee)
 
     await supabase.from('customer_campaigns')
       .update({ status: 'left', left_at: new Date().toISOString() }).eq('id', enrollment.id)
@@ -75,7 +80,7 @@ serve(async (req) => {
         customer_id: customer.id, wallet_id: wallet?.id || null, campaign_id: enrollment.campaign_id,
         type: 'withdrawal', amount: balance, status: 'pending',
         network: payoutNetwork, withdrawal_network: payoutNetwork, withdrawal_phone: payoutPhone,
-        notes: `Campaign left — refund pending. Fee deducted: UGX ${fee.toLocaleString()}. Net refund: UGX ${refund.toLocaleString()}`,
+        notes: `Campaign left — refund pending. Exit fee: UGX ${fee.toLocaleString()}, mobile money fee: UGX ${carrierFee.toLocaleString()}. Net refund: UGX ${refund.toLocaleString()}`,
       }).select('id').single()
 
       // Link the fee row to the refund transaction so the net amount is recoverable
@@ -83,11 +88,11 @@ serve(async (req) => {
       await supabase.from('transaction_fees').insert({
         transaction_id: refundTxn?.id || null,
         customer_id: customer.id, fee_type: 'leave_campaign', charged_to: 'user',
-        partna_fee: fee, carrier_fee: 0, tax: 0, total_fees: fee, net_amount: refund,
+        partna_fee: fee, carrier_fee: carrierFee, tax: 0, total_fees: fee + carrierFee, net_amount: refund,
       })
     }
 
-    return json({ success: true, fee, refund }, req)
+    return json({ success: true, fee, carrierFee, refund }, req)
 
   } catch (e) {
     console.error('leave-campaign error:', e)

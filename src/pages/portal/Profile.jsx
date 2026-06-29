@@ -139,12 +139,13 @@ function LeaveModal({ enrollment, leaveFee, leaveLoading, leaveSuccess, onConfir
           ) : (
             <>
               <p style={{ fontSize: 13, fontWeight: 500, color: C.secondary, margin: 0, lineHeight: '140%' }}>
-                You are leaving <strong style={{ color: C.black }}>{enrollment.campaigns?.name}</strong>. Your savings balance will be refunded minus a 10% early exit fee.
+                You are leaving <strong style={{ color: C.black }}>{enrollment.campaigns?.name}</strong>. Your savings balance will be refunded minus a 10% early exit fee and the mobile money payout fee.
               </p>
               <div style={{ background: C.white, border: `1px solid ${C.stroke}`, borderRadius: 10, overflow: 'hidden' }}>
                 {[
-                  { label: 'Current balance',      value: formatUGX(leaveFee?.gross || 0) },
-                  { label: 'Early exit fee (10%)', value: '− ' + formatUGX(leaveFee?.fee || 0), color: C.red },
+                  { label: 'Current balance',         value: formatUGX(leaveFee?.gross || 0) },
+                  { label: 'Early exit fee (10%)',    value: '− ' + formatUGX(leaveFee?.fee || 0), color: C.red },
+                  { label: 'Mobile money fee (flat)', value: '− ' + formatUGX(leaveFee?.carrierFee || 0), color: C.red },
                 ].map((row, i) => (
                   <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 14px', borderBottom: `1px solid ${C.grayLine}`, background: i % 2 === 0 ? C.white : C.bg }}>
                     <span style={{ fontSize: 13, fontWeight: 500, color: C.secondary }}>{row.label}</span>
@@ -205,7 +206,7 @@ function DeleteModal({ enrollments, deleteSummary, deleteLoading, deleteSuccess,
           ) : (
             <>
               <p style={{ fontSize: 13, fontWeight: 500, color: C.secondary, margin: 0, lineHeight: '140%' }}>
-                Deleting your account will unenrol you from <strong style={{ color: C.black }}>all {enrollments.length} campaign{enrollments.length !== 1 ? 's' : ''}</strong> and permanently deactivate your account. All balances will be refunded minus a 10% fee per campaign.
+                Deleting your account will unenrol you from <strong style={{ color: C.black }}>all {enrollments.length} campaign{enrollments.length !== 1 ? 's' : ''}</strong> and permanently deactivate your account. All balances will be refunded minus a 10% fee and the mobile money payout fee per campaign.
               </p>
               {enrollments.length > 0 && (
                 <div style={{ background: C.white, border: `1px solid ${C.stroke}`, borderRadius: 10, overflow: 'hidden' }}>
@@ -214,14 +215,14 @@ function DeleteModal({ enrollments, deleteSummary, deleteLoading, deleteSuccess,
                   </div>
                   {enrollments.map((e, i) => {
                     const bal = Number(e.wallets?.balance || 0)
-                    const { fee, refund } = calcRefund(bal)
+                    const { fee, carrierFee, refund } = calcRefund(bal)
                     return (
                       <div key={e.id} style={{ padding: '10px 14px', borderBottom: i < enrollments.length - 1 ? `1px solid ${C.grayLine}` : 'none', background: i % 2 === 0 ? C.white : C.bg }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
                           <span style={{ fontSize: 13, fontWeight: 600, color: C.black }}>{e.campaigns?.name}</span>
                           <span style={{ fontSize: 13, fontWeight: 600, color: C.green }}>{formatUGX(refund)}</span>
                         </div>
-                        <p style={{ fontSize: 12, fontWeight: 500, color: C.secondary, margin: 0 }}>Balance {formatUGX(bal)} − fee {formatUGX(fee)}</p>
+                        <p style={{ fontSize: 12, fontWeight: 500, color: C.secondary, margin: 0 }}>Balance {formatUGX(bal)} − fees {formatUGX(fee + carrierFee)}</p>
                       </div>
                     )
                   })}
@@ -292,19 +293,23 @@ export default function Profile({
 
   function calcRefund(balance) {
     const gross = Number(balance)
-    const fee   = Math.round(gross * 0.10)
-    return { gross, fee, refund: Math.max(0, gross - fee) }
+    const fee        = Math.round(gross * 0.10)        // 10% early-exit fee
+    const carrierFee = gross > 0 ? 1800 : 0             // flat mobile-money payout fee
+    return { gross, fee, carrierFee, refund: Math.max(0, gross - fee - carrierFee) }
   }
 
   function openLeaveModal(enrollment) {
-    const { gross, fee, refund } = calcRefund(enrollment.wallets?.balance || 0)
-    setLeaveFee({ gross, fee, refund }); setShowLeave(enrollment); setLeaveSuccess(false)
+    const { gross, fee, carrierFee, refund } = calcRefund(enrollment.wallets?.balance || 0)
+    setLeaveFee({ gross, fee, carrierFee, refund }); setShowLeave(enrollment); setLeaveSuccess(false)
   }
 
   function openDeleteModal() {
-    let totalGross = 0, totalFee = 0
-    for (const e of enrollments) { const bal = Number(e.wallets?.balance || 0); totalGross += bal; totalFee += Math.round(bal * 0.10) }
-    setDeleteSummary({ totalGross, totalFee, totalRefund: Math.max(0, totalGross - totalFee) }); setShowDelete(true); setDeleteSuccess(false)
+    let totalGross = 0, totalFee = 0, totalRefund = 0
+    for (const e of enrollments) {
+      const { gross, fee, carrierFee, refund } = calcRefund(e.wallets?.balance || 0)
+      totalGross += gross; totalFee += fee + carrierFee; totalRefund += refund
+    }
+    setDeleteSummary({ totalGross, totalFee, totalRefund }); setShowDelete(true); setDeleteSuccess(false)
   }
 
   async function handleLeaveCampaign() {
