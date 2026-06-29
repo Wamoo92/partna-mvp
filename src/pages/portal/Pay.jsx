@@ -120,26 +120,7 @@ export default function Pay({
   const navigate = useNavigate()
   const location = useLocation()
 
-  // Whether THIS enrollment is a fees payment is decided by the campaign's type,
-  // not the business sector. An education business can also run general savings
-  // campaigns; treating those as fees made Pay demand a student and show
-  // "No student is linked to this campaign enrollment". Falls back to the business
-  // sector only until the campaign has loaded.
-  const isEducation  = campaign ? campaign.campaign_type === 'education_fees' : brand.sector === 'Education'
   const enrollmentId = location.state?.enrollmentId || null
-
-  const totalSteps  = isEducation ? 3 : 2
-  const successStep = isEducation ? 4 : 3
-  const amountStep  = isEducation ? 2 : 1
-  const confirmStep = isEducation ? 3 : 2
-
-  const stepLabels = isEducation
-    ? ['Student & fees', 'Amount', 'Confirm']
-    : ['Amount', 'Confirm']
-
-  const stepTitles = isEducation
-    ? ['Student & fee details', 'How much to pay?', 'Confirm payment']
-    : ['How much to pay?', 'Confirm payment']
 
   const [step, setStep] = useState(1)
   const [loadError, setLoadError] = useState(false)
@@ -162,6 +143,31 @@ export default function Pay({
   const [alreadyPaid, setAlreadyPaid]     = useState(0)
   const [isFullPayment, setIsFullPayment] = useState(false)
   const [discount, setDiscount]           = useState(null)
+
+  // Whether THIS enrollment is a fees payment is decided by the campaign's type,
+  // not the business sector. An education business can also run general savings
+  // campaigns; treating those as fees made Pay demand a student and show
+  // "No student is linked to this campaign enrollment". Falls back to the business
+  // sector only until the campaign has loaded.
+  //
+  // IMPORTANT: this must come AFTER the `campaign` useState above. It reads
+  // `campaign`, so declaring it earlier put `campaign` in the temporal dead zone
+  // and crashed Pay with "Cannot access 'campaign' before initialization"
+  // (minified to "Cannot access 'S' before initialization" → blank screen).
+  const isEducation  = campaign ? campaign.campaign_type === 'education_fees' : brand.sector === 'Education'
+
+  const totalSteps  = isEducation ? 3 : 2
+  const successStep = isEducation ? 4 : 3
+  const amountStep  = isEducation ? 2 : 1
+  const confirmStep = isEducation ? 3 : 2
+
+  const stepLabels = isEducation
+    ? ['Student & fees', 'Amount', 'Confirm']
+    : ['Amount', 'Confirm']
+
+  const stepTitles = isEducation
+    ? ['Student & fee details', 'How much to pay?', 'Confirm payment']
+    : ['How much to pay?', 'Confirm payment']
 
   // Depend on the customer ID (not the object) + enrollmentId so a silent global
   // refetch (which replaces the customer object after a payment) does not re-run
