@@ -812,10 +812,12 @@ export default function CardDetail({
                   <div style={{ height: 6, borderRadius: 999, background: C.grayLight, overflow: 'hidden' }}>
                     <div style={{ height: '100%', borderRadius: 999, background: tierColor, width: `${progressPct}%`, transition: 'width 0.4s ease' }} />
                   </div>
-                  <p style={{ fontSize: 12, fontWeight: 500, color: nextTierObj ? C.secondary : C.green, margin: '8px 0 0', lineHeight: '140%' }}>
+                  <p style={{ fontSize: 12, fontWeight: 500, color: (nextTierObj || !currentTierObj) ? C.secondary : C.green, margin: '8px 0 0', lineHeight: '140%' }}>
                     {nextTierObj
                       ? <>Reach <strong style={{ color: C.black }}>{nextPct}%</strong> of your savings target to unlock <strong style={{ color: TIER_COLORS[nextTierObj.name.toLowerCase()] }}>{TIER_LABELS[nextTierObj.name.toLowerCase()]}</strong> ({(Number(nextTierObj.cashback_rate) * 100).toFixed(1)}% cashback)</>
-                      : 'You are at the highest tier — enjoy 3% cashback at all merchants.'
+                      : currentTierObj
+                        ? 'You are at the highest tier — enjoy 3% cashback at all merchants.'
+                        : 'Save toward your target to unlock your first cashback tier.'
                     }
                   </p>
                 </div>

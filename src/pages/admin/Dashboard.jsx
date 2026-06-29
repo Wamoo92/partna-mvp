@@ -122,8 +122,11 @@ export default function Dashboard() {
       const { data: allTxnData } = await supabase.from('transactions').select('*, customers(first_name, last_name, business_id)').eq('status', 'completed').order('created_at', { ascending: false })
       const txns = allTxnData || []
       const totalVolume = txns.reduce((s, t) => s + Number(t.amount), 0)
-      const { data: fees } = await supabase.from('transaction_fees').select('total_fees')
-      const totalRevenue = fees?.reduce((s, f) => s + Number(f.total_fees), 0) || 0
+      // Partna revenue is the partna_fee column (Partna's own cut). total_fees also
+      // includes carrier pass-through (e.g. the UGX 1,800 mobile-money withdrawal fee),
+      // which is not Partna income.
+      const { data: fees } = await supabase.from('transaction_fees').select('partna_fee')
+      const totalRevenue = fees?.reduce((s, f) => s + Number(f.partna_fee || 0), 0) || 0
       const { count: kybCount } = await supabase.from('businesses').select('*', { count: 'exact', head: true }).eq('kyb_status', 'pending')
       setAllTxns(txns); setRecentTxns(txns.slice(0, 10)); buildChartData(txns, chartFilter)
       setStats({ totalBusinesses: bizCount || 0, totalCustomers: custCount || 0, totalAUM, totalVolume, totalRevenue, pendingKYB: kybCount || 0 })

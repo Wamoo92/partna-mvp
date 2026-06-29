@@ -240,7 +240,7 @@ export default function Transactions() {
   async function loadCustomer() {
     setLoadingCustomer(true)
     try {
-      const { data: txnData } = await supabase.from('transactions').select('*, customers(first_name, last_name, other_names, phone, business_id, businesses(name))').order('created_at', { ascending: false })
+      const { data: txnData } = await supabase.from('transactions').select('*, customers(first_name, last_name, other_names, phone, payment_network, payment_number, business_id, businesses(name)), transaction_fees(net_amount)').order('created_at', { ascending: false })
       setTransactions(txnData || [])
       const { data: bizData } = await supabase.from('businesses').select('id, name').order('name')
       setBusinesses(bizData || [])
@@ -419,10 +419,20 @@ export default function Transactions() {
       .filter(t => t.type === 'withdrawal' && selectedCust.has(t.id))
       .map(t => {
         const fullName = [t.customers?.first_name, t.customers?.other_names, t.customers?.last_name].filter(Boolean).join(' ')
-        const network = t.withdrawal_network || t.network || ''
+        // Fall back to the customer's saved mobile-money details — refund rows
+        // (campaign-left) don't carry withdrawal_network/withdrawal_phone.
+        const network = t.withdrawal_network || t.network || t.customers?.payment_network || ''
         const accountType = network.toLowerCase().includes('mtn') ? 'MTN' : network.toLowerCase().includes('airtel') ? 'AirtelMoney' : network
-        const phone = (t.withdrawal_phone || '').replace(/^\+/, '').replace(/^0/, '256')
-        return [accountType, fullName, phone, '', '', phone, Number(t.amount), t.reference || t.id.slice(0, 8)]
+        const rawPhone = t.withdrawal_phone || t.customers?.payment_number || t.customers?.phone || ''
+        const phone = rawPhone.replace(/^\+/, '').replace(/^0/, '256')
+        // OpenFloat must disburse the NET amount the customer actually receives, not
+        // the gross. Prefer transaction_fees.net_amount; fall back to the withdrawal
+        // formula (gross − UGX 1,800 carrier − 2% Partna) when no fee row is linked.
+        const netFromFee = t.transaction_fees?.[0]?.net_amount
+        const netAmount = netFromFee != null
+          ? Number(netFromFee)
+          : Math.max(0, Number(t.amount) - 1800 - Math.round(Number(t.amount) * 0.02))
+        return [accountType, fullName, phone, '', '', phone, netAmount, t.reference || t.id.slice(0, 8)]
       })
     downloadOpenFloatFile(rows, `partna-customer-withdrawals-${new Date().toISOString().slice(0, 10)}.xlsx`)
   }

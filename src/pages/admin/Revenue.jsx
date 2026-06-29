@@ -82,9 +82,12 @@ export default function Revenue() {
     return true
   })
 
-  const totalFeesAllTime    = fees.reduce((s, f) => s + Number(f.total_fees || 0), 0)
-  const totalFeesThisMonth  = getThisMonth().reduce((s, f) => s + Number(f.total_fees || 0), 0)
-  const totalFeesLastMonth  = getLastMonth().reduce((s, f) => s + Number(f.total_fees || 0), 0)
+  // Partna's actual revenue is partna_fee — total_fees also includes the carrier
+  // pass-through (e.g. the UGX 1,800 mobile-money fee on a withdrawal), which is not
+  // Partna income. Sum partna_fee everywhere we report "revenue".
+  const totalFeesAllTime    = fees.reduce((s, f) => s + Number(f.partna_fee || 0), 0)
+  const totalFeesThisMonth  = getThisMonth().reduce((s, f) => s + Number(f.partna_fee || 0), 0)
+  const totalFeesLastMonth  = getLastMonth().reduce((s, f) => s + Number(f.partna_fee || 0), 0)
   const activeSubscriptions = subscriptions.filter(s => s.status === 'active')
   const mrr = activeSubscriptions.reduce((s, sub) => {
     const prices = { starter: 49, growth: 149, enterprise: 399 }
@@ -94,8 +97,8 @@ export default function Revenue() {
   const hasFilters = filterBusiness || dateFrom || dateTo
 
   function exportFeeCSV() {
-    const rows = [['Reference', 'Customer', 'Business', 'Type', 'Gross Amount', 'Fee', 'Net Amount', 'Date'],
-      ...filteredFees.map(f => [f.transactions?.reference || f.transaction_id, `${f.transactions?.customers?.first_name} ${f.transactions?.customers?.last_name}`, f.transactions?.customers?.businesses?.name || '', f.transactions?.type || '', f.gross_amount, f.total_fees, f.net_amount, new Date(f.created_at || f.transactions?.created_at).toISOString()])]
+    const rows = [['Reference', 'Customer', 'Business', 'Type', 'Gross Amount', 'Partna Fee', 'Net Amount', 'Date'],
+      ...filteredFees.map(f => [f.transactions?.reference || f.transaction_id, `${f.transactions?.customers?.first_name} ${f.transactions?.customers?.last_name}`, f.transactions?.customers?.businesses?.name || '', f.transactions?.type || '', f.gross_amount, f.partna_fee, f.net_amount, new Date(f.created_at || f.transactions?.created_at).toISOString()])]
     const csv = rows.map(r => r.map(v => `"${v}"`).join(',')).join('\n')
     const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(new Blob([csv], { type: 'text/csv' })), download: `partna-fees-${new Date().toISOString().slice(0, 10)}.csv` })
     a.click()
@@ -117,9 +120,9 @@ export default function Revenue() {
       {/* ── Stat cards ── */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
         {[
-          { label: 'Total fees (all time)',      value: formatUGX(totalFeesAllTime),   accentColor: C.blue   },
-          { label: 'Fees this month',            value: formatUGX(totalFeesThisMonth), accentColor: C.green  },
-          { label: 'Fees last month',            value: formatUGX(totalFeesLastMonth), accentColor: C.orange },
+          { label: 'Partna revenue (all time)',  value: formatUGX(totalFeesAllTime),   accentColor: C.blue   },
+          { label: 'Revenue this month',         value: formatUGX(totalFeesThisMonth), accentColor: C.green  },
+          { label: 'Revenue last month',         value: formatUGX(totalFeesLastMonth), accentColor: C.orange },
           { label: 'Monthly recurring revenue', value: formatUSD(mrr),                accentColor: C.blue, sub: `${activeSubscriptions.length} active subscriptions` },
         ].map(s => (
           <div key={s.label} style={{ background: C.white, border: `1px solid ${C.stroke}`, borderRadius: 12, padding: '16px 18px' }}>
@@ -171,7 +174,7 @@ export default function Revenue() {
           <div style={{ display: 'flex', alignItems: 'center', gap: 24, padding: '11px 16px', background: C.bg, border: `1px solid ${C.grayLine}`, borderRadius: 8 }}>
             {[
               { label: 'Records shown', value: filteredFees.length, color: C.black },
-              { label: 'Total fees',    value: formatUGX(filteredFees.reduce((s, f) => s + Number(f.total_fees || 0), 0)),   color: C.green },
+              { label: 'Partna fees',   value: formatUGX(filteredFees.reduce((s, f) => s + Number(f.partna_fee || 0), 0)),   color: C.green },
               { label: 'Total gross',   value: formatUGX(filteredFees.reduce((s, f) => s + Number(f.gross_amount || 0), 0)), color: C.black },
             ].map((item, i) => (
               <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -187,7 +190,7 @@ export default function Revenue() {
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                 <thead>
                   <tr style={{ background: C.bg, borderBottom: `1px solid ${C.grayLine}` }}>
-                    {['Reference', 'Customer', 'Business', 'Type', 'Gross amount', 'Fee', 'Net amount', 'Date'].map(h => (
+                    {['Reference', 'Customer', 'Business', 'Type', 'Gross amount', 'Partna fee', 'Net amount', 'Date'].map(h => (
                       <th key={h} style={{ padding: '10px 14px', textAlign: 'left', fontSize: 11, fontWeight: 600, color: C.secondary, textTransform: 'uppercase', letterSpacing: '0.04em', whiteSpace: 'nowrap' }}>{h}</th>
                     ))}
                   </tr>
@@ -216,7 +219,7 @@ export default function Revenue() {
                       </td>
                       <td style={{ padding: '11px 14px' }}>
                         <span style={{ fontFamily: 'monospace', fontSize: 11, fontWeight: 600, color: C.green, background: C.bgGreen, borderRadius: 6, padding: '3px 8px', whiteSpace: 'nowrap' }}>
-                          {formatUGX(f.total_fees || 0)}
+                          {formatUGX(f.partna_fee || 0)}
                         </span>
                       </td>
                       <td style={{ padding: '11px 14px', fontSize: 13, fontWeight: 600, color: C.green, whiteSpace: 'nowrap' }}>

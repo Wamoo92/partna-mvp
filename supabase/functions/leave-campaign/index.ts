@@ -40,7 +40,7 @@ serve(async (req) => {
     if (userErr || !authUser) return json({ error: 'Unauthorized' }, req, 401)
 
     const { data: customer } = await supabase
-      .from('customers').select('id').eq('auth_user_id', authUser.id).maybeSingle()
+      .from('customers').select('id, phone, payment_network, payment_number').eq('auth_user_id', authUser.id).maybeSingle()
     if (!customer) return json({ error: 'Customer not found' }, req, 403)
 
     const { data: enrollment } = await supabase
@@ -63,12 +63,25 @@ serve(async (req) => {
     }
 
     if (balance > 0) {
-      await supabase.from('transactions').insert({
+      // The refund is paid out to the customer's saved mobile-money account, so stamp
+      // the payout phone/network onto the transaction — otherwise the OpenFloat export
+      // has a blank Account Number for refund rows.
+      const payoutNetwork = customer.payment_network === 'mtn' ? 'MTN'
+        : customer.payment_network === 'airtel' ? 'AirtelMoney'
+        : (customer.payment_network || null)
+      const payoutPhone = customer.payment_number || customer.phone || null
+
+      const { data: refundTxn } = await supabase.from('transactions').insert({
         customer_id: customer.id, wallet_id: wallet?.id || null, campaign_id: enrollment.campaign_id,
         type: 'withdrawal', amount: balance, status: 'pending',
+        network: payoutNetwork, withdrawal_network: payoutNetwork, withdrawal_phone: payoutPhone,
         notes: `Campaign left — refund pending. Fee deducted: UGX ${fee.toLocaleString()}. Net refund: UGX ${refund.toLocaleString()}`,
-      })
+      }).select('id').single()
+
+      // Link the fee row to the refund transaction so the net amount is recoverable
+      // (the OpenFloat amount comes from transaction_fees.net_amount).
       await supabase.from('transaction_fees').insert({
+        transaction_id: refundTxn?.id || null,
         customer_id: customer.id, fee_type: 'leave_campaign', charged_to: 'user',
         partna_fee: fee, carrier_fee: 0, tax: 0, total_fees: fee, net_amount: refund,
       })

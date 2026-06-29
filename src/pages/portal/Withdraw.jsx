@@ -127,7 +127,10 @@ export default function Withdraw({
   const networkLabel     = customer?.payment_network === 'mtn' ? 'MTN MoMo' : customer?.payment_network === 'airtel' ? 'Airtel Money' : (customer?.payment_network || '—')
   const networkLogo      = customer?.payment_network === 'mtn' ? '/mtn-logo.svg' : customer?.payment_network === 'airtel' ? '/airtel-logo.svg' : null
 
-  useEffect(() => { if (customer) loadEnrollment() }, [customer, enrollmentId])
+  // Depend on customer?.id (not the object) so the post-withdrawal silent refetch —
+  // which replaces the customer object — does not re-run loadEnrollment and flash the
+  // spinner over the success screen.
+  useEffect(() => { if (customer) loadEnrollment() }, [customer?.id, enrollmentId])
 
   // ── Business logic — unchanged ────────────────────────────────────────
 
