@@ -212,27 +212,32 @@ export default function Overview({ admin, business }) {
           try {
             const { data: enrollments } = await supabase
               .from('customer_campaigns')
-              .select('customer_id')
+              .select('customer_id, wallet_id')
               .eq('campaign_id', campaign.id)
               .eq('status', 'active')
 
-            const enrolled    = enrollments?.length || 0
-            const enrolledIds = enrollments?.map(e => e.customer_id) || []
+            const enrolled   = enrollments?.length || 0
+            // Each enrollment has its OWN wallet — scope savings to this
+            // campaign's enrollment wallets only, not every wallet the customer owns.
+            const walletIds  = (enrollments || []).map(e => e.wallet_id).filter(Boolean)
 
             let amountSaved = 0
             let amountPaid  = 0
 
-            if (enrolledIds.length > 0) {
+            if (walletIds.length > 0) {
               const { data: wallets } = await supabase
                 .from('wallets')
                 .select('balance')
-                .in('customer_id', enrolledIds)
+                .in('id', walletIds)
               amountSaved = wallets?.reduce((s, w) => s + Number(w.balance), 0) || 0
+            }
 
+            if (enrolled > 0) {
+              // Payments made toward THIS campaign only
               const { data: payments } = await supabase
                 .from('transactions')
                 .select('amount')
-                .in('customer_id', enrolledIds)
+                .eq('campaign_id', campaign.id)
                 .in('type', ['payment', 'fee_payment', 'late_fee_payment'])
               amountPaid = payments?.reduce((s, p) => s + Number(p.amount), 0) || 0
             }

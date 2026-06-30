@@ -289,35 +289,36 @@ export default function Campaigns({ admin, business }) {
         const statsMap = {}
         await Promise.all(data.map(async (campaign) => {
           try {
-            // Get enrolled customer_campaigns
+            // Get enrolled customer_campaigns — each has its OWN wallet
             const { data: enrollments } = await supabase
               .from('customer_campaigns')
-              .select('customer_id, status')
+              .select('customer_id, wallet_id, status')
               .eq('campaign_id', campaign.id)
               .eq('status', 'active')
 
-            const enrolled    = enrollments?.length || 0
-            const customerIds = enrollments?.map(e => e.customer_id) || []
+            const enrolled   = enrollments?.length || 0
+            // Scope savings to this campaign's enrollment wallets only —
+            // a customer enrolled in several campaigns has a separate wallet for each.
+            const walletIds  = (enrollments || []).map(e => e.wallet_id).filter(Boolean)
 
             let amountSaved = 0
             let amountPaid  = 0
 
-            if (customerIds.length > 0) {
-              // Sum wallet balances for enrolled customers
+            if (walletIds.length > 0) {
               const { data: wallets } = await supabase
                 .from('wallets')
                 .select('balance')
-                .in('customer_id', customerIds)
-
+                .in('id', walletIds)
               amountSaved = wallets?.reduce((s, w) => s + Number(w.balance), 0) || 0
+            }
 
-              // Sum payments (deposits) for enrolled customers in this campaign
+            if (enrolled > 0) {
+              // Payments made toward THIS campaign only (fees or general payments)
               const { data: payments } = await supabase
                 .from('transactions')
                 .select('amount')
-                .in('customer_id', customerIds)
-                .eq('type', 'payment')
-
+                .eq('campaign_id', campaign.id)
+                .in('type', ['payment', 'fee_payment', 'late_fee_payment'])
               amountPaid = payments?.reduce((s, p) => s + Number(p.amount), 0) || 0
             }
 
